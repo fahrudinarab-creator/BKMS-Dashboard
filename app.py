@@ -2,7 +2,23 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+import plotly.io as pio
 from pathlib import Path
+
+pio.templates.default = "plotly_dark"
+
+def style_fig(fig):
+    """Make chart background transparent so it blends with the black page,
+    and keep text light/readable."""
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#F3F4F6"),
+        legend=dict(font=dict(color="#F3F4F6")),
+    )
+    fig.update_xaxes(gridcolor="#2D333B", zerolinecolor="#2D333B")
+    fig.update_yaxes(gridcolor="#2D333B", zerolinecolor="#2D333B")
+    return fig
 
 # ---------------------------------------------------------------
 # PAGE CONFIG
@@ -17,44 +33,51 @@ st.set_page_config(
 # ---------------------------------------------------------------
 # STYLE
 # ---------------------------------------------------------------
-PRIMARY = "#0B3D2E"      # forest green
+PRIMARY = "#0B3D2E"      # forest green (used for banner/backgrounds)
+CHART_GREEN = "#3FA772"  # brighter green for readable bars/lines on black
 GOLD = "#C9A227"         # gold accent
-RED = "#C0392B"
-GREY = "#6B7280"
+RED = "#E4574C"          # brighter red for readability on black
+GREY = "#9CA3AF"         # lighter grey for readability on black
+
+DARK_BG = "#000000"
+CARD_BG = "#161B22"
+BORDER = "#2D333B"
+TEXT_LIGHT = "#F3F4F6"
+TEXT_MUTED = "#9CA3AF"
 
 st.markdown(f"""
 <style>
-    /* Force a readable light background regardless of browser/system dark mode */
+    /* Force a black background, consistent regardless of browser/system settings */
     html, body, [data-testid="stAppViewContainer"], .main {{
-        background-color: #F7F8FA !important;
+        background-color: {DARK_BG} !important;
     }}
     [data-testid="stHeader"] {{ background-color: rgba(0,0,0,0) !important; }}
-    [data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-right: 1px solid #E5E7EB; }}
-    [data-testid="stSidebar"] * {{ color: #1F2937 !important; }}
+    [data-testid="stSidebar"] {{ background-color: {CARD_BG} !important; border-right: 1px solid {BORDER}; }}
+    [data-testid="stSidebar"] * {{ color: {TEXT_LIGHT} !important; }}
     .block-container {{ padding-top: 1.5rem; }}
 
     /* KPI metric cards */
     div[data-testid="stMetric"] {{
-        background: #FFFFFF !important;
-        border: 1px solid #E5E7EB;
-        border-left: 5px solid {PRIMARY};
+        background: {CARD_BG} !important;
+        border: 1px solid {BORDER};
+        border-left: 5px solid {GOLD};
         border-radius: 10px;
         padding: 14px 16px 10px 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }}
-    div[data-testid="stMetricLabel"] * {{ color: {GREY} !important; font-weight: 600; }}
-    div[data-testid="stMetricValue"] * {{ color: {PRIMARY} !important; }}
+    div[data-testid="stMetricLabel"] * {{ color: {TEXT_MUTED} !important; font-weight: 600; }}
+    div[data-testid="stMetricValue"] * {{ color: {TEXT_LIGHT} !important; font-weight: 700; }}
     div[data-testid="stMetricDelta"] * {{ font-weight: 600; }}
 
-    /* General text/headers on the light background */
-    h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{ color: #1F2937; }}
-    h1, h2, h3 {{ color: {PRIMARY}; }}
+    /* General text/headers on the black background */
+    h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{ color: {TEXT_LIGHT} !important; }}
+    h1, h2, h3 {{ color: {GOLD} !important; }}
 
     .header-banner {{
         background: linear-gradient(90deg, {PRIMARY} 0%, #145C43 100%);
         padding: 22px 28px;
         border-radius: 12px;
         margin-bottom: 18px;
+        border: 1px solid {BORDER};
     }}
     .header-banner h1 {{ color: white !important; margin: 0; font-size: 26px; }}
     .header-banner p {{ color: {GOLD} !important; margin: 2px 0 0 0; font-size: 14px; letter-spacing: 0.5px; }}
@@ -62,11 +85,14 @@ st.markdown(f"""
         border-left: 5px solid {GOLD};
         padding-left: 10px;
         margin-top: 6px;
-        color: {PRIMARY} !important;
+        color: {TEXT_LIGHT} !important;
     }}
 
     /* Dataframe / table area */
-    [data-testid="stDataFrame"] {{ background-color: #FFFFFF !important; }}
+    [data-testid="stDataFrame"] {{ background-color: {CARD_BG} !important; }}
+
+    /* Text input / multiselect chips */
+    .stTextInput input {{ background-color: {CARD_BG} !important; color: {TEXT_LIGHT} !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -233,20 +259,20 @@ site_agg = df.groupby("lokasi", as_index=False).agg(
 with colA:
     fig = go.Figure()
     fig.add_bar(x=site_agg["lokasi"], y=site_agg["pendapatan_budget"], name="Budget", marker_color=GREY)
-    fig.add_bar(x=site_agg["lokasi"], y=site_agg["pendapatan_realisasi"], name="Realisasi", marker_color=PRIMARY)
+    fig.add_bar(x=site_agg["lokasi"], y=site_agg["pendapatan_realisasi"], name="Realisasi", marker_color=CHART_GREEN)
     fig.update_layout(title="Pendapatan: Budget vs Realisasi", barmode="group",
                        yaxis_title="Rupiah", legend=dict(orientation="h", y=1.12), height=380,
                        margin=dict(t=60, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(style_fig(fig), use_container_width=True)
 
 with colB:
     fig2 = go.Figure()
     fig2.add_bar(x=site_agg["lokasi"], y=site_agg["prestasi_budget"], name="Target", marker_color=GOLD)
-    fig2.add_bar(x=site_agg["lokasi"], y=site_agg["prestasi_realisasi"], name="Realisasi", marker_color=PRIMARY)
+    fig2.add_bar(x=site_agg["lokasi"], y=site_agg["prestasi_realisasi"], name="Realisasi", marker_color=CHART_GREEN)
     fig2.update_layout(title="Prestasi: Target vs Realisasi", barmode="group",
                         yaxis_title="Unit Prestasi", legend=dict(orientation="h", y=1.12), height=380,
                         margin=dict(t=60, b=10))
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(style_fig(fig2), use_container_width=True)
 
 # ---------------------------------------------------------------
 # TREND BULANAN
@@ -264,11 +290,11 @@ fig3 = go.Figure()
 fig3.add_trace(go.Scatter(x=month_agg["bulan"], y=month_agg["pendapatan_budget"], name="Budget Pendapatan",
                            mode="lines+markers", line=dict(color=GREY, dash="dash")))
 fig3.add_trace(go.Scatter(x=month_agg["bulan"], y=month_agg["pendapatan_realisasi"], name="Realisasi Pendapatan",
-                           mode="lines+markers", line=dict(color=PRIMARY, width=3)))
+                           mode="lines+markers", line=dict(color=CHART_GREEN, width=3)))
 fig3.add_trace(go.Scatter(x=month_agg["bulan"], y=month_agg["total_biaya_realisasi"], name="Realisasi Total Biaya",
                            mode="lines+markers", line=dict(color=RED, width=3)))
 fig3.update_layout(height=400, yaxis_title="Rupiah", legend=dict(orientation="h", y=1.12), margin=dict(t=50, b=10))
-st.plotly_chart(fig3, use_container_width=True)
+st.plotly_chart(style_fig(fig3), use_container_width=True)
 
 st.markdown("---")
 
@@ -298,13 +324,13 @@ with colC:
     fig4.update_layout(title="Biaya per Komponen: Budget vs Realisasi", barmode="group",
                         yaxis_title="Rupiah", legend=dict(orientation="h", y=1.12), height=400,
                         margin=dict(t=60, b=10))
-    st.plotly_chart(fig4, use_container_width=True)
+    st.plotly_chart(style_fig(fig4), use_container_width=True)
 
 with colD:
     fig5 = px.pie(comp_df, names="Komponen", values="Realisasi", hole=0.5,
-                   color_discrete_sequence=[PRIMARY, GOLD, "#4E8D7C", "#A9C7B8", RED])
+                   color_discrete_sequence=[CHART_GREEN, GOLD, "#4E8D7C", "#A9C7B8", RED])
     fig5.update_layout(title="Komposisi Biaya Realisasi", height=400, margin=dict(t=60, b=10))
-    st.plotly_chart(fig5, use_container_width=True)
+    st.plotly_chart(style_fig(fig5), use_container_width=True)
 
 # Biaya Langsung vs Tidak Langsung
 st.markdown("##### Biaya Langsung vs Biaya Tidak Langsung")
@@ -321,9 +347,9 @@ with colE:
         "Realisasi": [bl_r, btl_r],
     })
     fig6 = px.pie(dl_df, names="Jenis", values="Realisasi", hole=0.5,
-                   color_discrete_sequence=[PRIMARY, GOLD])
+                   color_discrete_sequence=[CHART_GREEN, GOLD])
     fig6.update_layout(title="Komposisi: Langsung vs Tidak Langsung", height=360, margin=dict(t=60, b=10))
-    st.plotly_chart(fig6, use_container_width=True)
+    st.plotly_chart(style_fig(fig6), use_container_width=True)
 
 with colF:
     m1, m2 = st.columns(2)
@@ -334,10 +360,10 @@ with colF:
 
     fig7 = go.Figure()
     fig7.add_bar(x=["Biaya Langsung", "Biaya Tidak Langsung"], y=[bl_b, btl_b], name="Budget", marker_color=GREY)
-    fig7.add_bar(x=["Biaya Langsung", "Biaya Tidak Langsung"], y=[bl_r, btl_r], name="Realisasi", marker_color=PRIMARY)
+    fig7.add_bar(x=["Biaya Langsung", "Biaya Tidak Langsung"], y=[bl_r, btl_r], name="Realisasi", marker_color=CHART_GREEN)
     fig7.update_layout(barmode="group", height=280, yaxis_title="Rupiah",
                         legend=dict(orientation="h", y=1.15), margin=dict(t=30, b=10))
-    st.plotly_chart(fig7, use_container_width=True)
+    st.plotly_chart(style_fig(fig7), use_container_width=True)
 
 st.markdown("---")
 
@@ -354,10 +380,10 @@ site_kat = df.groupby(["lokasi", "kategori"], as_index=False).agg(
 site_kat["kategori_label"] = site_kat["kategori"].map(KATEGORI_LABEL).fillna(site_kat["kategori"])
 
 fig8 = px.bar(site_kat, x="lokasi", y="total_biaya_realisasi", color="kategori_label",
-              barmode="stack", color_discrete_sequence=[PRIMARY, GOLD],
+              barmode="stack", color_discrete_sequence=[CHART_GREEN, GOLD],
               labels={"total_biaya_realisasi": "Total Biaya Realisasi (Rp)", "lokasi": "Site", "kategori_label": "Kategori"})
 fig8.update_layout(height=380, legend=dict(orientation="h", y=1.12), margin=dict(t=50, b=10))
-st.plotly_chart(fig8, use_container_width=True)
+st.plotly_chart(style_fig(fig8), use_container_width=True)
 
 st.markdown("---")
 
