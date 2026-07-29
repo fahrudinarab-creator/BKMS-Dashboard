@@ -601,13 +601,15 @@ st.markdown("---")
 PRODUKTIF_THRESHOLD = 70  # persen realisasi terhadap target/budget
 
 st.markdown('<h3 class="section-title">Unit Produktif vs Tidak Produktif</h3>', unsafe_allow_html=True)
-st.caption(f"Unit dikategorikan **Produktif** jika realisasi ≥ {PRODUKTIF_THRESHOLD}% dari target/budget (dijumlahkan per unit sesuai filter & periode yang dipilih), selain itu **Tidak Produktif**.")
+st.caption(f"Unit dengan **Budget = 0 dan Realisasi = 0** tidak dihitung. Sisanya dikategorikan **Produktif** jika realisasi ≥ {PRODUKTIF_THRESHOLD}% dari target/budget (dijumlahkan per unit sesuai filter & periode yang dipilih), selain itu **Tidak Produktif**.")
 
 def hitung_produktif(data: pd.DataFrame, col_real: str, col_target: str, threshold: float = PRODUKTIF_THRESHOLD):
     agg = data.groupby("nama_unit", as_index=False).agg(
         realisasi=(col_real, "sum"),
         target=(col_target, "sum"),
     )
+    # Unit dengan budget = 0 DAN realisasi = 0 tidak dihitung sama sekali
+    agg = agg[~((agg["target"] == 0) & (agg["realisasi"] == 0))].copy()
     def pct(row):
         if row["target"] > 0:
             return row["realisasi"] / row["target"] * 100
@@ -620,20 +622,18 @@ unit_pendapatan_agg = hitung_produktif(df, "pendapatan_realisasi", "pendapatan_b
 produktif_pendapatan = int((unit_pendapatan_agg["status"] == "Produktif").sum())
 tidak_produktif_pendapatan = int((unit_pendapatan_agg["status"] == "Tidak Produktif").sum())
 total_unit_pendapatan = produktif_pendapatan + tidak_produktif_pendapatan
-budget_produktif_pendapatan = unit_pendapatan_agg.loc[unit_pendapatan_agg["status"] == "Produktif", "target"].sum()
-budget_tidak_produktif_pendapatan = unit_pendapatan_agg.loc[unit_pendapatan_agg["status"] == "Tidak Produktif", "target"].sum()
 
 unit_prestasi_agg = hitung_produktif(df, "prestasi_realisasi", "prestasi_budget")
 produktif_prestasi = int((unit_prestasi_agg["status"] == "Produktif").sum())
 tidak_produktif_prestasi = int((unit_prestasi_agg["status"] == "Tidak Produktif").sum())
 total_unit_prestasi = produktif_prestasi + tidak_produktif_prestasi
-target_produktif_prestasi = unit_prestasi_agg.loc[unit_prestasi_agg["status"] == "Produktif", "target"].sum()
-target_tidak_produktif_prestasi = unit_prestasi_agg.loc[unit_prestasi_agg["status"] == "Tidak Produktif", "target"].sum()
 
 colP1, colP2 = st.columns(2)
 
 with colP1:
-    m1, m2 = st.columns(2)
+    m0, m1, m2 = st.columns(3)
+    m0.metric("Total Unit (Pendapatan)", f"{total_unit_pendapatan:,}",
+               "Budget/Realisasi tercatat")
     m1.metric("Unit Produktif (Pendapatan)", f"{produktif_pendapatan:,}",
                f"{produktif_pendapatan/total_unit_pendapatan*100:.1f}% dari total" if total_unit_pendapatan else "")
     m2.metric("Unit Tidak Produktif (Pendapatan)", f"{tidak_produktif_pendapatan:,}",
@@ -650,7 +650,9 @@ with colP1:
     st.plotly_chart(style_fig(fig_p1), use_container_width=True)
 
 with colP2:
-    m3, m4 = st.columns(2)
+    m0b, m3, m4 = st.columns(3)
+    m0b.metric("Total Unit (Prestasi)", f"{total_unit_prestasi:,}",
+               "Target/Realisasi tercatat")
     m3.metric("Unit Produktif (Prestasi)", f"{produktif_prestasi:,}",
                f"{produktif_prestasi/total_unit_prestasi*100:.1f}% dari total" if total_unit_prestasi else "")
     m4.metric("Unit Tidak Produktif (Prestasi)", f"{tidak_produktif_prestasi:,}",
