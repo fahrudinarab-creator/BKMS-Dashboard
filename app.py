@@ -598,17 +598,32 @@ st.markdown("---")
 # ---------------------------------------------------------------
 # UNIT PRODUKTIF VS TIDAK PRODUKTIF
 # ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Unit Produktif vs Tidak Produktif</h3>', unsafe_allow_html=True)
-st.caption("Unit dikategorikan **Produktif** jika total realisasi > 0 pada kombinasi filter & periode yang dipilih, selain itu **Tidak Produktif**.")
+PRODUKTIF_THRESHOLD = 70  # persen realisasi terhadap target/budget
 
-unit_pendapatan_agg = df.groupby("nama_unit", as_index=False)["pendapatan_realisasi"].sum()
-produktif_pendapatan = int((unit_pendapatan_agg["pendapatan_realisasi"] > 0).sum())
-tidak_produktif_pendapatan = int((unit_pendapatan_agg["pendapatan_realisasi"] <= 0).sum())
+st.markdown('<h3 class="section-title">Unit Produktif vs Tidak Produktif</h3>', unsafe_allow_html=True)
+st.caption(f"Unit dikategorikan **Produktif** jika realisasi ≥ {PRODUKTIF_THRESHOLD}% dari target/budget (dijumlahkan per unit sesuai filter & periode yang dipilih), selain itu **Tidak Produktif**.")
+
+def hitung_produktif(data: pd.DataFrame, col_real: str, col_target: str, threshold: float = PRODUKTIF_THRESHOLD):
+    agg = data.groupby("nama_unit", as_index=False).agg(
+        realisasi=(col_real, "sum"),
+        target=(col_target, "sum"),
+    )
+    def pct(row):
+        if row["target"] > 0:
+            return row["realisasi"] / row["target"] * 100
+        return 100.0 if row["realisasi"] > 0 else 0.0
+    agg["pct"] = agg.apply(pct, axis=1)
+    agg["status"] = agg["pct"].apply(lambda p: "Produktif" if p >= threshold else "Tidak Produktif")
+    return agg
+
+unit_pendapatan_agg = hitung_produktif(df, "pendapatan_realisasi", "pendapatan_budget")
+produktif_pendapatan = int((unit_pendapatan_agg["status"] == "Produktif").sum())
+tidak_produktif_pendapatan = int((unit_pendapatan_agg["status"] == "Tidak Produktif").sum())
 total_unit_pendapatan = produktif_pendapatan + tidak_produktif_pendapatan
 
-unit_prestasi_agg = df.groupby("nama_unit", as_index=False)["prestasi_realisasi"].sum()
-produktif_prestasi = int((unit_prestasi_agg["prestasi_realisasi"] > 0).sum())
-tidak_produktif_prestasi = int((unit_prestasi_agg["prestasi_realisasi"] <= 0).sum())
+unit_prestasi_agg = hitung_produktif(df, "prestasi_realisasi", "prestasi_budget")
+produktif_prestasi = int((unit_prestasi_agg["status"] == "Produktif").sum())
+tidak_produktif_prestasi = int((unit_prestasi_agg["status"] == "Tidak Produktif").sum())
 total_unit_prestasi = produktif_prestasi + tidak_produktif_prestasi
 
 colP1, colP2 = st.columns(2)
@@ -625,7 +640,7 @@ with colP1:
         "Jumlah": [produktif_pendapatan, tidak_produktif_pendapatan],
     })
     fig_p1 = px.pie(pie_pend, names="Status", values="Jumlah", hole=0.5,
-                     title="Unit Berdasarkan Pendapatan",
+                     title=f"Unit Berdasarkan Pendapatan (≥{PRODUKTIF_THRESHOLD}% Budget)",
                      color_discrete_sequence=[CHART_GREEN, RED])
     fig_p1.update_layout(height=340, margin=dict(t=60, b=10))
     st.plotly_chart(style_fig(fig_p1), use_container_width=True)
@@ -642,10 +657,37 @@ with colP2:
         "Jumlah": [produktif_prestasi, tidak_produktif_prestasi],
     })
     fig_p2 = px.pie(pie_prest, names="Status", values="Jumlah", hole=0.5,
-                     title="Unit Berdasarkan Prestasi",
+                     title=f"Unit Berdasarkan Prestasi (≥{PRODUKTIF_THRESHOLD}% Target)",
                      color_discrete_sequence=[CHART_GREEN, RED])
     fig_p2.update_layout(height=340, margin=dict(t=60, b=10))
     st.plotly_chart(style_fig(fig_p2), use_container_width=True)
+
+with st.expander("🔍 Lihat detail % pencapaian per unit"):
+    dcol1, dcol2 = st.columns(2)
+    with dcol1:
+        st.markdown("**Pendapatan (Realisasi vs Budget)**")
+        show_pend = unit_pendapatan_agg.rename(columns={
+            "nama_unit": "Nama Unit", "realisasi": "Realisasi", "target": "Budget",
+            "pct": "% Pencapaian", "status": "Status",
+        }).sort_values("% Pencapaian")
+        st.dataframe(show_pend, use_container_width=True, height=300,
+                     column_config={
+                         "Realisasi": st.column_config.NumberColumn(format="Rp %,.0f"),
+                         "Budget": st.column_config.NumberColumn(format="Rp %,.0f"),
+                         "% Pencapaian": st.column_config.NumberColumn(format="%.1f%%"),
+                     })
+    with dcol2:
+        st.markdown("**Prestasi (Realisasi vs Target)**")
+        show_prest = unit_prestasi_agg.rename(columns={
+            "nama_unit": "Nama Unit", "realisasi": "Realisasi", "target": "Target",
+            "pct": "% Pencapaian", "status": "Status",
+        }).sort_values("% Pencapaian")
+        st.dataframe(show_prest, use_container_width=True, height=300,
+                     column_config={
+                         "Realisasi": st.column_config.NumberColumn(format="%,.0f"),
+                         "Target": st.column_config.NumberColumn(format="%,.0f"),
+                         "% Pencapaian": st.column_config.NumberColumn(format="%.1f%%"),
+                     })
 
 st.markdown("---")
 
