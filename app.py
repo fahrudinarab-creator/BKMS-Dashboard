@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import plotly.io as pio
+import base64
 from pathlib import Path
 
 pio.templates.default = "plotly_dark"
@@ -78,9 +79,18 @@ st.markdown(f"""
         border-radius: 12px;
         margin-bottom: 18px;
         border: 1px solid {BORDER};
+        position: relative;
     }}
     .header-banner h1 {{ color: white !important; margin: 0; font-size: 26px; }}
     .header-banner p {{ color: {GOLD} !important; margin: 2px 0 0 0; font-size: 14px; letter-spacing: 0.5px; }}
+    .header-logo {{
+        position: absolute;
+        top: 50%;
+        right: 28px;
+        transform: translateY(-50%);
+        height: 64px;
+        width: auto;
+    }}
     .section-title {{
         border-left: 5px solid {GOLD};
         padding-left: 10px;
@@ -513,8 +523,20 @@ def build_pptx(data: pd.DataFrame, site_list, month_list, kat_list) -> bytes:
 # ---------------------------------------------------------------
 # HEADER
 # ---------------------------------------------------------------
-st.markdown("""
+LOGO_PATH = Path(__file__).parent / "logo.png"
+
+def get_logo_base64() -> str:
+    if LOGO_PATH.exists():
+        with open(LOGO_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return ""
+
+logo_b64 = get_logo_base64()
+logo_html = f'<img class="header-logo" src="data:image/png;base64,{logo_b64}">' if logo_b64 else ""
+
+st.markdown(f"""
 <div class="header-banner">
+    {logo_html}
     <h1>📊 Dashboard Biaya & Pendapatan</h1>
     <p>PT BUANA KARYA MANDIRI SEJAHTERA (BKMS) &nbsp;•&nbsp; Target vs Realisasi</p>
 </div>
