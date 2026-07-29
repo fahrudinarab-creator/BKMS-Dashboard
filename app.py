@@ -598,7 +598,7 @@ st.markdown("---")
 # ---------------------------------------------------------------
 # UNIT PRODUKTIF VS TIDAK PRODUKTIF
 # ---------------------------------------------------------------
-PRODUKTIF_THRESHOLD = 70  # persen realisasi terhadap target/budget
+PRODUKTIF_THRESHOLD = 90  # persen realisasi terhadap target/budget
 
 st.markdown('<h3 class="section-title">Unit Produktif vs Tidak Produktif</h3>', unsafe_allow_html=True)
 st.caption(f"Unit dengan **Budget = 0 dan Realisasi = 0** tidak dihitung. Sisanya dikategorikan **Produktif** jika realisasi ≥ {PRODUKTIF_THRESHOLD}% dari target/budget (dijumlahkan per unit sesuai filter & periode yang dipilih), selain itu **Tidak Produktif**.")
