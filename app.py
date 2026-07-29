@@ -24,32 +24,49 @@ GREY = "#6B7280"
 
 st.markdown(f"""
 <style>
-    .main {{ background-color: #F7F8FA; }}
+    /* Force a readable light background regardless of browser/system dark mode */
+    html, body, [data-testid="stAppViewContainer"], .main {{
+        background-color: #F7F8FA !important;
+    }}
+    [data-testid="stHeader"] {{ background-color: rgba(0,0,0,0) !important; }}
+    [data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-right: 1px solid #E5E7EB; }}
+    [data-testid="stSidebar"] * {{ color: #1F2937 !important; }}
     .block-container {{ padding-top: 1.5rem; }}
+
+    /* KPI metric cards */
     div[data-testid="stMetric"] {{
-        background: white;
+        background: #FFFFFF !important;
         border: 1px solid #E5E7EB;
         border-left: 5px solid {PRIMARY};
         border-radius: 10px;
         padding: 14px 16px 10px 16px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }}
-    div[data-testid="stMetricLabel"] {{ color: {GREY}; font-weight: 600; }}
+    div[data-testid="stMetricLabel"] * {{ color: {GREY} !important; font-weight: 600; }}
+    div[data-testid="stMetricValue"] * {{ color: {PRIMARY} !important; }}
+    div[data-testid="stMetricDelta"] * {{ font-weight: 600; }}
+
+    /* General text/headers on the light background */
+    h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{ color: #1F2937; }}
     h1, h2, h3 {{ color: {PRIMARY}; }}
+
     .header-banner {{
         background: linear-gradient(90deg, {PRIMARY} 0%, #145C43 100%);
         padding: 22px 28px;
         border-radius: 12px;
         margin-bottom: 18px;
     }}
-    .header-banner h1 {{ color: white; margin: 0; font-size: 26px; }}
-    .header-banner p {{ color: {GOLD}; margin: 2px 0 0 0; font-size: 14px; letter-spacing: 0.5px; }}
+    .header-banner h1 {{ color: white !important; margin: 0; font-size: 26px; }}
+    .header-banner p {{ color: {GOLD} !important; margin: 2px 0 0 0; font-size: 14px; letter-spacing: 0.5px; }}
     .section-title {{
         border-left: 5px solid {GOLD};
         padding-left: 10px;
         margin-top: 6px;
-        color: {PRIMARY};
+        color: {PRIMARY} !important;
     }}
+
+    /* Dataframe / table area */
+    [data-testid="stDataFrame"] {{ background-color: #FFFFFF !important; }}
 </style>
 """, unsafe_allow_html=True)
 
