@@ -584,11 +584,11 @@ ach_biaya = achievement(tot_biaya_r, tot_biaya_b)
 st.markdown('<h3 class="section-title">Ringkasan Target vs Realisasi</h3>', unsafe_allow_html=True)
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Pendapatan (Realisasi)", fmt_rp(tot_pendapatan_r),
-          f"{ach_pendapatan-100:+.1f}% vs Budget" if ach_pendapatan is not None else "Budget = 0")
+          f"{ach_pendapatan-100:+.1f}% vs Budget ({fmt_rp(tot_pendapatan_b)})" if ach_pendapatan is not None else "Budget = 0")
 c2.metric("Prestasi (Realisasi)", f"{tot_prestasi_r:,.0f}",
-          f"{ach_prestasi-100:+.1f}% vs Target" if ach_prestasi is not None else "Target = 0")
+          f"{ach_prestasi-100:+.1f}% vs Target ({tot_prestasi_b:,.0f})" if ach_prestasi is not None else "Target = 0")
 c3.metric("Total Biaya (Realisasi)", fmt_rp(tot_biaya_r),
-          f"{ach_biaya-100:+.1f}% vs Budget" if ach_biaya is not None else "Budget = 0",
+          f"{ach_biaya-100:+.1f}% vs Budget ({fmt_rp(tot_biaya_b)})" if ach_biaya is not None else "Budget = 0",
           delta_color="inverse")
 margin = tot_pendapatan_r - tot_biaya_r
 c4.metric("Margin (Pendapatan - Biaya)", fmt_rp(margin))
