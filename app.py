@@ -75,12 +75,12 @@ st.markdown(f"""
 
     .header-banner {{
         background: linear-gradient(90deg, {PRIMARY} 0%, #145C43 100%);
-        padding: 22px 160px 22px 28px;
+        padding: 22px 200px 22px 28px;
         border-radius: 12px;
         margin-bottom: 18px;
         border: 1px solid {BORDER};
         position: relative;
-        min-height: 120px;
+        min-height: 160px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -92,7 +92,7 @@ st.markdown(f"""
         top: 50%;
         right: 28px;
         transform: translateY(-50%);
-        height: 130px;
+        height: 170px;
         width: auto;
     }}
     .section-title {{
