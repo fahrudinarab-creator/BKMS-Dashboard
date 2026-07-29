@@ -75,11 +75,15 @@ st.markdown(f"""
 
     .header-banner {{
         background: linear-gradient(90deg, {PRIMARY} 0%, #145C43 100%);
-        padding: 22px 28px;
+        padding: 22px 160px 22px 28px;
         border-radius: 12px;
         margin-bottom: 18px;
         border: 1px solid {BORDER};
         position: relative;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }}
     .header-banner h1 {{ color: white !important; margin: 0; font-size: 26px; }}
     .header-banner p {{ color: {GOLD} !important; margin: 2px 0 0 0; font-size: 14px; letter-spacing: 0.5px; }}
@@ -88,7 +92,7 @@ st.markdown(f"""
         top: 50%;
         right: 28px;
         transform: translateY(-50%);
-        height: 64px;
+        height: 110px;
         width: auto;
     }}
     .section-title {{
