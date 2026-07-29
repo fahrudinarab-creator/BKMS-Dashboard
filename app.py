@@ -92,7 +92,7 @@ st.markdown(f"""
         top: 50%;
         right: 28px;
         transform: translateY(-50%);
-        height: 110px;
+        height: 130px;
         width: auto;
     }}
     .section-title {{
