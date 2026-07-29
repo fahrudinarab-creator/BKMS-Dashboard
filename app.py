@@ -596,8 +596,60 @@ c4.metric("Margin (Pendapatan - Biaya)", fmt_rp(margin))
 st.markdown("---")
 
 # ---------------------------------------------------------------
-# TARGET VS REALISASI - PENDAPATAN & PRESTASI PER SITE
+# UNIT PRODUKTIF VS TIDAK PRODUKTIF
 # ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Unit Produktif vs Tidak Produktif</h3>', unsafe_allow_html=True)
+st.caption("Unit dikategorikan **Produktif** jika total realisasi > 0 pada kombinasi filter & periode yang dipilih, selain itu **Tidak Produktif**.")
+
+unit_pendapatan_agg = df.groupby("nama_unit", as_index=False)["pendapatan_realisasi"].sum()
+produktif_pendapatan = int((unit_pendapatan_agg["pendapatan_realisasi"] > 0).sum())
+tidak_produktif_pendapatan = int((unit_pendapatan_agg["pendapatan_realisasi"] <= 0).sum())
+total_unit_pendapatan = produktif_pendapatan + tidak_produktif_pendapatan
+
+unit_prestasi_agg = df.groupby("nama_unit", as_index=False)["prestasi_realisasi"].sum()
+produktif_prestasi = int((unit_prestasi_agg["prestasi_realisasi"] > 0).sum())
+tidak_produktif_prestasi = int((unit_prestasi_agg["prestasi_realisasi"] <= 0).sum())
+total_unit_prestasi = produktif_prestasi + tidak_produktif_prestasi
+
+colP1, colP2 = st.columns(2)
+
+with colP1:
+    m1, m2 = st.columns(2)
+    m1.metric("Unit Produktif (Pendapatan)", f"{produktif_pendapatan:,}",
+               f"{produktif_pendapatan/total_unit_pendapatan*100:.1f}% dari total" if total_unit_pendapatan else "")
+    m2.metric("Unit Tidak Produktif (Pendapatan)", f"{tidak_produktif_pendapatan:,}",
+               f"{tidak_produktif_pendapatan/total_unit_pendapatan*100:.1f}% dari total" if total_unit_pendapatan else "",
+               delta_color="inverse")
+    pie_pend = pd.DataFrame({
+        "Status": ["Produktif", "Tidak Produktif"],
+        "Jumlah": [produktif_pendapatan, tidak_produktif_pendapatan],
+    })
+    fig_p1 = px.pie(pie_pend, names="Status", values="Jumlah", hole=0.5,
+                     title="Unit Berdasarkan Pendapatan",
+                     color_discrete_sequence=[CHART_GREEN, RED])
+    fig_p1.update_layout(height=340, margin=dict(t=60, b=10))
+    st.plotly_chart(style_fig(fig_p1), use_container_width=True)
+
+with colP2:
+    m3, m4 = st.columns(2)
+    m3.metric("Unit Produktif (Prestasi)", f"{produktif_prestasi:,}",
+               f"{produktif_prestasi/total_unit_prestasi*100:.1f}% dari total" if total_unit_prestasi else "")
+    m4.metric("Unit Tidak Produktif (Prestasi)", f"{tidak_produktif_prestasi:,}",
+               f"{tidak_produktif_prestasi/total_unit_prestasi*100:.1f}% dari total" if total_unit_prestasi else "",
+               delta_color="inverse")
+    pie_prest = pd.DataFrame({
+        "Status": ["Produktif", "Tidak Produktif"],
+        "Jumlah": [produktif_prestasi, tidak_produktif_prestasi],
+    })
+    fig_p2 = px.pie(pie_prest, names="Status", values="Jumlah", hole=0.5,
+                     title="Unit Berdasarkan Prestasi",
+                     color_discrete_sequence=[CHART_GREEN, RED])
+    fig_p2.update_layout(height=340, margin=dict(t=60, b=10))
+    st.plotly_chart(style_fig(fig_p2), use_container_width=True)
+
+st.markdown("---")
+
+
 st.markdown('<h3 class="section-title">Target vs Realisasi per Site</h3>', unsafe_allow_html=True)
 
 colA, colB = st.columns(2)
