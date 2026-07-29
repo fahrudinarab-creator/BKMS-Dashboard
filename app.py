@@ -596,6 +596,51 @@ c4.metric("Margin (Pendapatan - Biaya)", fmt_rp(margin))
 st.markdown("---")
 
 # ---------------------------------------------------------------
+# POPULASI UNIT: TARGET VS AKTIF
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Populasi Unit: Target vs Aktif</h3>', unsafe_allow_html=True)
+st.caption("**Total Populasi** = jumlah unit yang memiliki target/budget Pendapatan (budget > 0). **Populasi Aktif** = jumlah unit yang memiliki realisasi Pendapatan (realisasi > 0), sesuai filter & periode yang dipilih.")
+
+total_populasi = df.loc[df["pendapatan_budget"] > 0, "nama_unit"].nunique()
+populasi_aktif = df.loc[df["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
+gap_populasi = total_populasi - populasi_aktif
+pct_aktif = (populasi_aktif / total_populasi * 100) if total_populasi else 0
+
+colQ1, colQ2 = st.columns([2, 3])
+
+with colQ1:
+    q1, q2, q3 = st.columns(3)
+    q1.metric("Total Populasi", f"{total_populasi:,}", "Punya target Pendapatan")
+    q2.metric("Populasi Aktif", f"{populasi_aktif:,}",
+              f"{pct_aktif:.1f}% dari total" if total_populasi else "Punya realisasi Pendapatan")
+    if gap_populasi >= 0:
+        q3.metric("Unit Belum Aktif", f"{gap_populasi:,}",
+                  "Target ada, realisasi belum tercatat", delta_color="inverse")
+    else:
+        q3.metric("Unit di Luar Target", f"{abs(gap_populasi):,}",
+                  "Ada realisasi, tapi target belum tercatat", delta_color="inverse")
+
+    pop_site = df.groupby("lokasi").apply(
+        lambda g: pd.Series({
+            "Total Populasi": g.loc[g["pendapatan_budget"] > 0, "nama_unit"].nunique(),
+            "Populasi Aktif": g.loc[g["pendapatan_realisasi"] > 0, "nama_unit"].nunique(),
+        })
+    ).reset_index().sort_values("Total Populasi", ascending=False)
+
+    st.dataframe(pop_site, use_container_width=True, height=220, hide_index=True)
+
+with colQ2:
+    fig_pop = go.Figure()
+    fig_pop.add_bar(x=pop_site["lokasi"], y=pop_site["Total Populasi"], name="Total Populasi", marker_color=GREY)
+    fig_pop.add_bar(x=pop_site["lokasi"], y=pop_site["Populasi Aktif"], name="Populasi Aktif", marker_color=CHART_GREEN)
+    fig_pop.update_layout(title="Populasi Unit per Site: Target vs Aktif", barmode="group",
+                           yaxis_title="Jumlah Unit", legend=dict(orientation="h", y=1.15), height=380,
+                           margin=dict(t=60, b=10))
+    st.plotly_chart(style_fig(fig_pop), use_container_width=True)
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
 # UNIT PRODUKTIF VS TIDAK PRODUKTIF
 # ---------------------------------------------------------------
 PRODUKTIF_THRESHOLD = 90  # persen realisasi terhadap target/budget
