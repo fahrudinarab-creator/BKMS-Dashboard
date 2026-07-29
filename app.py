@@ -605,7 +605,6 @@ st.caption(f"Unit dengan **Budget = 0 dan Realisasi = 0** tidak dihitung. Sisany
 
 def hitung_produktif(data: pd.DataFrame, col_real: str, col_target: str, threshold: float = PRODUKTIF_THRESHOLD):
     agg = data.groupby("nama_unit", as_index=False).agg(
-        id_unit=("id_unit", "first"),
         kode_unit=("kode_unit", "first"),
         realisasi=(col_real, "sum"),
         target=(col_target, "sum"),
@@ -675,10 +674,11 @@ with st.expander("🔍 Lihat detail % pencapaian per unit"):
     with dcol1:
         st.markdown("**Pendapatan (Realisasi vs Budget)**")
         show_pend = unit_pendapatan_agg.rename(columns={
-            "id_unit": "ID Unit", "kode_unit": "Kode Unit", "nama_unit": "Nama Unit",
+            "kode_unit": "Kode Unit", "nama_unit": "Nama Unit",
             "realisasi": "Realisasi", "target": "Budget",
             "pct": "% Pencapaian", "status": "Status",
-        })[["ID Unit", "Kode Unit", "Nama Unit", "Realisasi", "Budget", "% Pencapaian", "Status"]].sort_values("% Pencapaian")
+        })[["Kode Unit", "Nama Unit", "Realisasi", "Budget", "% Pencapaian", "Status"]]\
+            .sort_values("% Pencapaian").reset_index(drop=True)
         st.dataframe(show_pend, use_container_width=True, height=300,
                      column_config={
                          "Realisasi": st.column_config.NumberColumn(format="Rp %,.0f"),
@@ -688,10 +688,11 @@ with st.expander("🔍 Lihat detail % pencapaian per unit"):
     with dcol2:
         st.markdown("**Prestasi (Realisasi vs Target)**")
         show_prest = unit_prestasi_agg.rename(columns={
-            "id_unit": "ID Unit", "kode_unit": "Kode Unit", "nama_unit": "Nama Unit",
+            "kode_unit": "Kode Unit", "nama_unit": "Nama Unit",
             "realisasi": "Realisasi", "target": "Target",
             "pct": "% Pencapaian", "status": "Status",
-        })[["ID Unit", "Kode Unit", "Nama Unit", "Realisasi", "Target", "% Pencapaian", "Status"]].sort_values("% Pencapaian")
+        })[["Kode Unit", "Nama Unit", "Realisasi", "Target", "% Pencapaian", "Status"]]\
+            .sort_values("% Pencapaian").reset_index(drop=True)
         st.dataframe(show_prest, use_container_width=True, height=300,
                      column_config={
                          "Realisasi": st.column_config.NumberColumn(format="%,.0f"),
