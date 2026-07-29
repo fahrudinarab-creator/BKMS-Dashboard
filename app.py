@@ -199,6 +199,318 @@ def achievement(real, budget):
     return real / budget * 100
 
 # ---------------------------------------------------------------
+# POWERPOINT EXPORT
+# ---------------------------------------------------------------
+def build_pptx(data: pd.DataFrame, site_list, month_list, kat_list) -> bytes:
+    """Build a PPTX summary of the (already filtered) dashboard data.
+    Uses python-pptx only (no Node/pptxgenjs) so it runs inside a deployed
+    Streamlit Cloud app."""
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+    from pptx.enum.shapes import MSO_SHAPE
+    import io as _io
+
+    GREEN = RGBColor(0x0B, 0x3D, 0x2E)
+    GREEN_LIGHT = RGBColor(0x3F, 0xA7, 0x72)
+    GOLD_C = RGBColor(0xC9, 0xA2, 0x27)
+    DARK_BG = RGBColor(0x0A, 0x0A, 0x0A)
+    CARD_BG = RGBColor(0x16, 0x1B, 0x22)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    MUTED = RGBColor(0x9C, 0xA3, 0xAF)
+    RED_C = RGBColor(0xE4, 0x57, 0x4C)
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+
+    def add_slide():
+        s = prs.slides.add_slide(blank)
+        bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = DARK_BG
+        bg.line.fill.background()
+        bg.shadow.inherit = False
+        s.shapes._spTree.remove(bg._element)
+        s.shapes._spTree.insert(2, bg._element)
+        return s
+
+    def add_textbox(slide, left, top, width, height, text, size=18, bold=False,
+                     color=WHITE, align=PP_ALIGN.LEFT, font="Calibri"):
+        tb = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.alignment = align
+        run = p.add_run()
+        run.text = text
+        run.font.size = Pt(size)
+        run.font.bold = bold
+        run.font.color.rgb = color
+        run.font.name = font
+        return tb
+
+    def add_card(slide, left, top, width, height, label, value, sub=None, sub_color=GREEN_LIGHT):
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+        card.adjustments[0] = 0.06
+        card.fill.solid()
+        card.fill.fore_color.rgb = CARD_BG
+        card.line.color.rgb = GOLD_C
+        card.line.width = Pt(1.5)
+        card.shadow.inherit = False
+        tf = card.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = Inches(0.18)
+        tf.margin_right = Inches(0.18)
+        p1 = tf.paragraphs[0]
+        r1 = p1.add_run()
+        r1.text = label
+        r1.font.size = Pt(12)
+        r1.font.color.rgb = MUTED
+        r1.font.bold = True
+        p2 = tf.add_paragraph()
+        r2 = p2.add_run()
+        r2.text = value
+        r2.font.size = Pt(24)
+        r2.font.bold = True
+        r2.font.color.rgb = WHITE
+        if sub:
+            p3 = tf.add_paragraph()
+            r3 = p3.add_run()
+            r3.text = sub
+            r3.font.size = Pt(12)
+            r3.font.bold = True
+            r3.font.color.rgb = sub_color
+        return card
+
+    def style_chart(chart, categories_color=WHITE, legend=True):
+        chart.has_legend = legend
+        if legend:
+            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+            chart.legend.include_in_layout = False
+            chart.legend.font.color.rgb = WHITE
+            chart.legend.font.size = Pt(11)
+        cat_ax = chart.category_axis
+        cat_ax.tick_labels.font.color.rgb = WHITE
+        cat_ax.tick_labels.font.size = Pt(10)
+        cat_ax.format.line.color.rgb = MUTED
+        val_ax = chart.value_axis
+        val_ax.tick_labels.font.color.rgb = WHITE
+        val_ax.tick_labels.font.size = Pt(10)
+        val_ax.format.line.color.rgb = MUTED
+        val_ax.has_major_gridlines = True
+        val_ax.major_gridlines.format.line.color.rgb = RGBColor(0x2D, 0x33, 0x3B)
+
+    # ---------- SLIDE 1: TITLE ----------
+    s = add_slide()
+    accent = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(3.15), prs.slide_width, Inches(1.2))
+    accent.fill.solid()
+    accent.fill.fore_color.rgb = GREEN
+    accent.line.fill.background()
+    accent.shadow.inherit = False
+    add_textbox(s, 0.8, 2.05, 11.7, 1.0, "Dashboard Biaya & Pendapatan", size=40, bold=True, color=GOLD_C)
+    add_textbox(s, 0.8, 3.35, 11.7, 0.6, "PT BUANA KARYA MANDIRI SEJAHTERA (BKMS)", size=20, bold=True, color=WHITE)
+    period = ", ".join(month_list) if month_list else "-"
+    site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
+    kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
+    add_textbox(s, 0.8, 4.7, 11.7, 1.4,
+                f"Periode: {period}\nSite: {site_txt}\nKategori: {kat_txt}",
+                size=14, color=MUTED)
+
+    # ---------- SLIDE 2: KPI SUMMARY ----------
+    s = add_slide()
+    add_textbox(s, 0.6, 0.35, 11, 0.6, "Ringkasan Target vs Realisasi", size=26, bold=True, color=GOLD_C)
+
+    tpr = data["pendapatan_realisasi"].sum()
+    tpb = data["pendapatan_budget"].sum()
+    tprest_r = data["prestasi_realisasi"].sum()
+    tprest_b = data["prestasi_budget"].sum()
+    tbr = data["total_biaya_realisasi"].sum()
+    tbb = data["total_biaya_budget"].sum()
+    margin_v = tpr - tbr
+
+    def ach_txt(real, budget, label="Budget"):
+        if budget == 0:
+            return f"{label} = 0"
+        pct = real / budget * 100 - 100
+        return f"{pct:+.1f}% vs {label}"
+
+    card_w, card_h, gap = 2.75, 1.9, 0.35
+    start_x = 0.6
+    y = 1.3
+    add_card(s, start_x, y, card_w, card_h, "PENDAPATAN (REALISASI)", fmt_rp(tpr), ach_txt(tpr, tpb, "Budget"))
+    add_card(s, start_x + (card_w + gap), y, card_w, card_h, "PRESTASI (REALISASI)", f"{tprest_r:,.0f}", ach_txt(tprest_r, tprest_b, "Target"))
+    add_card(s, start_x + 2 * (card_w + gap), y, card_w, card_h, "TOTAL BIAYA (REALISASI)", fmt_rp(tbr), ach_txt(tbr, tbb, "Budget"), sub_color=RED_C)
+    add_card(s, start_x + 3 * (card_w + gap), y, card_w, card_h, "MARGIN", fmt_rp(margin_v), "Pendapatan - Biaya", sub_color=GOLD_C)
+
+    # mini chart: pendapatan vs biaya
+    cd = CategoryChartData()
+    cd.categories = ["Pendapatan", "Total Biaya"]
+    cd.add_series("Budget", (tpb, tbb))
+    cd.add_series("Realisasi", (tpr, tbr))
+    gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(3.6), Inches(11.9), Inches(3.4), cd)
+    chart = gframe.chart
+    chart.series[0].format.fill.solid()
+    chart.series[0].format.fill.fore_color.rgb = MUTED
+    chart.series[1].format.fill.solid()
+    chart.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
+    style_chart(chart)
+
+    # ---------- SLIDE 3: TARGET VS REALISASI PER SITE ----------
+    s = add_slide()
+    add_textbox(s, 0.6, 0.35, 11, 0.6, "Target vs Realisasi per Site", size=26, bold=True, color=GOLD_C)
+
+    site_agg = data.groupby("lokasi", as_index=False).agg(
+        pendapatan_realisasi=("pendapatan_realisasi", "sum"),
+        pendapatan_budget=("pendapatan_budget", "sum"),
+    ).sort_values("pendapatan_realisasi", ascending=False)
+
+    cd2 = CategoryChartData()
+    cd2.categories = list(site_agg["lokasi"])
+    cd2.add_series("Budget", tuple(site_agg["pendapatan_budget"]))
+    cd2.add_series("Realisasi", tuple(site_agg["pendapatan_realisasi"]))
+    gframe2 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(1.2), Inches(11.9), Inches(5.7), cd2)
+    chart2 = gframe2.chart
+    chart2.series[0].format.fill.solid()
+    chart2.series[0].format.fill.fore_color.rgb = MUTED
+    chart2.series[1].format.fill.solid()
+    chart2.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
+    chart2.has_title = True
+    chart2.chart_title.text_frame.text = "Pendapatan: Budget vs Realisasi"
+    chart2.chart_title.text_frame.paragraphs[0].runs[0].font.color.rgb = WHITE
+    chart2.chart_title.text_frame.paragraphs[0].runs[0].font.size = Pt(14)
+    style_chart(chart2)
+
+    # ---------- SLIDE 4: KOMPONEN BIAYA ----------
+    s = add_slide()
+    add_textbox(s, 0.6, 0.35, 11, 0.6, "Perbandingan Komponen Biaya", size=26, bold=True, color=GOLD_C)
+
+    comp_labels = ["Upah", "BBM", "Maintenance", "Penyusutan", "Lainnya"]
+    comp_pairs = [
+        ("upah_realisasi", "upah_budget"), ("biaya_bbm_realisasi", "biaya_bbm_budget"),
+        ("maintenance_realisasi", "maintenance_budget"), ("penyusutan_realisasi", "penyusutan_budget"),
+        ("lainnya_realisasi", "lainnya_budget"),
+    ]
+    real_vals = tuple(data[r].sum() for r, b in comp_pairs)
+    budget_vals = tuple(data[b].sum() for r, b in comp_pairs)
+
+    cd3 = CategoryChartData()
+    cd3.categories = comp_labels
+    cd3.add_series("Budget", budget_vals)
+    cd3.add_series("Realisasi", real_vals)
+    gframe3 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(1.2), Inches(7.0), Inches(5.7), cd3)
+    chart3 = gframe3.chart
+    chart3.series[0].format.fill.solid()
+    chart3.series[0].format.fill.fore_color.rgb = MUTED
+    chart3.series[1].format.fill.solid()
+    chart3.series[1].format.fill.fore_color.rgb = GOLD_C
+    style_chart(chart3)
+
+    cd4 = CategoryChartData()
+    cd4.categories = comp_labels
+    cd4.add_series("Realisasi", real_vals)
+    gframe4 = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(7.8), Inches(1.2), Inches(4.9), Inches(5.7), cd4)
+    chart4 = gframe4.chart
+    chart4.has_legend = True
+    chart4.legend.position = XL_LEGEND_POSITION.BOTTOM
+    chart4.legend.include_in_layout = False
+    chart4.legend.font.color.rgb = WHITE
+    chart4.legend.font.size = Pt(11)
+    pie_colors = [GREEN_LIGHT, GOLD_C, RGBColor(0x4E, 0x8D, 0x7C), RGBColor(0xA9, 0xC7, 0xB8), RED_C]
+    for i, point in enumerate(chart4.series[0].points):
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = pie_colors[i % len(pie_colors)]
+    chart4.plots[0].has_data_labels = True
+    chart4.plots[0].data_labels.font.color.rgb = WHITE
+    chart4.plots[0].data_labels.font.size = Pt(10)
+
+    # ---------- SLIDE 5: BIAYA LANGSUNG VS TIDAK LANGSUNG + TOTAL ----------
+    s = add_slide()
+    add_textbox(s, 0.6, 0.35, 11, 0.6, "Biaya Langsung vs Tidak Langsung", size=26, bold=True, color=GOLD_C)
+
+    bl_r = data["biaya_langsung_realisasi"].sum()
+    bl_b = data["biaya_langsung_budget"].sum()
+    btl_r = data["biaya_tidak_langsung_realisasi"].sum()
+    btl_b = data["biaya_tidak_langsung_budget"].sum()
+
+    add_card(s, 0.6, 1.3, 3.6, 1.7, "BIAYA LANGSUNG (REALISASI)", fmt_rp(bl_r), ach_txt(bl_r, bl_b, "Budget"), sub_color=RED_C)
+    add_card(s, 4.4, 1.3, 3.6, 1.7, "BIAYA TIDAK LANGSUNG (REALISASI)", fmt_rp(btl_r), ach_txt(btl_r, btl_b, "Budget"), sub_color=RED_C)
+    add_card(s, 8.2, 1.3, 4.3, 1.7, "TOTAL BIAYA KESELURUHAN", fmt_rp(bl_r + btl_r), "Langsung + Tidak Langsung", sub_color=GOLD_C)
+
+    cd5 = CategoryChartData()
+    cd5.categories = ["Biaya Langsung", "Biaya Tidak Langsung"]
+    cd5.add_series("Budget", (bl_b, btl_b))
+    cd5.add_series("Realisasi", (bl_r, btl_r))
+    gframe5 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(3.35), Inches(6.6), Inches(3.6), cd5)
+    chart5 = gframe5.chart
+    chart5.series[0].format.fill.solid()
+    chart5.series[0].format.fill.fore_color.rgb = MUTED
+    chart5.series[1].format.fill.solid()
+    chart5.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
+    style_chart(chart5)
+
+    cd6 = CategoryChartData()
+    cd6.categories = ["Biaya Langsung", "Biaya Tidak Langsung"]
+    cd6.add_series("Realisasi", (bl_r, btl_r))
+    gframe6 = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(7.5), Inches(3.35), Inches(5.2), Inches(3.6), cd6)
+    chart6 = gframe6.chart
+    chart6.has_legend = True
+    chart6.legend.position = XL_LEGEND_POSITION.BOTTOM
+    chart6.legend.include_in_layout = False
+    chart6.legend.font.color.rgb = WHITE
+    chart6.legend.font.size = Pt(11)
+    for i, point in enumerate(chart6.series[0].points):
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = [GREEN_LIGHT, GOLD_C][i % 2]
+    chart6.plots[0].has_data_labels = True
+    chart6.plots[0].data_labels.font.color.rgb = WHITE
+    chart6.plots[0].data_labels.font.size = Pt(10)
+
+    # ---------- SLIDE 6: TOP 10 UNIT BY TOTAL BIAYA ----------
+    s = add_slide()
+    add_textbox(s, 0.6, 0.35, 11, 0.6, "Top 10 Unit - Total Biaya Realisasi", size=26, bold=True, color=GOLD_C)
+
+    top10 = data.groupby("nama_unit", as_index=False).agg(
+        total_biaya_realisasi=("total_biaya_realisasi", "sum"),
+        pendapatan_realisasi=("pendapatan_realisasi", "sum"),
+        lokasi=("lokasi", "first"),
+    ).sort_values("total_biaya_realisasi", ascending=False).head(10)
+
+    rows, cols = len(top10) + 1, 4
+    tbl_left, tbl_top, tbl_w, tbl_h = Inches(0.6), Inches(1.2), Inches(11.9), Inches(5.7)
+    gframe_t = s.shapes.add_table(rows, cols, tbl_left, tbl_top, tbl_w, tbl_h)
+    table = gframe_t.table
+    headers = ["Nama Unit", "Site", "Total Biaya (Realisasi)", "Pendapatan (Realisasi)"]
+    for j, h in enumerate(headers):
+        cell = table.cell(0, j)
+        cell.text = h
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = GREEN
+        p = cell.text_frame.paragraphs[0]
+        p.runs[0].font.bold = True
+        p.runs[0].font.color.rgb = WHITE
+        p.runs[0].font.size = Pt(12)
+    for i, (_, row) in enumerate(top10.iterrows(), start=1):
+        vals = [str(row["nama_unit"])[:45], str(row["lokasi"]), fmt_rp(row["total_biaya_realisasi"]), fmt_rp(row["pendapatan_realisasi"])]
+        for j, v in enumerate(vals):
+            cell = table.cell(i, j)
+            cell.text = v
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = CARD_BG if i % 2 == 0 else RGBColor(0x1E, 0x24, 0x2C)
+            p = cell.text_frame.paragraphs[0]
+            p.runs[0].font.size = Pt(11)
+            p.runs[0].font.color.rgb = WHITE
+
+    buf = _io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+# ---------------------------------------------------------------
 # HEADER
 # ---------------------------------------------------------------
 st.markdown("""
@@ -213,6 +525,21 @@ if df.empty:
     st.stop()
 
 st.caption(f"Menampilkan **{len(df):,}** baris data unit • Site: {', '.join(sel_site) if len(sel_site)<=4 else f'{len(sel_site)} site'} • Bulan: {', '.join(sel_month)}")
+
+colX, colY = st.columns([5, 1.4])
+with colY:
+    if st.button("📽️ Buat Presentasi (PPTX)", use_container_width=True, type="primary"):
+        with st.spinner("Menyusun slide presentasi..."):
+            pptx_bytes = build_pptx(df, sel_site, sel_month, sel_kat)
+        st.session_state["pptx_bytes"] = pptx_bytes
+    if "pptx_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Unduh PPTX",
+            data=st.session_state["pptx_bytes"],
+            file_name="Laporan_Biaya_Pendapatan_BKMS.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            use_container_width=True,
+        )
 
 # ---------------------------------------------------------------
 # KPI SUMMARY
