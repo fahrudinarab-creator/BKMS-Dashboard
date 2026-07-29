@@ -636,11 +636,9 @@ with colP1:
     m1, m2 = st.columns(2)
     m1.metric("Unit Produktif (Pendapatan)", f"{produktif_pendapatan:,}",
                f"{produktif_pendapatan/total_unit_pendapatan*100:.1f}% dari total" if total_unit_pendapatan else "")
-    m1.caption(f"Budget: {fmt_rp(budget_produktif_pendapatan)}")
     m2.metric("Unit Tidak Produktif (Pendapatan)", f"{tidak_produktif_pendapatan:,}",
                f"{tidak_produktif_pendapatan/total_unit_pendapatan*100:.1f}% dari total" if total_unit_pendapatan else "",
                delta_color="inverse")
-    m2.caption(f"Budget: {fmt_rp(budget_tidak_produktif_pendapatan)}")
     pie_pend = pd.DataFrame({
         "Status": ["Produktif", "Tidak Produktif"],
         "Jumlah": [produktif_pendapatan, tidak_produktif_pendapatan],
@@ -655,11 +653,9 @@ with colP2:
     m3, m4 = st.columns(2)
     m3.metric("Unit Produktif (Prestasi)", f"{produktif_prestasi:,}",
                f"{produktif_prestasi/total_unit_prestasi*100:.1f}% dari total" if total_unit_prestasi else "")
-    m3.caption(f"Target: {target_produktif_prestasi:,.0f}")
     m4.metric("Unit Tidak Produktif (Prestasi)", f"{tidak_produktif_prestasi:,}",
                f"{tidak_produktif_prestasi/total_unit_prestasi*100:.1f}% dari total" if total_unit_prestasi else "",
                delta_color="inverse")
-    m4.caption(f"Target: {target_tidak_produktif_prestasi:,.0f}")
     pie_prest = pd.DataFrame({
         "Status": ["Produktif", "Tidak Produktif"],
         "Jumlah": [produktif_prestasi, tidak_produktif_prestasi],
