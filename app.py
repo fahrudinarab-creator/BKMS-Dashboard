@@ -114,6 +114,7 @@ st.markdown(f"""
 # DATA LOADING
 # ---------------------------------------------------------------
 DATA_PATH = Path(__file__).parent / "data_bkms.csv"
+MAINT_DATA_PATH = Path(__file__).parent / "data_maintenance.csv"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Truck / Ritase (TR)"}
 
@@ -121,6 +122,12 @@ KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Truck / Ritase (TR)"}
 def load_data(file) -> pd.DataFrame:
     df = pd.read_csv(file)
     return df
+
+@st.cache_data
+def load_maintenance_data(file) -> pd.DataFrame:
+    if not Path(file).exists():
+        return pd.DataFrame()
+    return pd.read_csv(file)
 
 def load_from_upload(uploaded_file: "st.runtime.uploaded_file_manager.UploadedFile") -> pd.DataFrame:
     """Parse an uploaded 'Gabungan.xlsx' file with the same fixed layout used to build data_bkms.csv."""
@@ -158,6 +165,40 @@ def load_from_upload(uploaded_file: "st.runtime.uploaded_file_manager.UploadedFi
         ))
     return pd.DataFrame(rows)
 
+def load_from_upload_maintenance(uploaded_file) -> pd.DataFrame:
+    """Parse an uploaded maintenance detail file (e.g. 'Pemeliharaan_sd_Bulan.xls').
+    Expected columns: FDATE, ACCOUNT, SUB, FREMARK, FADDREMARK, FAMOUNT_RP, DESCRIPTION.
+    DESCRIPTION format: 'PEMELIHARAAN (RUTIN|NON RUTIN) (kategori) (tipe biaya) (PLANTATION|MINING) (site) - (unit)'
+    """
+    import re
+    raw = pd.read_excel(uploaded_file, sheet_name=0, header=0)
+    pattern = re.compile(
+        r'^PEMELIHARAAN\s+(RUTIN|NON RUTIN)\s+(.*?)\s+(SPAREPART|ALOKASI WORKSHOP|SERVICE LUAR|LAIN-LAIN)\s+(PLANTATION|MINING)\s+(.*?)\s+-\s+(.*)$'
+    )
+    month_id_map = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+                     7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
+    raw["FDATE"] = pd.to_datetime(raw["FDATE"], errors="coerce")
+    raw = raw.dropna(subset=["FDATE", "DESCRIPTION", "FAMOUNT_RP"])
+    raw = raw[raw["FDATE"].dt.year >= 2000]
+
+    rows = []
+    for _, r in raw.iterrows():
+        desc = str(r["DESCRIPTION"]).strip()
+        m = pattern.match(desc)
+        if not m:
+            continue
+        jenis, kategori_sparepart, tipe_biaya, kelompok, lokasi, unit = m.groups()
+        dt = r["FDATE"]
+        rows.append(dict(
+            tanggal=dt.date().isoformat(), bulan=month_id_map.get(dt.month, ''), bulan_no=dt.month,
+            lokasi=lokasi.strip(), kelompok=kelompok.strip(),
+            jenis_pemeliharaan=jenis.strip(), kategori_sparepart=kategori_sparepart.strip(),
+            tipe_biaya=tipe_biaya.strip(), nama_unit=unit.strip(),
+            biaya=float(r["FAMOUNT_RP"]),
+            keterangan=str(r["FREMARK"]) if pd.notna(r["FREMARK"]) else '',
+        ))
+    return pd.DataFrame(rows)
+
 with st.sidebar:
     st.markdown("### 📁 Sumber Data")
     uploaded = st.file_uploader("Upload file Gabungan.xlsx terbaru (opsional)", type=["xlsx"])
@@ -170,6 +211,17 @@ with st.sidebar:
             df_raw = load_data(DATA_PATH)
     else:
         df_raw = load_data(DATA_PATH)
+
+    uploaded_maint = st.file_uploader("Upload data Maintenance (Pemeliharaan) terbaru (opsional)", type=["xls", "xlsx"])
+    if uploaded_maint is not None:
+        try:
+            maint_raw = load_from_upload_maintenance(uploaded_maint)
+            st.success(f"Berhasil memuat {len(maint_raw):,} baris data maintenance dari file upload.")
+        except Exception as e:
+            st.error(f"Gagal membaca file maintenance: {e}")
+            maint_raw = load_maintenance_data(MAINT_DATA_PATH)
+    else:
+        maint_raw = load_maintenance_data(MAINT_DATA_PATH)
 
     st.markdown("---")
     st.markdown("### 🔎 Filter")
@@ -199,6 +251,13 @@ df = df_raw[
 ].copy()
 if sel_unit:
     df = df[df["nama_unit"].isin(sel_unit)]
+
+maint_df = pd.DataFrame()
+if not maint_raw.empty:
+    maint_df = maint_raw[
+        maint_raw["lokasi"].isin(sel_site) &
+        maint_raw["bulan"].isin(sel_month)
+    ].copy()
 
 def fmt_rp(x):
     if abs(x) >= 1e9:
@@ -925,6 +984,87 @@ st.dataframe(
 
 csv_export = show_df.to_csv(index=False).encode("utf-8")
 st.download_button("⬇️ Unduh Data (CSV)", csv_export, file_name="detail_biaya_pendapatan_bkms.csv", mime="text/csv")
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
+# DETAIL BIAYA MAINTENANCE (SPAREPART)
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Detail Biaya Maintenance (Sparepart)</h3>', unsafe_allow_html=True)
+
+if maint_raw.empty:
+    st.info("Data maintenance belum tersedia. Upload file Pemeliharaan (.xls/.xlsx) di sidebar untuk menampilkan rincian ini.")
+elif maint_df.empty:
+    st.warning("Tidak ada data maintenance untuk kombinasi filter Site/Bulan yang dipilih.")
+else:
+    st.caption("Rincian biaya maintenance per kategori sparepart/sistem, mengikuti filter Site & Bulan di sidebar. Sumber: data transaksi pemeliharaan (bukan dari Gabungan.xlsx).")
+
+    total_maint = maint_df["biaya"].sum()
+    n_transaksi = len(maint_df)
+    n_unit_maint = maint_df["nama_unit"].nunique()
+    rutin_pct = maint_df.loc[maint_df["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum() / total_maint * 100 if total_maint else 0
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Biaya Maintenance", fmt_rp(total_maint))
+    m2.metric("Jumlah Transaksi", f"{n_transaksi:,}")
+    m3.metric("Unit Ter-maintenance", f"{n_unit_maint:,}")
+    m4.metric("Porsi Rutin", f"{rutin_pct:.1f}%", "vs Non Rutin")
+
+    colM1, colM2 = st.columns([3, 2])
+
+    with colM1:
+        cat_agg = maint_df.groupby("kategori_sparepart", as_index=False)["biaya"].sum().sort_values("biaya", ascending=True)
+        fig_m1 = go.Figure()
+        fig_m1.add_bar(y=cat_agg["kategori_sparepart"], x=cat_agg["biaya"], orientation="h", marker_color=CHART_GREEN)
+        fig_m1.update_layout(title="Biaya Maintenance per Kategori Sparepart/Sistem",
+                              xaxis_title="Rupiah", height=460, margin=dict(t=60, b=10, l=10))
+        st.plotly_chart(style_fig(fig_m1), use_container_width=True)
+
+    with colM2:
+        tipe_agg = maint_df.groupby("tipe_biaya", as_index=False)["biaya"].sum()
+        fig_m2 = px.pie(tipe_agg, names="tipe_biaya", values="biaya", hole=0.5,
+                         color_discrete_sequence=[CHART_GREEN, GOLD, "#4E8D7C", RED])
+        fig_m2.update_layout(title="Komposisi berdasarkan Tipe Biaya", height=230, margin=dict(t=50, b=10))
+        st.plotly_chart(style_fig(fig_m2), use_container_width=True)
+
+        jenis_agg = maint_df.groupby("jenis_pemeliharaan", as_index=False)["biaya"].sum()
+        fig_m3 = px.pie(jenis_agg, names="jenis_pemeliharaan", values="biaya", hole=0.5,
+                         color_discrete_sequence=[CHART_GREEN, GOLD])
+        fig_m3.update_layout(title="Rutin vs Non Rutin", height=230, margin=dict(t=50, b=10))
+        st.plotly_chart(style_fig(fig_m3), use_container_width=True)
+
+    st.markdown("##### Tren Biaya Maintenance Bulanan per Kategori")
+    month_cat = maint_df.groupby(["bulan_no", "bulan", "kategori_sparepart"], as_index=False)["biaya"].sum().sort_values("bulan_no")
+    fig_m4 = px.bar(month_cat, x="bulan", y="biaya", color="kategori_sparepart", barmode="stack",
+                     labels={"biaya": "Biaya (Rp)", "bulan": "Bulan", "kategori_sparepart": "Kategori"})
+    fig_m4.update_layout(height=420, legend=dict(orientation="h", y=1.2, font=dict(size=9)), margin=dict(t=60, b=10))
+    st.plotly_chart(style_fig(fig_m4), use_container_width=True)
+
+    st.markdown("##### Top 10 Unit - Biaya Maintenance Tertinggi")
+    top_unit_maint = maint_df.groupby("nama_unit", as_index=False)["biaya"].sum().sort_values("biaya", ascending=False).head(10)
+    fig_m5 = go.Figure()
+    fig_m5.add_bar(y=top_unit_maint["nama_unit"], x=top_unit_maint["biaya"], orientation="h", marker_color=GOLD)
+    fig_m5.update_layout(xaxis_title="Rupiah", height=380, margin=dict(t=20, b=10, l=10))
+    fig_m5.update_yaxes(autorange="reversed")
+    st.plotly_chart(style_fig(fig_m5), use_container_width=True)
+
+    st.markdown("##### Detail Transaksi Maintenance")
+    search_maint = st.text_input("🔍 Cari nama unit / kategori sparepart...", "", key="search_maint")
+    show_maint = maint_df[["tanggal", "lokasi", "nama_unit", "kategori_sparepart", "jenis_pemeliharaan", "tipe_biaya", "biaya", "keterangan"]].rename(columns={
+        "tanggal": "Tanggal", "lokasi": "Site", "nama_unit": "Nama Unit", "kategori_sparepart": "Kategori Sparepart",
+        "jenis_pemeliharaan": "Jenis", "tipe_biaya": "Tipe Biaya", "biaya": "Biaya", "keterangan": "Keterangan",
+    })
+    if search_maint:
+        mask = (show_maint["Nama Unit"].str.contains(search_maint, case=False, na=False) |
+                show_maint["Kategori Sparepart"].str.contains(search_maint, case=False, na=False))
+        show_maint = show_maint[mask]
+    st.dataframe(
+        show_maint.sort_values("Biaya", ascending=False),
+        use_container_width=True, height=380,
+        column_config={"Biaya": st.column_config.NumberColumn(format="Rp %,.0f")},
+    )
+    csv_maint = show_maint.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇️ Unduh Detail Maintenance (CSV)", csv_maint, file_name="detail_maintenance_bkms.csv", mime="text/csv")
 
 st.markdown("---")
 st.caption("Dashboard Biaya & Pendapatan • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat dengan Streamlit")
