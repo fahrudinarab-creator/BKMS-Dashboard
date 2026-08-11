@@ -654,6 +654,40 @@ else:
     maint_df_site_bulan["unit_label"] = maint_df_site_bulan["nama_unit"].apply(_unit_label)
     unit_maint_opts = sorted(maint_df_site_bulan["unit_label"].dropna().unique().tolist())
 
+    # Rekonsiliasi: Total Maintenance = Pemakaian Persediaan (Sparepart) + Service Luar (residual)
+    total_maint_all = maint_df_site_bulan["biaya"].sum()
+    total_persediaan_all = sparepart_df_site_bulan["biaya"].sum() if not sparepart_raw.empty else 0
+    service_luar_all = total_maint_all - total_persediaan_all
+    pct_persediaan = (total_persediaan_all / total_maint_all * 100) if total_maint_all else 0
+    pct_service_luar = (service_luar_all / total_maint_all * 100) if total_maint_all else 0
+
+    st.markdown("##### Rekonsiliasi: Total Maintenance = Pemakaian Persediaan + Service Luar")
+    rc1, rc2, rc3 = st.columns(3)
+    rc1.metric("Total Biaya Maintenance", fmt_rp(total_maint_all))
+    rc2.metric("Pemakaian Persediaan (Sparepart)", fmt_rp(total_persediaan_all), f"{pct_persediaan:.1f}% dari total")
+    rc3.metric("Service Luar (di luar persediaan)", fmt_rp(service_luar_all), f"{pct_service_luar:.1f}% dari total", delta_color="inverse")
+
+    fig_rekon = go.Figure()
+    fig_rekon.add_bar(
+        y=["Total Maintenance"], x=[total_persediaan_all], name="Pemakaian Persediaan",
+        orientation="h", marker_color=CHART_GREEN,
+    )
+    fig_rekon.add_bar(
+        y=["Total Maintenance"], x=[service_luar_all], name="Service Luar",
+        orientation="h", marker_color=GOLD,
+    )
+    fig_rekon.update_layout(
+        barmode="stack", height=160, margin=dict(t=10, b=10, l=10, r=10),
+        xaxis_title="Rupiah", legend=dict(orientation="h", y=1.3),
+    )
+    st.plotly_chart(style_fig(fig_rekon), use_container_width=True)
+    if not sparepart_raw.empty:
+        st.caption("Pemakaian Persediaan dihitung dari data Rincian Pemakaian Sparepart. Service Luar adalah selisih Total Maintenance dikurangi Pemakaian Persediaan.")
+    else:
+        st.caption("Data Rincian Pemakaian Sparepart belum diupload, sehingga seluruh Total Biaya Maintenance sementara dihitung sebagai Service Luar.")
+
+    st.markdown("---")
+
     sel_unit_maint = st.multiselect(
         "Filter berdasarkan ID Unit (opsional, kosongkan = semua unit) — ketik ID Unit atau nama unit",
         unit_maint_opts, default=[],
