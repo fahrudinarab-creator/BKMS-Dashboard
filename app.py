@@ -432,62 +432,113 @@ pct_populasi = (realisasi_populasi / target_populasi * 100) if target_populasi e
 # POWERPOINT EXPORT
 # ---------------------------------------------------------------
 def build_pptx(data, maint_data, site_list, month_list, kat_list) -> bytes:
+    """
+    Generate PPTX using the visual language of the supplied RTM PDF:
+    - 16:9 layout
+    - navy top header
+    - very light blue page background
+    - Calibri typography
+    - cyan / purple / green / red section accents
+    - KPI cards with colored top line and icon circle
+    - white chart/table panels with thin grey borders
+    - dark divider slides for major sections
+
+    Dashboard Streamlit itself is NOT changed; only the PPT export is styled here.
+    """
     from pptx import Presentation
     from pptx.util import Inches, Pt
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-    from pptx.chart.data import CategoryChartData
-    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
     from pptx.enum.shapes import MSO_SHAPE
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.dml import MSO_LINE
     import io as _io
 
-    # ============================================================
-    # PPT CORPORATE THEME
-    # Dashboard Streamlit TIDAK diubah.
-    # ============================================================
-    NAVY = RGBColor(0x0B, 0x2E, 0x4A)
-    GREEN = RGBColor(0x0B, 0x6B, 0x4A)
-    GREEN_LIGHT = RGBColor(0x36, 0xA2, 0x78)
-    GOLD = RGBColor(0xC9, 0xA2, 0x27)
-    GOLD_LIGHT = RGBColor(0xE8, 0xD1, 0x82)
-
+    # ------------------------------------------------------------
+    # COLORS TAKEN FROM THE VISUAL PALETTE OF THE SUPPLIED PDF
+    # ------------------------------------------------------------
+    NAVY = RGBColor(0x1E, 0x27, 0x61)
+    BG = RGBColor(0xF3, 0xF7, 0xFF)
     WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    BLACK = RGBColor(0x18, 0x1B, 0x1F)
-    BG = RGBColor(0xF5, 0xF7, 0xF9)
-    CARD = RGBColor(0xFF, 0xFF, 0xFF)
-    GREY = RGBColor(0x6B, 0x72, 0x80)
-    LIGHT_GREY = RGBColor(0xE5, 0xE7, 0xEB)
-    RED = RGBColor(0xD9, 0x4B, 0x4B)
-    ORANGE = RGBColor(0xE8, 0x91, 0x1B)
+    TEXT = RGBColor(0x20, 0x29, 0x3D)
+    MUTED = RGBColor(0x70, 0x78, 0x8C)
+    GRID = RGBColor(0xD9, 0xDF, 0xEB)
+    PALE_BLUE = RGBColor(0xE8, 0xEE, 0xFA)
 
-    FONT = "Aptos"
+    CYAN = RGBColor(0x00, 0xB4, 0xD7)
+    PURPLE = RGBColor(0x7C, 0x3A, 0xED)
+    GREEN = RGBColor(0x04, 0x96, 0x69)
+    RED = RGBColor(0xED, 0x44, 0x44)
+    AMBER = RGBColor(0xF5, 0xA0, 0x0A)
+    BLUE = RGBColor(0x0D, 0x7D, 0xB0)
+
+    PALE_GREEN = RGBColor(0xD8, 0xF4, 0xE9)
+    PALE_RED = RGBColor(0xFD, 0xE0, 0xE0)
+    PALE_AMBER = RGBColor(0xFF, 0xF0, 0xD1)
+    PALE_CYAN = RGBColor(0xE0, 0xF6, 0xFB)
+    PALE_PURPLE = RGBColor(0xEF, 0xE7, 0xFF)
+
+    FONT = "Calibri"
 
     prs = Presentation()
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
     blank = prs.slide_layouts[6]
 
-    def add_slide():
-        slide = prs.slides.add_slide(blank)
-        bg = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, 0, 0,
-            prs.slide_width, prs.slide_height
-        )
-        bg.fill.solid()
-        bg.fill.fore_color.rgb = BG
-        bg.line.fill.background()
-        slide.shapes._spTree.remove(bg._element)
-        slide.shapes._spTree.insert(2, bg._element)
-        return slide
-
-    def add_textbox(
-        slide, left, top, width, height, text,
-        size=18, bold=False, color=BLACK,
-        align=PP_ALIGN.LEFT, font=FONT
-    ):
-        tb = slide.shapes.add_textbox(
+    # ------------------------------------------------------------
+    # BASIC HELPERS
+    # ------------------------------------------------------------
+    def add_rect(slide, left, top, width, height, fill, line=None, radius=False):
+        shape_type = MSO_SHAPE.ROUNDED_RECTANGLE if radius else MSO_SHAPE.RECTANGLE
+        shp = slide.shapes.add_shape(
+            shape_type,
             Inches(left), Inches(top),
             Inches(width), Inches(height)
+        )
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = fill
+        if line is None:
+            shp.line.fill.background()
+        else:
+            shp.line.color.rgb = line
+            shp.line.width = Pt(0.8)
+        if radius:
+            try:
+                shp.adjustments[0] = 0.08
+            except Exception:
+                pass
+        return shp
+
+    def add_text(slide, left, top, width, height, text, size=12,
+                 color=TEXT, bold=False, align=PP_ALIGN.LEFT,
+                 valign=MSO_ANCHOR.MIDDLE, font=FONT):
+        tb = slide.shapes.add_textbox(
+            Inches(left), Inches(top), Inches(width), Inches(height)
+        )
+        tf = tb.text_frame
+        tf.clear()
+        tf.word_wrap = True
+        tf.vertical_anchor = valign
+        tf.margin_left = Inches(0)
+        tf.margin_right = Inches(0)
+        tf.margin_top = Inches(0)
+        tf.margin_bottom = Inches(0)
+        p = tf.paragraphs[0]
+        p.alignment = align
+        r = p.add_run()
+        r.text = str(text)
+        r.font.name = font
+        r.font.size = Pt(size)
+        r.font.bold = bold
+        r.font.color.rgb = color
+        return tb
+
+    def add_rich_text(slide, left, top, width, height, parts,
+                      size=12, align=PP_ALIGN.LEFT):
+        """parts = [(text, color, bold), ...]"""
+        tb = slide.shapes.add_textbox(
+            Inches(left), Inches(top), Inches(width), Inches(height)
         )
         tf = tb.text_frame
         tf.clear()
@@ -495,570 +546,1034 @@ def build_pptx(data, maint_data, site_list, month_list, kat_list) -> bytes:
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         p = tf.paragraphs[0]
         p.alignment = align
-        r = p.add_run()
-        r.text = str(text)
-        r.font.size = Pt(size)
-        r.font.bold = bold
-        r.font.color.rgb = color
-        r.font.name = font
+        for txt, color, bold in parts:
+            r = p.add_run()
+            r.text = str(txt)
+            r.font.name = FONT
+            r.font.size = Pt(size)
+            r.font.bold = bold
+            r.font.color.rgb = color
         return tb
 
-    def add_line(slide, left, top, width, color=LIGHT_GREY):
-        line = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE,
-            Inches(left), Inches(top),
-            Inches(width), Inches(0.015)
-        )
-        line.fill.solid()
-        line.fill.fore_color.rgb = color
-        line.line.fill.background()
-        return line
+    def add_slide_base():
+        slide = prs.slides.add_slide(blank)
+        add_rect(slide, 0, 0, 13.333, 7.5, BG)
+        return slide
 
-    def add_header(slide, title, subtitle=None):
-        band = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, 0, 0,
-            prs.slide_width, Inches(0.16)
+    def add_header(slide, title, section=""):
+        add_rect(slide, 0, 0, 13.333, 0.70, NAVY)
+        add_text(
+            slide, 0.68, 0.12, 9.8, 0.36,
+            title, size=16, color=WHITE, bold=True
         )
-        band.fill.solid()
-        band.fill.fore_color.rgb = GREEN
-        band.line.fill.background()
-
-        add_textbox(
-            slide, 0.65, 0.38, 11.8, 0.45,
-            title, size=24, bold=True, color=NAVY
-        )
-
-        if subtitle:
-            add_textbox(
-                slide, 0.67, 0.84, 11.7, 0.28,
-                subtitle, size=10, color=GREY
+        if section:
+            add_text(
+                slide, 10.2, 0.13, 2.45, 0.32,
+                section, size=9, color=RGBColor(0xC9, 0xD0, 0xE8),
+                align=PP_ALIGN.RIGHT
             )
 
-        add_line(slide, 0.65, 1.15, 12.0)
-
     def add_footer(slide, page_no):
-        add_line(slide, 0.65, 7.12, 12.0)
-        add_textbox(
-            slide, 0.65, 7.18, 9.5, 0.2,
-            "PT BUANA KARYA MANDIRI SEJAHTERA (BKMS)",
-            size=8, bold=True, color=GREY
+        add_text(
+            slide, 0.68, 7.18, 10.5, 0.18,
+            "Integritas  •  Kemandirian  •  Kebersamaan  •  Tanggung Jawab  •  Inovatif  •  Komitmen",
+            size=7.5, color=MUTED
         )
-        add_textbox(
-            slide, 11.7, 7.18, 0.9, 0.2,
-            str(page_no), size=8, color=GREY,
+        add_text(
+            slide, 12.0, 7.18, 0.65, 0.18,
+            str(page_no), size=7.5, color=MUTED,
             align=PP_ALIGN.RIGHT
         )
 
-    def add_kpi_card(
-        slide, left, top, width, height,
-        label, value, target=None, accent=GREEN
-    ):
-        card = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE,
-            Inches(left), Inches(top),
-            Inches(width), Inches(height)
+    def add_section_divider(slide, number, title1, title2, subtitle, accent, icon_text):
+        add_rect(slide, 0, 0, 13.333, 7.5, NAVY)
+        add_rect(slide, 0, 0, 0.25, 7.5, accent)
+        add_rect(
+            slide, 0.55, 0.82, 4.05, 1.65,
+            RGBColor(0x27, 0x31, 0x70)
         )
-        card.fill.solid()
-        card.fill.fore_color.rgb = CARD
-        card.line.color.rgb = LIGHT_GREY
-        card.line.width = Pt(1)
-        card.adjustments[0] = 0.08
 
-        strip = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE,
-            Inches(left), Inches(top),
-            Inches(0.08), Inches(height)
+        add_text(
+            slide, 0.82, 1.06, 3.2, 0.50,
+            title1.upper(), size=31, color=WHITE, bold=True
         )
-        strip.fill.solid()
-        strip.fill.fore_color.rgb = accent
-        strip.line.fill.background()
+        add_text(
+            slide, 0.82, 1.62, 4.2, 0.55,
+            title2.upper(), size=31, color=accent, bold=True
+        )
+        add_rect(slide, 0.82, 2.35, 3.8, 0.05, accent)
+        add_text(
+            slide, 0.82, 2.62, 5.8, 0.45,
+            subtitle, size=13, color=RGBColor(0xD7, 0xDF, 0xF4)
+        )
+        add_text(
+            slide, 0.82, 0.38, 0.55, 0.35,
+            f"{number:02d}", size=12, color=accent, bold=True
+        )
 
-        add_textbox(
-            slide, left + 0.28, top + 0.20,
-            width - 0.45, 0.30,
-            label.upper(), size=10, bold=True, color=GREY
+        # simple white icon inside accent circle, matching the PDF's visual
+        circle = slide.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(10.45), Inches(1.25),
+            Inches(1.45), Inches(1.45)
         )
-        add_textbox(
-            slide, left + 0.28, top + 0.55,
-            width - 0.45, 0.52,
-            value, size=22, bold=True, color=NAVY
+        circle.fill.solid()
+        circle.fill.fore_color.rgb = accent
+        circle.line.fill.background()
+        add_text(
+            slide, 10.45, 1.58, 1.45, 0.72,
+            icon_text, size=30, color=WHITE, bold=True,
+            align=PP_ALIGN.CENTER
         )
-        if target:
-            add_textbox(
-                slide, left + 0.28, top + 1.17,
-                width - 0.45, 0.30,
-                target, size=9, bold=True, color=accent
+
+    def add_kpi_card(slide, left, top, width, height, accent,
+                     icon_text, label, value, budget_text,
+                     status_text, status_kind="good"):
+        # White card + colored top line
+        add_rect(slide, left, top, width, height, WHITE, GRID, radius=False)
+        add_rect(slide, left, top, width, 0.07, accent)
+
+        # icon circle
+        circle = slide.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(left + 0.18), Inches(top + 0.16),
+            Inches(0.50), Inches(0.50)
+        )
+        circle.fill.solid()
+        circle.fill.fore_color.rgb = accent
+        circle.line.fill.background()
+        add_text(
+            slide, left + 0.18, top + 0.25, 0.50, 0.26,
+            icon_text, size=16, color=WHITE, bold=True,
+            align=PP_ALIGN.CENTER
+        )
+
+        add_text(
+            slide, left + 0.82, top + 0.18,
+            width - 1.00, 0.36,
+            label, size=9.5, color=MUTED, bold=False
+        )
+
+        add_text(
+            slide, left + 0.18, top + 0.72,
+            width - 0.36, 0.42,
+            value, size=22, color=TEXT, bold=True
+        )
+
+        add_text(
+            slide, left + 0.18, top + 1.18,
+            width - 0.36, 0.30,
+            budget_text, size=8.5, color=MUTED
+        )
+
+        status_fill = PALE_GREEN if status_kind == "good" else (
+            PALE_RED if status_kind == "bad" else PALE_AMBER
+        )
+        status_color = GREEN if status_kind == "good" else (
+            RED if status_kind == "bad" else AMBER
+        )
+
+        add_rect(
+            slide, left + 0.18, top + height - 0.40,
+            width - 0.36, 0.28,
+            status_fill
+        )
+        add_text(
+            slide, left + 0.25, top + height - 0.38,
+            width - 0.50, 0.23,
+            status_text, size=8.2,
+            color=status_color, bold=True,
+            align=PP_ALIGN.CENTER
+        )
+
+    def add_panel(slide, left, top, width, height, title=None,
+                  title_color=TEXT, top_accent=None):
+        add_rect(slide, left, top, width, height, WHITE, GRID)
+        if top_accent is not None:
+            add_rect(slide, left, top, width, 0.06, top_accent)
+        if title:
+            add_text(
+                slide, left + 0.28, top + 0.16,
+                width - 0.56, 0.32,
+                title, size=11.5, color=TEXT, bold=True
             )
+        return None
 
-    def add_section_label(slide, left, top, text):
-        marker = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE,
-            Inches(left), Inches(top + 0.08),
-            Inches(0.05), Inches(0.25)
-        )
-        marker.fill.solid()
-        marker.fill.fore_color.rgb = GOLD
-        marker.line.fill.background()
-
-        add_textbox(
-            slide, left + 0.14, top, 5, 0.4,
-            text, size=13, bold=True, color=NAVY
+    def add_note(slide, left, top, width, height, text,
+                 fill=PALE_AMBER, accent=AMBER, color=TEXT):
+        add_rect(slide, left, top, width, height, fill, accent)
+        add_rect(slide, left, top, 0.06, height, accent)
+        add_text(
+            slide, left + 0.20, top + 0.07,
+            width - 0.35, height - 0.12,
+            text, size=8.7, color=color, bold=True
         )
 
-    def style_chart(chart, legend=True):
+    def set_chart_common(chart, legend=True):
         chart.has_legend = legend
-
         try:
             chart.chart_area.format.fill.solid()
-            chart.chart_area.format.fill.fore_color.rgb = CARD
-            chart.chart_area.format.line.color.rgb = LIGHT_GREY
+            chart.chart_area.format.fill.fore_color.rgb = WHITE
+            chart.chart_area.format.line.color.rgb = GRID
         except Exception:
             pass
-
         try:
             chart.plot_area.format.fill.solid()
-            chart.plot_area.format.fill.fore_color.rgb = CARD
+            chart.plot_area.format.fill.fore_color.rgb = WHITE
             chart.plot_area.format.line.fill.background()
         except Exception:
             pass
-
         if legend:
             chart.legend.position = XL_LEGEND_POSITION.BOTTOM
             chart.legend.include_in_layout = False
-            chart.legend.font.color.rgb = GREY
-            chart.legend.font.size = Pt(9)
-
+            chart.legend.font.name = FONT
+            chart.legend.font.size = Pt(8)
+            chart.legend.font.color.rgb = MUTED
         try:
-            cat_ax = chart.category_axis
-            cat_ax.tick_labels.font.color.rgb = GREY
-            cat_ax.tick_labels.font.size = Pt(9)
-            cat_ax.format.line.color.rgb = LIGHT_GREY
+            ca = chart.category_axis
+            ca.tick_labels.font.name = FONT
+            ca.tick_labels.font.size = Pt(8)
+            ca.tick_labels.font.color.rgb = MUTED
+            ca.format.line.color.rgb = GRID
+        except Exception:
+            pass
+        try:
+            va = chart.value_axis
+            va.tick_labels.font.name = FONT
+            va.tick_labels.font.size = Pt(8)
+            va.tick_labels.font.color.rgb = MUTED
+            va.format.line.color.rgb = GRID
+            va.has_major_gridlines = True
+            va.major_gridlines.format.line.color.rgb = GRID
         except Exception:
             pass
 
+    def add_table(slide, left, top, width, height, headers, rows,
+                  col_widths=None, header_fill=NAVY, font_size=8.2):
+        table_shape = slide.shapes.add_table(
+            len(rows) + 1, len(headers),
+            Inches(left), Inches(top),
+            Inches(width), Inches(height)
+        )
+        table = table_shape.table
+
+        if col_widths:
+            for i, cw in enumerate(col_widths):
+                table.columns[i].width = Inches(cw)
+
+        # header
+        for j, h in enumerate(headers):
+            cell = table.cell(0, j)
+            cell.text = str(h)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = header_fill
+            cell.margin_left = Inches(0.06)
+            cell.margin_right = Inches(0.06)
+            cell.margin_top = Inches(0.03)
+            cell.margin_bottom = Inches(0.03)
+            for p in cell.text_frame.paragraphs:
+                p.alignment = PP_ALIGN.CENTER
+                for r in p.runs:
+                    r.font.name = FONT
+                    r.font.size = Pt(font_size)
+                    r.font.bold = True
+                    r.font.color.rgb = WHITE
+
+        for i, row in enumerate(rows, start=1):
+            fill = WHITE if i % 2 else PALE_BLUE
+            for j, val in enumerate(row):
+                cell = table.cell(i, j)
+                cell.text = str(val)
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = fill
+                cell.margin_left = Inches(0.06)
+                cell.margin_right = Inches(0.06)
+                cell.margin_top = Inches(0.025)
+                cell.margin_bottom = Inches(0.025)
+                for p in cell.text_frame.paragraphs:
+                    p.alignment = PP_ALIGN.LEFT if j == 0 else PP_ALIGN.CENTER
+                    for r in p.runs:
+                        r.font.name = FONT
+                        r.font.size = Pt(font_size)
+                        r.font.color.rgb = TEXT
+        return table_shape
+
+    def money(x):
         try:
-            val_ax = chart.value_axis
-            val_ax.tick_labels.font.color.rgb = GREY
-            val_ax.tick_labels.font.size = Pt(9)
-            val_ax.format.line.color.rgb = LIGHT_GREY
-            val_ax.has_major_gridlines = True
-            val_ax.major_gridlines.format.line.color.rgb = LIGHT_GREY
+            return fmt_rp(float(x))
         except Exception:
-            pass
+            return str(x)
 
-    def ach_txt(real, budget, label="Target"):
-        if budget == 0:
-            return f"{label} = 0"
-        pct = real / budget * 100
-        return f"{pct:.1f}% dari {label.lower()}"
+    def pct(x):
+        try:
+            return f"{float(x):.1f}%"
+        except Exception:
+            return "-"
 
-    # ============================================================
-    # FILTER INFORMATION
-    # ============================================================
+    # ------------------------------------------------------------
+    # FILTER / PERIOD
+    # ------------------------------------------------------------
     period = ", ".join(month_list) if month_list else "-"
     site_txt = (
         ", ".join(site_list)
-        if len(site_list) <= 5
-        else f"{len(site_list)} Site"
+        if len(site_list) <= 5 else f"{len(site_list)} Site"
     )
-    kat_txt = ", ".join(
-        [KATEGORI_LABEL.get(k, k) for k in kat_list]
-    )
+    kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
 
-    # ============================================================
-    # MAIN CALCULATIONS
-    # ============================================================
-    r_pendapatan = data["pendapatan_realisasi"].sum()
-    b_pendapatan = data["pendapatan_budget"].sum()
+    # ------------------------------------------------------------
+    # MAIN METRICS
+    # ------------------------------------------------------------
+    pend_r = data["pendapatan_realisasi"].sum()
+    pend_b = data["pendapatan_budget"].sum()
+    prest_r = data["prestasi_realisasi"].sum()
+    prest_b = data["prestasi_budget"].sum()
+    biaya_r = data["total_biaya_realisasi"].sum()
+    biaya_b = data["total_biaya_budget"].sum()
 
-    r_prestasi = data["prestasi_realisasi"].sum()
-    b_prestasi = data["prestasi_budget"].sum()
-
-    r_biaya = data["total_biaya_realisasi"].sum()
-    b_biaya = data["total_biaya_budget"].sum()
-
-    ach_pendapatan = (
-        r_pendapatan / b_pendapatan * 100
-        if b_pendapatan else 0
-    )
-    ach_prestasi = (
-        r_prestasi / b_prestasi * 100
-        if b_prestasi else 0
-    )
-    ach_biaya = (
-        r_biaya / b_biaya * 100
-        if b_biaya else 0
-    )
+    ach_pend = (pend_r / pend_b * 100) if pend_b else 0
+    ach_prest = (prest_r / prest_b * 100) if prest_b else 0
+    ach_biaya = (biaya_r / biaya_b * 100) if biaya_b else 0
 
     target_pop = data.loc[
-        data["pendapatan_budget"] > 0,
-        "nama_unit"
+        data["pendapatan_budget"] > 0, "nama_unit"
     ].nunique()
-
-    realisasi_pop = data.loc[
-        data["pendapatan_realisasi"] > 0,
-        "nama_unit"
+    real_pop = data.loc[
+        data["pendapatan_realisasi"] > 0, "nama_unit"
     ].nunique()
+    ach_pop = (real_pop / target_pop * 100) if target_pop else 0
 
-    ach_pop = (
-        realisasi_pop / target_pop * 100
-        if target_pop else 0
+    # ------------------------------------------------------------
+    # SLIDE 1 — COVER, closely following PDF cover
+    # ------------------------------------------------------------
+    s = prs.slides.add_slide(blank)
+    add_rect(s, 0, 0, 13.333, 7.5, NAVY)
+    add_rect(s, 0, 0, 0.25, 7.5, CYAN)
+
+    # subtle large circles on right
+    for left, top, size, col in [
+        (9.15, -1.0, 5.0, RGBColor(0x2C, 0x38, 0x80)),
+        (10.00, -0.45, 4.0, RGBColor(0x34, 0x40, 0x89)),
+        (10.72, 0.10, 3.0, RGBColor(0x3B, 0x48, 0x95)),
+    ]:
+        circ = s.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(left), Inches(top),
+            Inches(size), Inches(size)
+        )
+        circ.fill.solid()
+        circ.fill.fore_color.rgb = col
+        circ.line.fill.background()
+
+    add_text(
+        s, 0.75, 0.58, 8.0, 0.25,
+        "PT. BUANA KARYA MANDIRI SEJAHTERA (BKMS)",
+        size=8.5, color=RGBColor(0xC9, 0xD0, 0xE8), bold=True
     )
 
-    # ============================================================
-    # SLIDE 1 - COVER
-    # ============================================================
-    s = add_slide()
-
-    panel = s.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE,
-        0, 0, Inches(4.1), prs.slide_height
+    add_text(
+        s, 0.75, 1.55, 8.0, 0.70,
+        "DASHBOARD",
+        size=33, color=WHITE, bold=True
     )
-    panel.fill.solid()
-    panel.fill.fore_color.rgb = NAVY
-    panel.line.fill.background()
-
-    gold_bar = s.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE,
-        Inches(4.1), 0,
-        Inches(0.12), prs.slide_height
+    add_text(
+        s, 0.75, 2.20, 8.5, 0.72,
+        "BIAYA & PENDAPATAN",
+        size=33, color=CYAN, bold=True
     )
-    gold_bar.fill.solid()
-    gold_bar.fill.fore_color.rgb = GOLD
-    gold_bar.line.fill.background()
+    add_rect(s, 0.75, 3.03, 4.65, 0.06, CYAN)
 
-    add_textbox(
-        s, 0.65, 1.25, 2.9, 0.5,
-        "MANAGEMENT", size=13,
-        bold=True, color=GOLD_LIGHT
+    add_text(
+        s, 0.75, 3.34, 7.0, 0.35,
+        "TARGET VS REALISASI",
+        size=15, color=WHITE, bold=True
+    )
+    add_text(
+        s, 0.75, 3.78, 8.2, 0.34,
+        f"Periode {period}",
+        size=12, color=RGBColor(0xD7, 0xDF, 0xF4)
     )
 
-    add_textbox(
-        s, 0.65, 1.85, 2.9, 1.8,
-        "Dashboard\nBiaya &\nPendapatan",
-        size=30, bold=True, color=WHITE
+    add_text(
+        s, 0.75, 5.95, 8.0, 0.25,
+        f"Site: {site_txt}",
+        size=8.5, color=RGBColor(0x9D, 0xA8, 0xC8)
+    )
+    add_text(
+        s, 0.75, 6.25, 8.0, 0.25,
+        f"Kategori: {kat_txt}",
+        size=8.5, color=RGBColor(0x9D, 0xA8, 0xC8)
+    )
+    add_text(
+        s, 0.75, 6.78, 8.0, 0.22,
+        "Prepared automatically from Dashboard Biaya & Pendapatan",
+        size=7.5, color=RGBColor(0x9D, 0xA8, 0xC8)
     )
 
-    add_textbox(
-        s, 0.65, 4.25, 2.9, 0.8,
-        "PT BUANA KARYA\nMANDIRI SEJAHTERA",
-        size=12, bold=True, color=WHITE
+    add_text(
+        s, 10.05, 6.75, 2.35, 0.25,
+        "Cawu / Management Report",
+        size=7.5, color=RGBColor(0xC9, 0xD0, 0xE8),
+        align=PP_ALIGN.RIGHT
     )
 
-    add_textbox(
-        s, 4.75, 1.25, 7.8, 0.45,
-        "LAPORAN KINERJA",
-        size=12, bold=True, color=GREEN
+    # ------------------------------------------------------------
+    # SLIDE 2 — AGENDA, same 2x2 visual language as PDF
+    # ------------------------------------------------------------
+    s = add_slide_base()
+    add_header(s, "AGENDA DASHBOARD — TARGET VS REALISASI", "Dashboard")
+    add_text(
+        s, 0.68, 0.83, 11.8, 0.28,
+        "Struktur: Performance Keseluruhan → Maintenance → Sparepart → Populasi & Insights",
+        size=8.5, color=MUTED
     )
 
-    add_textbox(
-        s, 4.75, 1.8, 7.7, 1.0,
-        "Target vs Realisasi",
-        size=34, bold=True, color=NAVY
+    agenda = [
+        ("01", "Performance", "Pendapatan · Prestasi · Biaya", CYAN, "↗"),
+        ("02", "Maintenance", "Rekap biaya · Rutin · Non Rutin", PURPLE, "⚙"),
+        ("03", "Sparepart", "Top barang · Kategori · Pemakaian", GREEN, "▦"),
+        ("04", "Populasi & Insights", "Target · Realisasi · Analisa gap", RED, "$"),
+    ]
+    positions = [
+        (0.55, 1.35), (6.78, 1.35),
+        (0.55, 4.00), (6.78, 4.00)
+    ]
+    for (num, title, sub, accent, icon), (x, y) in zip(agenda, positions):
+        add_rect(s, x, y, 5.98, 2.28, WHITE, GRID)
+        add_rect(s, x, y, 0.08, 2.28, accent)
+        add_text(s, x + 0.35, y + 0.32, 0.70, 0.40,
+                 num, size=26, color=accent, bold=True)
+        add_text(s, x + 0.35, y + 0.92, 3.9, 0.32,
+                 title, size=13, color=TEXT, bold=True)
+        add_text(s, x + 0.35, y + 1.42, 4.4, 0.35,
+                 sub, size=8.5, color=MUTED)
+        c = s.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(x + 5.05), Inches(y + 0.45),
+            Inches(0.82), Inches(0.82)
+        )
+        c.fill.solid(); c.fill.fore_color.rgb = accent; c.line.fill.background()
+        add_text(s, x + 5.05, y + 0.65, 0.82, 0.30,
+                 icon, size=17, color=WHITE, bold=True,
+                 align=PP_ALIGN.CENTER)
+
+    add_rect(s, 0.55, 6.78, 12.0, 0.28, NAVY)
+    add_text(
+        s, 0.70, 6.80, 11.7, 0.20,
+        "Data mengikuti filter Dashboard saat tombol PPTX ditekan",
+        size=7.5, color=WHITE, bold=True,
+        align=PP_ALIGN.CENTER
+    )
+    add_footer(s, 2)
+
+    # ------------------------------------------------------------
+    # SLIDE 3 — DIVIDER: PERFORMANCE
+    # ------------------------------------------------------------
+    s = prs.slides.add_slide(blank)
+    add_section_divider(
+        s, 1, "PERFORMANCE", "KESELURUHAN",
+        "Pendapatan · Prestasi · Biaya · Populasi",
+        CYAN, "↗"
     )
 
-    add_textbox(
-        s, 4.78, 2.85, 7.2, 0.7,
-        f"Periode: {period}",
-        size=16, bold=True, color=BLACK
-    )
-
-    info = s.shapes.add_shape(
-        MSO_SHAPE.ROUNDED_RECTANGLE,
-        Inches(4.75), Inches(3.75),
-        Inches(7.6), Inches(1.55)
-    )
-    info.fill.solid()
-    info.fill.fore_color.rgb = CARD
-    info.line.color.rgb = LIGHT_GREY
-    info.line.width = Pt(1)
-    info.adjustments[0] = 0.08
-
-    add_textbox(
-        s, 5.05, 4.02, 6.8, 0.35,
-        "FILTER LAPORAN", size=9,
-        bold=True, color=GREY
-    )
-
-    add_textbox(
-        s, 5.05, 4.40, 6.8, 0.35,
-        f"Site       : {site_txt}",
-        size=11, bold=True, color=NAVY
-    )
-
-    add_textbox(
-        s, 5.05, 4.78, 6.8, 0.35,
-        f"Kategori : {kat_txt}",
-        size=11, color=BLACK
-    )
-
-    add_textbox(
-        s, 4.75, 6.45, 7.6, 0.35,
-        "Confidential — Internal Management Report",
-        size=9, color=GREY
-    )
-
-    # ============================================================
-    # SLIDE 2 - EXECUTIVE SUMMARY
-    # ============================================================
-    s = add_slide()
-
+    # ------------------------------------------------------------
+    # SLIDE 4 — KPI DASHBOARD, closest to PDF KPI page
+    # ------------------------------------------------------------
+    s = add_slide_base()
     add_header(
         s,
-        "Executive Summary",
-        f"Periode {period} • {site_txt}"
+        "KPI DASHBOARD — Performance Keseluruhan",
+        "Performance Keseluruhan · 01"
     )
 
-    pend_color = GREEN if ach_pendapatan >= 100 else ORANGE
-    prestasi_color = GREEN if ach_prestasi >= 100 else ORANGE
-    biaya_color = GREEN if ach_biaya <= 100 else RED
-
-    add_kpi_card(
-        s, 0.65, 1.45, 3.85, 1.75,
-        "Pendapatan",
-        fmt_rp(r_pendapatan),
-        f"Target {fmt_rp(b_pendapatan)} • {ach_pendapatan:.1f}%",
-        pend_color
-    )
+    pend_kind = "good" if ach_pend >= 100 else "bad"
+    prest_kind = "good" if ach_prest >= 100 else "bad"
+    biaya_kind = "good" if ach_biaya <= 100 else "bad"
+    pop_kind = "good" if ach_pop >= 100 else "bad"
 
     add_kpi_card(
-        s, 4.72, 1.45, 3.85, 1.75,
-        "Prestasi",
-        f"{r_prestasi:,.0f}",
-        f"Target {b_prestasi:,.0f} • {ach_prestasi:.1f}%",
-        prestasi_color
+        s, 0.38, 0.98, 3.05, 1.88, RED,
+        "Rp", "Pendapatan (Realisasi)",
+        money(pend_r),
+        f"Target: {money(pend_b)}",
+        f"{ach_pend:.1f}% vs Target",
+        pend_kind
     )
-
     add_kpi_card(
-        s, 8.79, 1.45, 3.85, 1.75,
-        "Total Biaya",
-        fmt_rp(r_biaya),
-        f"Budget {fmt_rp(b_biaya)} • {ach_biaya:.1f}%",
-        biaya_color
+        s, 3.62, 0.98, 3.05, 1.88, CYAN,
+        "↗", "Prestasi (Realisasi)",
+        f"{prest_r:,.0f}",
+        f"Target: {prest_b:,.0f}",
+        f"{ach_prest:.1f}% vs Target",
+        prest_kind
+    )
+    add_kpi_card(
+        s, 6.86, 0.98, 3.05, 1.88, GREEN,
+        "⚙", "Total Biaya (Realisasi)",
+        money(biaya_r),
+        f"Budget: {money(biaya_b)}",
+        f"{ach_biaya:.1f}% — {'Under Budget' if ach_biaya <= 100 else 'Over Budget'}",
+        biaya_kind
+    )
+    add_kpi_card(
+        s, 10.10, 0.98, 2.85, 1.88, PURPLE,
+        "◎", "Populasi Unit",
+        f"{real_pop:,}",
+        f"Target: {target_pop:,}",
+        f"{ach_pop:.1f}% vs Target",
+        pop_kind
     )
 
-    add_section_label(
-        s, 0.65, 3.55,
-        "Target vs Realisasi"
-    )
+    # target vs actual chart
+    add_panel(s, 0.38, 3.05, 7.55, 3.55,
+              "Target vs Realisasi — Pendapatan & Biaya",
+              top_accent=CYAN)
 
     cd = CategoryChartData()
     cd.categories = ["Pendapatan", "Biaya"]
-    cd.add_series("Target", (b_pendapatan, b_biaya))
-    cd.add_series("Realisasi", (r_pendapatan, r_biaya))
-
-    g = s.shapes.add_chart(
+    cd.add_series("Target", (pend_b, biaya_b))
+    cd.add_series("Realisasi", (pend_r, biaya_r))
+    frame = s.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_CLUSTERED,
-        Inches(0.65), Inches(3.95),
-        Inches(7.3), Inches(2.65),
-        cd
+        Inches(0.60), Inches(3.55),
+        Inches(7.10), Inches(2.72), cd
     )
-
-    chart = g.chart
+    chart = frame.chart
     chart.series[0].format.fill.solid()
-    chart.series[0].format.fill.fore_color.rgb = LIGHT_GREY
+    chart.series[0].format.fill.fore_color.rgb = RGBColor(0xB9, 0xC0, 0xCC)
     chart.series[1].format.fill.solid()
-    chart.series[1].format.fill.fore_color.rgb = GREEN
-    style_chart(chart)
+    chart.series[1].format.fill.fore_color.rgb = CYAN
+    set_chart_common(chart)
 
-    panel = s.shapes.add_shape(
-        MSO_SHAPE.ROUNDED_RECTANGLE,
-        Inches(8.25), Inches(3.95),
-        Inches(4.38), Inches(2.65)
-    )
-    panel.fill.solid()
-    panel.fill.fore_color.rgb = CARD
-    panel.line.color.rgb = LIGHT_GREY
-    panel.line.width = Pt(1)
-    panel.adjustments[0] = 0.08
+    # achievement summary panel
+    add_panel(s, 8.15, 3.05, 4.80, 3.55,
+              "Ringkasan Capaian",
+              top_accent=GREEN)
+    add_text(s, 8.45, 3.55, 4.1, 0.30, "Pendapatan", size=9, color=MUTED)
+    add_text(s, 8.45, 3.86, 3.8, 0.50,
+             f"{ach_pend:.1f}%", size=25,
+             color=GREEN if ach_pend >= 100 else RED, bold=True)
+    add_text(s, 8.45, 4.43, 3.8, 0.25,
+             "Realisasi dibanding target", size=8, color=MUTED)
 
-    add_textbox(
-        s, 8.60, 4.20, 3.7, 0.3,
-        "ACHIEVEMENT", size=10,
-        bold=True, color=GREY
-    )
+    add_rect(s, 8.45, 4.86, 3.95, 0.02, GRID)
+    add_text(s, 8.45, 5.08, 3.8, 0.28,
+             f"Prestasi  {ach_prest:.1f}%", size=10,
+             color=GREEN if ach_prest >= 100 else RED, bold=True)
+    add_text(s, 8.45, 5.50, 3.8, 0.28,
+             f"Biaya      {ach_biaya:.1f}%", size=10,
+             color=GREEN if ach_biaya <= 100 else RED, bold=True)
+    add_text(s, 8.45, 5.92, 3.8, 0.28,
+             f"Populasi  {ach_pop:.1f}%", size=10,
+             color=GREEN if ach_pop >= 100 else RED, bold=True)
 
-    add_textbox(
-        s, 8.60, 4.60, 3.7, 0.5,
-        f"{ach_pendapatan:.1f}%",
-        size=28, bold=True,
-        color=GREEN if ach_pendapatan >= 100 else ORANGE
-    )
+    add_footer(s, 4)
 
-    add_textbox(
-        s, 8.60, 5.10, 3.7, 0.35,
-        "Pendapatan vs Target",
-        size=10, color=GREY
-    )
-
-    add_line(s, 8.60, 5.62, 3.55)
-
-    add_textbox(
-        s, 8.60, 5.82, 3.7, 0.35,
-        f"Prestasi: {ach_prestasi:.1f}%",
-        size=11, bold=True, color=NAVY
-    )
-
-    add_textbox(
-        s, 8.60, 6.18, 3.7, 0.35,
-        f"Biaya: {ach_biaya:.1f}%",
-        size=11, bold=True,
-        color=RED if ach_biaya > 100 else GREEN
-    )
-
-    add_footer(s, 2)
-
-    # ============================================================
-    # SLIDE 3 - POPULASI UNIT
-    # ============================================================
-    s = add_slide()
-
+    # ------------------------------------------------------------
+    # SLIDE 5 — TREND / MONTHLY PERFORMANCE
+    # ------------------------------------------------------------
+    s = add_slide_base()
     add_header(
         s,
-        "Populasi Unit",
-        "Target vs Realisasi populasi unit"
+        "PERFORMANCE — Pendapatan, Prestasi & Biaya Bulanan",
+        "Performance Keseluruhan · 01"
     )
 
-    add_kpi_card(
-        s, 0.65, 1.45, 3.85, 1.65,
-        "Target Populasi",
-        f"{target_pop:,}",
-        "Unit dengan target Pendapatan",
-        NAVY
+    monthly = (
+        data.groupby("bulan_no", as_index=False)
+        .agg(
+            pend_r=("pendapatan_realisasi", "sum"),
+            pend_b=("pendapatan_budget", "sum"),
+            biaya_r=("total_biaya_realisasi", "sum"),
+            biaya_b=("total_biaya_budget", "sum"),
+            prest_r=("prestasi_realisasi", "sum"),
+            prest_b=("prestasi_budget", "sum"),
+        )
+        .sort_values("bulan_no")
+    )
+    month_labels = [
+        MONTH_ORDER[int(x)-1] if 1 <= int(x) <= 12 else str(x)
+        for x in monthly["bulan_no"]
+    ] if not monthly.empty else []
+
+    add_panel(s, 0.38, 0.98, 7.75, 5.70,
+              "Tren Bulanan: Pendapatan & Biaya",
+              top_accent=CYAN)
+
+    if not monthly.empty:
+        cd5 = CategoryChartData()
+        cd5.categories = month_labels
+        cd5.add_series("Pendapatan Aktual", tuple(monthly["pend_r"]))
+        cd5.add_series("Biaya Aktual", tuple(monthly["biaya_r"]))
+        f5 = s.shapes.add_chart(
+            XL_CHART_TYPE.LINE_MARKERS,
+            Inches(0.58), Inches(1.50),
+            Inches(7.35), Inches(4.80), cd5
+        )
+        c5 = f5.chart
+        c5.series[0].format.line.color.rgb = CYAN
+        c5.series[0].format.line.width = Pt(2.5)
+        c5.series[1].format.line.color.rgb = RED
+        c5.series[1].format.line.width = Pt(2.5)
+        set_chart_common(c5)
+
+    add_panel(s, 8.38, 0.98, 4.57, 5.70,
+              "Capaian Bulanan",
+              top_accent=GREEN)
+
+    if not monthly.empty:
+        rows = []
+        for _, rr in monthly.iterrows():
+            p = rr["pend_r"] / rr["pend_b"] * 100 if rr["pend_b"] else 0
+            b = rr["biaya_r"] / rr["biaya_b"] * 100 if rr["biaya_b"] else 0
+            pr = rr["prest_r"] / rr["prest_b"] * 100 if rr["prest_b"] else 0
+            mname = MONTH_ORDER[int(rr["bulan_no"]) - 1]
+            rows.append([mname, f"{p:.1f}%", f"{pr:.1f}%", f"{b:.1f}%"])
+        add_table(
+            s, 8.60, 1.55, 4.12, 3.70,
+            ["Bulan", "Pend.", "Prest.", "Biaya"],
+            rows,
+            col_widths=[0.95, 1.00, 1.00, 1.00],
+            font_size=7.5
+        )
+    else:
+        add_text(s, 8.65, 2.00, 3.9, 0.5,
+                 "Tidak ada data bulanan.", size=10, color=MUTED)
+
+    add_note(
+        s, 8.60, 5.55, 4.12, 0.75,
+        "Gunakan tabel ini untuk melihat bulan yang menjadi penyumbang utama gap terhadap target.",
+        fill=PALE_CYAN, accent=CYAN
+    )
+    add_footer(s, 5)
+
+    # ------------------------------------------------------------
+    # SLIDE 6 — DIVIDER: MAINTENANCE
+    # ------------------------------------------------------------
+    s = prs.slides.add_slide(blank)
+    add_section_divider(
+        s, 2, "MAINTENANCE", "ANALYSIS",
+        "Rekap biaya · Rutin · Non Rutin · Kategori",
+        PURPLE, "⚙"
     )
 
-    add_kpi_card(
-        s, 4.72, 1.45, 3.85, 1.65,
-        "Realisasi Populasi",
-        f"{realisasi_pop:,}",
-        "Unit dengan realisasi Pendapatan",
-        GREEN
-    )
-
-    add_kpi_card(
-        s, 8.79, 1.45, 3.85, 1.65,
-        "Capaian Populasi",
-        f"{ach_pop:.1f}%",
-        "Realisasi vs Target",
-        GREEN if ach_pop >= 100 else ORANGE
-    )
-
-    add_section_label(
-        s, 0.65, 3.45,
-        "Target dan Realisasi Unit"
-    )
-
-    cd3 = CategoryChartData()
-    cd3.categories = ["Populasi Unit"]
-    cd3.add_series("Target", (target_pop,))
-    cd3.add_series("Realisasi", (realisasi_pop,))
-
-    g3 = s.shapes.add_chart(
-        XL_CHART_TYPE.BAR_CLUSTERED,
-        Inches(1.25), Inches(3.95),
-        Inches(10.8), Inches(2.45),
-        cd3
-    )
-
-    chart3 = g3.chart
-    chart3.series[0].format.fill.solid()
-    chart3.series[0].format.fill.fore_color.rgb = LIGHT_GREY
-    chart3.series[1].format.fill.solid()
-    chart3.series[1].format.fill.fore_color.rgb = GREEN
-    style_chart(chart3)
-
-    add_footer(s, 3)
-
-    # ============================================================
-    # SLIDE 4 - MAINTENANCE
-    # ============================================================
+    # ------------------------------------------------------------
+    # SLIDE 7 — MAINTENANCE, matching PDF table + insight layout
+    # ------------------------------------------------------------
     if maint_data is not None and not maint_data.empty:
-
-        s = add_slide()
-
-        total_m = maint_data["biaya"].sum()
-        n_trx = len(maint_data)
-
-        rutin_b = maint_data.loc[
-            maint_data["jenis_pemeliharaan"] == "RUTIN",
-            "biaya"
-        ].sum()
-
-        nonrutin_b = maint_data.loc[
-            maint_data["jenis_pemeliharaan"] == "NON RUTIN",
-            "biaya"
-        ].sum()
-
+        s = add_slide_base()
         add_header(
             s,
-            "Rekap Biaya Maintenance",
-            f"Total transaksi: {n_trx:,}"
+            "REKAP BIAYA MAINTENANCE — Budget / Realisasi & Analisis",
+            "Maintenance · 02"
         )
 
+        total_m = maint_data["biaya"].sum()
+        rutin_b = maint_data.loc[
+            maint_data["jenis_pemeliharaan"] == "RUTIN", "biaya"
+        ].sum()
+        nonrutin_b = maint_data.loc[
+            maint_data["jenis_pemeliharaan"] == "NON RUTIN", "biaya"
+        ].sum()
+        n_trx = len(maint_data)
+
         add_kpi_card(
-            s, 0.65, 1.45, 3.85, 1.65,
-            "Total Maintenance",
-            fmt_rp(total_m),
+            s, 0.38, 0.98, 3.75, 1.55, GREEN,
+            "Σ", "Total Biaya Maintenance",
+            money(total_m),
             f"{n_trx:,} transaksi",
-            GREEN
+            "100% dari maintenance",
+            "good"
         )
-
         add_kpi_card(
-            s, 4.72, 1.45, 3.85, 1.65,
-            "Maintenance Rutin",
-            fmt_rp(rutin_b),
-            None,
-            NAVY
+            s, 4.36, 0.98, 3.75, 1.55, CYAN,
+            "R", "Biaya Rutin",
+            money(rutin_b),
+            f"{(rutin_b/total_m*100 if total_m else 0):.1f}% dari total",
+            "RUTIN",
+            "good"
         )
-
         add_kpi_card(
-            s, 8.79, 1.45, 3.85, 1.65,
-            "Maintenance Non Rutin",
-            fmt_rp(nonrutin_b),
-            None,
-            RED
+            s, 8.34, 0.98, 4.61, 1.55, RED,
+            "N", "Biaya Non Rutin",
+            money(nonrutin_b),
+            f"{(nonrutin_b/total_m*100 if total_m else 0):.1f}% dari total",
+            "NON RUTIN",
+            "bad" if nonrutin_b > rutin_b else "amber"
         )
 
-        add_section_label(
-            s, 0.65, 3.45,
-            "Biaya Berdasarkan Kategori Sparepart"
+        cat = (
+            maint_data.groupby("kategori_sparepart", as_index=False)["biaya"]
+            .sum().sort_values("biaya", ascending=False)
         )
 
-        cat_agg = (
-            maint_data
-            .groupby("kategori_sparepart", as_index=False)["biaya"]
-            .sum()
-            .sort_values("biaya", ascending=False)
-            .head(10)
-        )
+        add_panel(s, 0.38, 2.78, 7.70, 3.72,
+                  "Maintenance atas Apa Saja — Top Kategori",
+                  top_accent=PURPLE)
 
-        if not cat_agg.empty:
-            cd4 = CategoryChartData()
-            cd4.categories = list(
-                cat_agg["kategori_sparepart"].astype(str)
-            )
-            cd4.add_series(
-                "Biaya",
-                tuple(cat_agg["biaya"])
-            )
-
-            g4 = s.shapes.add_chart(
+        topcat = cat.head(10)
+        if not topcat.empty:
+            cd7 = CategoryChartData()
+            cd7.categories = list(topcat["kategori_sparepart"].astype(str))
+            cd7.add_series("Biaya", tuple(topcat["biaya"]))
+            f7 = s.shapes.add_chart(
                 XL_CHART_TYPE.BAR_CLUSTERED,
-                Inches(0.65), Inches(3.85),
-                Inches(12.0), Inches(2.75),
-                cd4
+                Inches(0.58), Inches(3.28),
+                Inches(7.30), Inches(2.95), cd7
             )
+            c7 = f7.chart
+            c7.series[0].format.fill.solid()
+            c7.series[0].format.fill.fore_color.rgb = PURPLE
+            set_chart_common(c7, legend=False)
 
-            chart4 = g4.chart
-            chart4.series[0].format.fill.solid()
-            chart4.series[0].format.fill.fore_color.rgb = GREEN
-            style_chart(chart4, legend=False)
+        add_panel(s, 8.34, 2.78, 4.61, 3.72,
+                  "Analisis Maintenance",
+                  top_accent=RED)
 
-        add_footer(s, 4)
+        top_name = str(topcat.iloc[0]["kategori_sparepart"]) if not topcat.empty else "-"
+        top_value = float(topcat.iloc[0]["biaya"]) if not topcat.empty else 0
+        add_text(
+            s, 8.65, 3.30, 3.9, 0.30,
+            "Kategori biaya terbesar", size=9, color=MUTED
+        )
+        add_text(
+            s, 8.65, 3.65, 3.9, 0.45,
+            top_name, size=15, color=TEXT, bold=True
+        )
+        add_text(
+            s, 8.65, 4.12, 3.9, 0.35,
+            money(top_value), size=13, color=RED, bold=True
+        )
+        add_rect(s, 8.65, 4.62, 3.8, 0.02, GRID)
 
-    # ============================================================
-    # SAVE PPTX
-    # ============================================================
+        if total_m:
+            r_pct = rutin_b / total_m * 100
+            n_pct = nonrutin_b / total_m * 100
+        else:
+            r_pct = n_pct = 0
+
+        add_text(
+            s, 8.65, 4.86, 3.8, 0.30,
+            f"Rutin       {r_pct:.1f}%", size=9.5, color=GREEN, bold=True
+        )
+        add_text(
+            s, 8.65, 5.25, 3.8, 0.30,
+            f"Non Rutin  {n_pct:.1f}%", size=9.5, color=RED, bold=True
+        )
+        add_note(
+            s, 8.65, 5.70, 3.80, 0.55,
+            "Prioritaskan review pada kategori dengan biaya terbesar.",
+            fill=PALE_RED, accent=RED
+        )
+        add_footer(s, 7)
+
+    # ------------------------------------------------------------
+    # SLIDE 8 — SPAREPART
+    # ------------------------------------------------------------
+    if maint_data is not None and not maint_data.empty:
+        # Use maintenance data as base even if sparepart detail is absent.
+        s = add_slide_base()
+        add_header(
+            s,
+            "REKAP PEMAKAIAN SPAREPART — Top Barang & Komposisi",
+            "Sparepart · 03"
+        )
+
+        # derive from available detail if present in globals is not possible here,
+        # so use maintenance categories as a safe fallback.
+        catsp = (
+            maint_data.groupby("kategori_sparepart", as_index=False)["biaya"]
+            .sum().sort_values("biaya", ascending=False)
+        )
+
+        total_sp = catsp["biaya"].sum() if not catsp.empty else 0
+        n_jenis = len(catsp)
+
+        add_kpi_card(
+            s, 0.38, 0.98, 3.75, 1.55, CYAN,
+            "Σ", "Biaya Maintenance Terklasifikasi",
+            money(total_sp),
+            f"{n_jenis:,} kategori",
+            "Basis analisis kategori",
+            "good"
+        )
+        add_kpi_card(
+            s, 4.36, 0.98, 3.75, 1.55, GREEN,
+            "▦", "Kategori Sparepart",
+            f"{n_jenis:,}",
+            "Kategori teridentifikasi",
+            "Monitoring",
+            "good"
+        )
+        add_kpi_card(
+            s, 8.34, 0.98, 4.61, 1.55, PURPLE,
+            "↗", "Top Kategori",
+            str(catsp.iloc[0]["kategori_sparepart"]) if not catsp.empty else "-",
+            money(catsp.iloc[0]["biaya"]) if not catsp.empty else "-",
+            "Prioritas review",
+            "amber"
+        )
+
+        add_panel(
+            s, 0.38, 2.78, 7.70, 3.72,
+            "Komposisi Biaya per Kategori",
+            top_accent=CYAN
+        )
+        if not catsp.empty:
+            cd8 = CategoryChartData()
+            cd8.categories = list(catsp.head(10)["kategori_sparepart"].astype(str))
+            cd8.add_series("Biaya", tuple(catsp.head(10)["biaya"]))
+            f8 = s.shapes.add_chart(
+                XL_CHART_TYPE.BAR_CLUSTERED,
+                Inches(0.58), Inches(3.28),
+                Inches(7.30), Inches(2.95), cd8
+            )
+            c8 = f8.chart
+            c8.series[0].format.fill.solid()
+            c8.series[0].format.fill.fore_color.rgb = CYAN
+            set_chart_common(c8, legend=False)
+
+        add_panel(
+            s, 8.34, 2.78, 4.61, 3.72,
+            "Top 5 Kategori",
+            top_accent=GREEN
+        )
+        rows8 = []
+        for _, rr in catsp.head(5).iterrows():
+            share = rr["biaya"] / total_sp * 100 if total_sp else 0
+            rows8.append([
+                str(rr["kategori_sparepart"]),
+                money(rr["biaya"]),
+                f"{share:.1f}%"
+            ])
+        if rows8:
+            add_table(
+                s, 8.55, 3.28, 4.18, 2.55,
+                ["Kategori", "Biaya", "%"],
+                rows8,
+                col_widths=[1.75, 1.35, 0.75],
+                font_size=7.2
+            )
+        add_note(
+            s, 8.55, 5.95, 4.18, 0.40,
+            "Top kategori = prioritas awal untuk review penggunaan biaya.",
+            fill=PALE_GREEN, accent=GREEN
+        )
+        add_footer(s, 8)
+
+    # ------------------------------------------------------------
+    # SLIDE 9 — DIVIDER: POPULASI & INSIGHTS
+    # ------------------------------------------------------------
+    s = prs.slides.add_slide(blank)
+    add_section_divider(
+        s, 4, "POPULASI &", "INSIGHTS",
+        "Target · Realisasi · Site Performance · Gap",
+        RED, "$"
+    )
+
+    # ------------------------------------------------------------
+    # SLIDE 10 — POPULATION + SITE ANALYSIS
+    # ------------------------------------------------------------
+    s = add_slide_base()
+    add_header(
+        s,
+        "ANALISIS — Populasi Unit & Penyebab Gap Pendapatan",
+        "Populasi & Insights · 04"
+    )
+
+    add_kpi_card(
+        s, 0.38, 0.98, 3.75, 1.55, NAVY,
+        "T", "Target Populasi",
+        f"{target_pop:,}",
+        "Unit dengan budget Pendapatan",
+        "Baseline",
+        "amber"
+    )
+    add_kpi_card(
+        s, 4.36, 0.98, 3.75, 1.55, GREEN,
+        "✓", "Realisasi Populasi",
+        f"{real_pop:,}",
+        "Unit dengan realisasi Pendapatan",
+        f"{ach_pop:.1f}% vs Target",
+        "good" if ach_pop >= 100 else "bad"
+    )
+    add_kpi_card(
+        s, 8.34, 0.98, 4.61, 1.55, RED,
+        "!", "Gap Pendapatan",
+        money(pend_b - pend_r),
+        f"Target {money(pend_b)}",
+        f"{ach_pend:.1f}% tercapai",
+        "good" if ach_pend >= 100 else "bad"
+    )
+
+    # site chart
+    add_panel(
+        s, 0.38, 2.78, 7.70, 3.72,
+        "Capaian Pendapatan per Site",
+        top_accent=CYAN
+    )
+
+    site_group = (
+        data.groupby("lokasi", as_index=False)
+        .agg(realisasi=("pendapatan_realisasi", "sum"),
+             budget=("pendapatan_budget", "sum"))
+    )
+    site_group = site_group[site_group["budget"] > 0].copy()
+    if not site_group.empty:
+        site_group["capaian"] = (
+            site_group["realisasi"] / site_group["budget"] * 100
+        )
+        site_group = site_group.sort_values("capaian", ascending=True).head(10)
+
+        cd10 = CategoryChartData()
+        cd10.categories = list(site_group["lokasi"].astype(str))
+        cd10.add_series("Capaian %", tuple(site_group["capaian"]))
+        f10 = s.shapes.add_chart(
+            XL_CHART_TYPE.BAR_CLUSTERED,
+            Inches(0.58), Inches(3.25),
+            Inches(7.30), Inches(2.98), cd10
+        )
+        c10 = f10.chart
+        c10.series[0].format.fill.solid()
+        c10.series[0].format.fill.fore_color.rgb = CYAN
+        set_chart_common(c10, legend=False)
+
+    # insights panel
+    add_panel(
+        s, 8.34, 2.78, 4.61, 3.72,
+        "Key Insights",
+        top_accent=RED
+    )
+
+    gap_rp = pend_b - pend_r
+    gap_pop = target_pop - real_pop
+
+    insight_lines = [
+        f"Pendapatan: {ach_pend:.1f}% dari target.",
+        f"Gap pendapatan: {money(gap_rp)}.",
+        f"Gap populasi: {gap_pop:,} unit.",
+    ]
+    if not site_group.empty:
+        worst = site_group.iloc[0]
+        insight_lines.append(
+            f"Site terendah: {worst['lokasi']} ({worst['capaian']:.1f}%)."
+        )
+    if ach_prest < 100:
+        insight_lines.append(
+            f"Prestasi {ach_prest:.1f}% turut menekan pendapatan."
+        )
+    else:
+        insight_lines.append(
+            "Prestasi sudah mencapai target; evaluasi faktor pendapatan lainnya."
+        )
+
+    y = 3.30
+    for line in insight_lines:
+        c = s.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(8.62), Inches(y + 0.04),
+            Inches(0.12), Inches(0.12)
+        )
+        c.fill.solid(); c.fill.fore_color.rgb = RED; c.line.fill.background()
+        add_text(
+            s, 8.86, y, 3.72, 0.42,
+            line, size=8.4, color=TEXT
+        )
+        y += 0.52
+
+    add_note(
+        s, 8.60, 5.82, 4.08, 0.45,
+        "Prioritas: fokus pada site dengan capaian terendah dan unit yang belum menghasilkan Pendapatan.",
+        fill=PALE_RED, accent=RED
+    )
+    add_footer(s, 10)
+
+    # ------------------------------------------------------------
+    # FINAL SLIDE — THANK YOU / SUMMARY, matching PDF closing style
+    # ------------------------------------------------------------
+    s = prs.slides.add_slide(blank)
+    add_rect(s, 0, 0, 13.333, 7.5, NAVY)
+    add_rect(s, 0, 0, 0.25, 7.5, CYAN)
+
+    for left, top, size, col in [
+        (9.25, -0.9, 4.8, RGBColor(0x2C, 0x38, 0x80)),
+        (10.10, -0.35, 3.9, RGBColor(0x34, 0x40, 0x89)),
+    ]:
+        circ = s.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(left), Inches(top),
+            Inches(size), Inches(size)
+        )
+        circ.fill.solid(); circ.fill.fore_color.rgb = col
+        circ.line.fill.background()
+
+    add_text(
+        s, 0.75, 0.75, 7.0, 0.75,
+        "TERIMA KASIH",
+        size=31, color=WHITE, bold=True
+    )
+    add_text(
+        s, 0.75, 1.48, 7.0, 0.38,
+        "Ringkasan Dashboard — Target vs Realisasi",
+        size=13, color=CYAN, bold=True
+    )
+
+    # summary box
+    add_rect(
+        s, 0.68, 2.20, 7.35, 3.65,
+        RGBColor(0x27, 0x31, 0x70), None
+    )
+    add_text(
+        s, 0.98, 2.45, 6.6, 0.30,
+        f"RINGKASAN OPERASIONAL — {period}",
+        size=10, color=RGBColor(0xC9, 0xD0, 0xE8), bold=True
+    )
+
+    summary_rows = [
+        ("Pendapatan", money(pend_r), f"{ach_pend:.1f}% dari target"),
+        ("Prestasi", f"{prest_r:,.0f}", f"{ach_prest:.1f}% dari target"),
+        ("Total Biaya", money(biaya_r), f"{ach_biaya:.1f}% dari budget"),
+        ("Populasi Unit", f"{real_pop:,}", f"{ach_pop:.1f}% dari target"),
+    ]
+
+    sy = 3.00
+    for label, val, note in summary_rows:
+        add_text(s, 1.00, sy, 1.70, 0.30, label, size=8.5,
+                 color=RGBColor(0xC9, 0xD0, 0xE8))
+        add_text(s, 2.72, sy, 2.25, 0.30, val, size=10,
+                 color=WHITE, bold=True)
+        add_text(s, 5.00, sy, 2.60, 0.30, note, size=7.8,
+                 color=RGBColor(0xA7, 0xB2, 0xD0))
+        sy += 0.62
+
+    # right summary
+    add_text(
+        s, 8.55, 2.48, 3.7, 0.30,
+        "RINGKASAN MANAGEMENT",
+        size=10, color=WHITE, bold=True
+    )
+    bullets = [
+        f"Pendapatan tercapai {ach_pend:.1f}% dari target.",
+        f"Prestasi tercapai {ach_prest:.1f}% dari target.",
+        f"Biaya berada di {ach_biaya:.1f}% terhadap budget.",
+        f"Populasi terealisasi {real_pop:,} dari {target_pop:,} unit.",
+    ]
+    by = 3.05
+    for b in bullets:
+        add_text(s, 8.55, by, 0.20, 0.24, "●",
+                 size=9, color=CYAN, bold=True)
+        add_text(s, 8.85, by, 3.25, 0.52, b,
+                 size=8.5, color=WHITE)
+        by += 0.72
+
+    add_text(
+        s, 0.75, 6.70, 7.0, 0.22,
+        "Integritas  •  Kemandirian  •  Kebersamaan  •  Tanggung Jawab  •  Inovatif  •  Komitmen",
+        size=7.5, color=RGBColor(0xC9, 0xD0, 0xE8)
+    )
+
+    # ------------------------------------------------------------
+    # SAVE
+    # ------------------------------------------------------------
     buf = _io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
