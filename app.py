@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import plotly.io as pio
 import base64
+import re
 from pathlib import Path
 
 pio.templates.default = "plotly_dark"
@@ -48,7 +49,6 @@ TEXT_MUTED = "#9CA3AF"
 
 st.markdown(f"""
 <style>
-    /* Force a black background, consistent regardless of browser/system settings */
     html, body, [data-testid="stAppViewContainer"], .main {{
         background-color: {DARK_BG} !important;
     }}
@@ -57,7 +57,6 @@ st.markdown(f"""
     [data-testid="stSidebar"] * {{ color: {TEXT_LIGHT} !important; }}
     .block-container {{ padding-top: 1.5rem; }}
 
-    /* KPI metric cards */
     div[data-testid="stMetric"] {{
         background: {CARD_BG} !important;
         border: 1px solid {BORDER};
@@ -69,7 +68,6 @@ st.markdown(f"""
     div[data-testid="stMetricValue"] * {{ color: {TEXT_LIGHT} !important; font-weight: 700; }}
     div[data-testid="stMetricDelta"] * {{ font-weight: 600; }}
 
-    /* General text/headers on the black background */
     h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{ color: {TEXT_LIGHT} !important; }}
     h1, h2, h3 {{ color: {GOLD} !important; }}
 
@@ -101,11 +99,17 @@ st.markdown(f"""
         margin-top: 6px;
         color: {TEXT_LIGHT} !important;
     }}
+    .insight-box {{
+        background: {CARD_BG};
+        border: 1px solid {BORDER};
+        border-left: 5px solid {CHART_GREEN};
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 10px;
+    }}
+    .insight-box li {{ margin-bottom: 8px; line-height: 1.5; }}
 
-    /* Dataframe / table area */
     [data-testid="stDataFrame"] {{ background-color: {CARD_BG} !important; }}
-
-    /* Text input / multiselect chips */
     .stTextInput input {{ background-color: {CARD_BG} !important; color: {TEXT_LIGHT} !important; }}
 </style>
 """, unsafe_allow_html=True)
@@ -120,8 +124,7 @@ KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Truck / Ritase (TR)"}
 
 @st.cache_data
 def load_data(file) -> pd.DataFrame:
-    df = pd.read_csv(file)
-    return df
+    return pd.read_csv(file)
 
 @st.cache_data
 def load_maintenance_data(file) -> pd.DataFrame:
@@ -129,7 +132,7 @@ def load_maintenance_data(file) -> pd.DataFrame:
         return pd.DataFrame()
     return pd.read_csv(file)
 
-def load_from_upload(uploaded_file: "st.runtime.uploaded_file_manager.UploadedFile") -> pd.DataFrame:
+def load_from_upload(uploaded_file) -> pd.DataFrame:
     """Parse an uploaded 'Gabungan.xlsx' file with the same fixed layout used to build data_bkms.csv."""
     import openpyxl
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
@@ -167,10 +170,8 @@ def load_from_upload(uploaded_file: "st.runtime.uploaded_file_manager.UploadedFi
 
 def load_from_upload_maintenance(uploaded_file) -> pd.DataFrame:
     """Parse an uploaded maintenance detail file (e.g. 'Pemeliharaan_sd_Bulan.xls').
-    Expected columns: FDATE, ACCOUNT, SUB, FREMARK, FADDREMARK, FAMOUNT_RP, DESCRIPTION.
     DESCRIPTION format: 'PEMELIHARAAN (RUTIN|NON RUTIN) (kategori) (tipe biaya) (PLANTATION|MINING) (site) - (unit)'
     """
-    import re
     raw = pd.read_excel(uploaded_file, sheet_name=0, header=0)
     pattern = re.compile(
         r'^PEMELIHARAAN\s+(RUTIN|NON RUTIN)\s+(.*?)\s+(SPAREPART|ALOKASI WORKSHOP|SERVICE LUAR|LAIN-LAIN)\s+(PLANTATION|MINING)\s+(.*?)\s+-\s+(.*)$'
@@ -237,24 +238,18 @@ with st.sidebar:
     sel_kat_labels = st.multiselect("Kategori Unit", kat_labels, default=kat_labels)
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
 
-    st.markdown("---")
-    unit_opts = sorted(df_raw["nama_unit"].dropna().unique().tolist())
-    sel_unit = st.multiselect("Unit (opsional, kosongkan = semua)", unit_opts, default=[])
-
 # ---------------------------------------------------------------
-# APPLY FILTERS
+# APPLY FILTERS (data utama)
 # ---------------------------------------------------------------
 df = df_raw[
     df_raw["lokasi"].isin(sel_site) &
     df_raw["bulan"].isin(sel_month) &
     df_raw["kategori"].isin(sel_kat)
 ].copy()
-if sel_unit:
-    df = df[df["nama_unit"].isin(sel_unit)]
 
-maint_df = pd.DataFrame()
+maint_df_site_bulan = pd.DataFrame()
 if not maint_raw.empty:
-    maint_df = maint_raw[
+    maint_df_site_bulan = maint_raw[
         maint_raw["lokasi"].isin(sel_site) &
         maint_raw["bulan"].isin(sel_month)
     ].copy()
@@ -270,318 +265,6 @@ def achievement(real, budget):
     if budget == 0:
         return None
     return real / budget * 100
-
-# ---------------------------------------------------------------
-# POWERPOINT EXPORT
-# ---------------------------------------------------------------
-def build_pptx(data: pd.DataFrame, site_list, month_list, kat_list) -> bytes:
-    """Build a PPTX summary of the (already filtered) dashboard data.
-    Uses python-pptx only (no Node/pptxgenjs) so it runs inside a deployed
-    Streamlit Cloud app."""
-    from pptx import Presentation
-    from pptx.util import Inches, Pt, Emu
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-    from pptx.chart.data import CategoryChartData
-    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
-    from pptx.enum.shapes import MSO_SHAPE
-    import io as _io
-
-    GREEN = RGBColor(0x0B, 0x3D, 0x2E)
-    GREEN_LIGHT = RGBColor(0x3F, 0xA7, 0x72)
-    GOLD_C = RGBColor(0xC9, 0xA2, 0x27)
-    DARK_BG = RGBColor(0x0A, 0x0A, 0x0A)
-    CARD_BG = RGBColor(0x16, 0x1B, 0x22)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    MUTED = RGBColor(0x9C, 0xA3, 0xAF)
-    RED_C = RGBColor(0xE4, 0x57, 0x4C)
-
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
-    blank = prs.slide_layouts[6]
-
-    def add_slide():
-        s = prs.slides.add_slide(blank)
-        bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
-        bg.fill.solid()
-        bg.fill.fore_color.rgb = DARK_BG
-        bg.line.fill.background()
-        bg.shadow.inherit = False
-        s.shapes._spTree.remove(bg._element)
-        s.shapes._spTree.insert(2, bg._element)
-        return s
-
-    def add_textbox(slide, left, top, width, height, text, size=18, bold=False,
-                     color=WHITE, align=PP_ALIGN.LEFT, font="Calibri"):
-        tb = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
-        tf = tb.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.alignment = align
-        run = p.add_run()
-        run.text = text
-        run.font.size = Pt(size)
-        run.font.bold = bold
-        run.font.color.rgb = color
-        run.font.name = font
-        return tb
-
-    def add_card(slide, left, top, width, height, label, value, sub=None, sub_color=GREEN_LIGHT):
-        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
-        card.adjustments[0] = 0.06
-        card.fill.solid()
-        card.fill.fore_color.rgb = CARD_BG
-        card.line.color.rgb = GOLD_C
-        card.line.width = Pt(1.5)
-        card.shadow.inherit = False
-        tf = card.text_frame
-        tf.word_wrap = True
-        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.margin_left = Inches(0.18)
-        tf.margin_right = Inches(0.18)
-        p1 = tf.paragraphs[0]
-        r1 = p1.add_run()
-        r1.text = label
-        r1.font.size = Pt(12)
-        r1.font.color.rgb = MUTED
-        r1.font.bold = True
-        p2 = tf.add_paragraph()
-        r2 = p2.add_run()
-        r2.text = value
-        r2.font.size = Pt(24)
-        r2.font.bold = True
-        r2.font.color.rgb = WHITE
-        if sub:
-            p3 = tf.add_paragraph()
-            r3 = p3.add_run()
-            r3.text = sub
-            r3.font.size = Pt(12)
-            r3.font.bold = True
-            r3.font.color.rgb = sub_color
-        return card
-
-    def style_chart(chart, categories_color=WHITE, legend=True):
-        chart.has_legend = legend
-        if legend:
-            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-            chart.legend.include_in_layout = False
-            chart.legend.font.color.rgb = WHITE
-            chart.legend.font.size = Pt(11)
-        cat_ax = chart.category_axis
-        cat_ax.tick_labels.font.color.rgb = WHITE
-        cat_ax.tick_labels.font.size = Pt(10)
-        cat_ax.format.line.color.rgb = MUTED
-        val_ax = chart.value_axis
-        val_ax.tick_labels.font.color.rgb = WHITE
-        val_ax.tick_labels.font.size = Pt(10)
-        val_ax.format.line.color.rgb = MUTED
-        val_ax.has_major_gridlines = True
-        val_ax.major_gridlines.format.line.color.rgb = RGBColor(0x2D, 0x33, 0x3B)
-
-    # ---------- SLIDE 1: TITLE ----------
-    s = add_slide()
-    accent = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(3.15), prs.slide_width, Inches(1.2))
-    accent.fill.solid()
-    accent.fill.fore_color.rgb = GREEN
-    accent.line.fill.background()
-    accent.shadow.inherit = False
-    add_textbox(s, 0.8, 2.05, 11.7, 1.0, "Dashboard Biaya & Pendapatan", size=40, bold=True, color=GOLD_C)
-    add_textbox(s, 0.8, 3.35, 11.7, 0.6, "PT BUANA KARYA MANDIRI SEJAHTERA (BKMS)", size=20, bold=True, color=WHITE)
-    period = ", ".join(month_list) if month_list else "-"
-    site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
-    kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
-    add_textbox(s, 0.8, 4.7, 11.7, 1.4,
-                f"Periode: {period}\nSite: {site_txt}\nKategori: {kat_txt}",
-                size=14, color=MUTED)
-
-    # ---------- SLIDE 2: KPI SUMMARY ----------
-    s = add_slide()
-    add_textbox(s, 0.6, 0.35, 11, 0.6, "Ringkasan Target vs Realisasi", size=26, bold=True, color=GOLD_C)
-
-    tpr = data["pendapatan_realisasi"].sum()
-    tpb = data["pendapatan_budget"].sum()
-    tprest_r = data["prestasi_realisasi"].sum()
-    tprest_b = data["prestasi_budget"].sum()
-    tbr = data["total_biaya_realisasi"].sum()
-    tbb = data["total_biaya_budget"].sum()
-    margin_v = tpr - tbr
-
-    def ach_txt(real, budget, label="Budget"):
-        if budget == 0:
-            return f"{label} = 0"
-        pct = real / budget * 100 - 100
-        return f"{pct:+.1f}% vs {label}"
-
-    card_w, card_h, gap = 2.75, 1.9, 0.35
-    start_x = 0.6
-    y = 1.3
-    add_card(s, start_x, y, card_w, card_h, "PENDAPATAN (REALISASI)", fmt_rp(tpr), ach_txt(tpr, tpb, "Budget"))
-    add_card(s, start_x + (card_w + gap), y, card_w, card_h, "PRESTASI (REALISASI)", f"{tprest_r:,.0f}", ach_txt(tprest_r, tprest_b, "Target"))
-    add_card(s, start_x + 2 * (card_w + gap), y, card_w, card_h, "TOTAL BIAYA (REALISASI)", fmt_rp(tbr), ach_txt(tbr, tbb, "Budget"), sub_color=RED_C)
-    add_card(s, start_x + 3 * (card_w + gap), y, card_w, card_h, "MARGIN", fmt_rp(margin_v), "Pendapatan - Biaya", sub_color=GOLD_C)
-
-    # mini chart: pendapatan vs biaya
-    cd = CategoryChartData()
-    cd.categories = ["Pendapatan", "Total Biaya"]
-    cd.add_series("Budget", (tpb, tbb))
-    cd.add_series("Realisasi", (tpr, tbr))
-    gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(3.6), Inches(11.9), Inches(3.4), cd)
-    chart = gframe.chart
-    chart.series[0].format.fill.solid()
-    chart.series[0].format.fill.fore_color.rgb = MUTED
-    chart.series[1].format.fill.solid()
-    chart.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
-    style_chart(chart)
-
-    # ---------- SLIDE 3: TARGET VS REALISASI PER SITE ----------
-    s = add_slide()
-    add_textbox(s, 0.6, 0.35, 11, 0.6, "Target vs Realisasi per Site", size=26, bold=True, color=GOLD_C)
-
-    site_agg = data.groupby("lokasi", as_index=False).agg(
-        pendapatan_realisasi=("pendapatan_realisasi", "sum"),
-        pendapatan_budget=("pendapatan_budget", "sum"),
-    ).sort_values("pendapatan_realisasi", ascending=False)
-
-    cd2 = CategoryChartData()
-    cd2.categories = list(site_agg["lokasi"])
-    cd2.add_series("Budget", tuple(site_agg["pendapatan_budget"]))
-    cd2.add_series("Realisasi", tuple(site_agg["pendapatan_realisasi"]))
-    gframe2 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(1.2), Inches(11.9), Inches(5.7), cd2)
-    chart2 = gframe2.chart
-    chart2.series[0].format.fill.solid()
-    chart2.series[0].format.fill.fore_color.rgb = MUTED
-    chart2.series[1].format.fill.solid()
-    chart2.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
-    chart2.has_title = True
-    chart2.chart_title.text_frame.text = "Pendapatan: Budget vs Realisasi"
-    chart2.chart_title.text_frame.paragraphs[0].runs[0].font.color.rgb = WHITE
-    chart2.chart_title.text_frame.paragraphs[0].runs[0].font.size = Pt(14)
-    style_chart(chart2)
-
-    # ---------- SLIDE 4: KOMPONEN BIAYA ----------
-    s = add_slide()
-    add_textbox(s, 0.6, 0.35, 11, 0.6, "Perbandingan Komponen Biaya", size=26, bold=True, color=GOLD_C)
-
-    comp_labels = ["Upah", "BBM", "Maintenance", "Penyusutan", "Lainnya"]
-    comp_pairs = [
-        ("upah_realisasi", "upah_budget"), ("biaya_bbm_realisasi", "biaya_bbm_budget"),
-        ("maintenance_realisasi", "maintenance_budget"), ("penyusutan_realisasi", "penyusutan_budget"),
-        ("lainnya_realisasi", "lainnya_budget"),
-    ]
-    real_vals = tuple(data[r].sum() for r, b in comp_pairs)
-    budget_vals = tuple(data[b].sum() for r, b in comp_pairs)
-
-    cd3 = CategoryChartData()
-    cd3.categories = comp_labels
-    cd3.add_series("Budget", budget_vals)
-    cd3.add_series("Realisasi", real_vals)
-    gframe3 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(1.2), Inches(7.0), Inches(5.7), cd3)
-    chart3 = gframe3.chart
-    chart3.series[0].format.fill.solid()
-    chart3.series[0].format.fill.fore_color.rgb = MUTED
-    chart3.series[1].format.fill.solid()
-    chart3.series[1].format.fill.fore_color.rgb = GOLD_C
-    style_chart(chart3)
-
-    cd4 = CategoryChartData()
-    cd4.categories = comp_labels
-    cd4.add_series("Realisasi", real_vals)
-    gframe4 = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(7.8), Inches(1.2), Inches(4.9), Inches(5.7), cd4)
-    chart4 = gframe4.chart
-    chart4.has_legend = True
-    chart4.legend.position = XL_LEGEND_POSITION.BOTTOM
-    chart4.legend.include_in_layout = False
-    chart4.legend.font.color.rgb = WHITE
-    chart4.legend.font.size = Pt(11)
-    pie_colors = [GREEN_LIGHT, GOLD_C, RGBColor(0x4E, 0x8D, 0x7C), RGBColor(0xA9, 0xC7, 0xB8), RED_C]
-    for i, point in enumerate(chart4.series[0].points):
-        point.format.fill.solid()
-        point.format.fill.fore_color.rgb = pie_colors[i % len(pie_colors)]
-    chart4.plots[0].has_data_labels = True
-    chart4.plots[0].data_labels.font.color.rgb = WHITE
-    chart4.plots[0].data_labels.font.size = Pt(10)
-
-    # ---------- SLIDE 5: BIAYA LANGSUNG VS TIDAK LANGSUNG + TOTAL ----------
-    s = add_slide()
-    add_textbox(s, 0.6, 0.35, 11, 0.6, "Biaya Langsung vs Tidak Langsung", size=26, bold=True, color=GOLD_C)
-
-    bl_r = data["biaya_langsung_realisasi"].sum()
-    bl_b = data["biaya_langsung_budget"].sum()
-    btl_r = data["biaya_tidak_langsung_realisasi"].sum()
-    btl_b = data["biaya_tidak_langsung_budget"].sum()
-
-    add_card(s, 0.6, 1.3, 3.6, 1.7, "BIAYA LANGSUNG (REALISASI)", fmt_rp(bl_r), ach_txt(bl_r, bl_b, "Budget"), sub_color=RED_C)
-    add_card(s, 4.4, 1.3, 3.6, 1.7, "BIAYA TIDAK LANGSUNG (REALISASI)", fmt_rp(btl_r), ach_txt(btl_r, btl_b, "Budget"), sub_color=RED_C)
-    add_card(s, 8.2, 1.3, 4.3, 1.7, "TOTAL BIAYA KESELURUHAN", fmt_rp(bl_r + btl_r), "Langsung + Tidak Langsung", sub_color=GOLD_C)
-
-    cd5 = CategoryChartData()
-    cd5.categories = ["Biaya Langsung", "Biaya Tidak Langsung"]
-    cd5.add_series("Budget", (bl_b, btl_b))
-    cd5.add_series("Realisasi", (bl_r, btl_r))
-    gframe5 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(3.35), Inches(6.6), Inches(3.6), cd5)
-    chart5 = gframe5.chart
-    chart5.series[0].format.fill.solid()
-    chart5.series[0].format.fill.fore_color.rgb = MUTED
-    chart5.series[1].format.fill.solid()
-    chart5.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
-    style_chart(chart5)
-
-    cd6 = CategoryChartData()
-    cd6.categories = ["Biaya Langsung", "Biaya Tidak Langsung"]
-    cd6.add_series("Realisasi", (bl_r, btl_r))
-    gframe6 = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(7.5), Inches(3.35), Inches(5.2), Inches(3.6), cd6)
-    chart6 = gframe6.chart
-    chart6.has_legend = True
-    chart6.legend.position = XL_LEGEND_POSITION.BOTTOM
-    chart6.legend.include_in_layout = False
-    chart6.legend.font.color.rgb = WHITE
-    chart6.legend.font.size = Pt(11)
-    for i, point in enumerate(chart6.series[0].points):
-        point.format.fill.solid()
-        point.format.fill.fore_color.rgb = [GREEN_LIGHT, GOLD_C][i % 2]
-    chart6.plots[0].has_data_labels = True
-    chart6.plots[0].data_labels.font.color.rgb = WHITE
-    chart6.plots[0].data_labels.font.size = Pt(10)
-
-    # ---------- SLIDE 6: TOP 10 UNIT BY TOTAL BIAYA ----------
-    s = add_slide()
-    add_textbox(s, 0.6, 0.35, 11, 0.6, "Top 10 Unit - Total Biaya Realisasi", size=26, bold=True, color=GOLD_C)
-
-    top10 = data.groupby("nama_unit", as_index=False).agg(
-        total_biaya_realisasi=("total_biaya_realisasi", "sum"),
-        pendapatan_realisasi=("pendapatan_realisasi", "sum"),
-        lokasi=("lokasi", "first"),
-    ).sort_values("total_biaya_realisasi", ascending=False).head(10)
-
-    rows, cols = len(top10) + 1, 4
-    tbl_left, tbl_top, tbl_w, tbl_h = Inches(0.6), Inches(1.2), Inches(11.9), Inches(5.7)
-    gframe_t = s.shapes.add_table(rows, cols, tbl_left, tbl_top, tbl_w, tbl_h)
-    table = gframe_t.table
-    headers = ["Nama Unit", "Site", "Total Biaya (Realisasi)", "Pendapatan (Realisasi)"]
-    for j, h in enumerate(headers):
-        cell = table.cell(0, j)
-        cell.text = h
-        cell.fill.solid()
-        cell.fill.fore_color.rgb = GREEN
-        p = cell.text_frame.paragraphs[0]
-        p.runs[0].font.bold = True
-        p.runs[0].font.color.rgb = WHITE
-        p.runs[0].font.size = Pt(12)
-    for i, (_, row) in enumerate(top10.iterrows(), start=1):
-        vals = [str(row["nama_unit"])[:45], str(row["lokasi"]), fmt_rp(row["total_biaya_realisasi"]), fmt_rp(row["pendapatan_realisasi"])]
-        for j, v in enumerate(vals):
-            cell = table.cell(i, j)
-            cell.text = v
-            cell.fill.solid()
-            cell.fill.fore_color.rgb = CARD_BG if i % 2 == 0 else RGBColor(0x1E, 0x24, 0x2C)
-            p = cell.text_frame.paragraphs[0]
-            p.runs[0].font.size = Pt(11)
-            p.runs[0].font.color.rgb = WHITE
-
-    buf = _io.BytesIO()
-    prs.save(buf)
-    return buf.getvalue()
 
 # ---------------------------------------------------------------
 # HEADER
@@ -609,25 +292,10 @@ if df.empty:
     st.warning("Tidak ada data untuk kombinasi filter yang dipilih. Silakan ubah filter di sidebar.")
     st.stop()
 
-st.caption(f"Menampilkan **{len(df):,}** baris data unit • Site: {', '.join(sel_site) if len(sel_site)<=4 else f'{len(sel_site)} site'} • Bulan: {', '.join(sel_month)}")
-
-colX, colY = st.columns([5, 1.4])
-with colY:
-    if st.button("📽️ Buat Presentasi (PPTX)", use_container_width=True, type="primary"):
-        with st.spinner("Menyusun slide presentasi..."):
-            pptx_bytes = build_pptx(df, sel_site, sel_month, sel_kat)
-        st.session_state["pptx_bytes"] = pptx_bytes
-    if "pptx_bytes" in st.session_state:
-        st.download_button(
-            "⬇️ Unduh PPTX",
-            data=st.session_state["pptx_bytes"],
-            file_name="Laporan_Biaya_Pendapatan_BKMS.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            use_container_width=True,
-        )
+st.caption(f"Site: {', '.join(sel_site) if len(sel_site)<=4 else f'{len(sel_site)} site'} • Bulan: {', '.join(sel_month)}")
 
 # ---------------------------------------------------------------
-# KPI SUMMARY
+# HITUNG METRIK UTAMA (dipakai di beberapa bagian + PPTX)
 # ---------------------------------------------------------------
 tot_pendapatan_r = df["pendapatan_realisasi"].sum()
 tot_pendapatan_b = df["pendapatan_budget"].sum()
@@ -640,431 +308,431 @@ ach_pendapatan = achievement(tot_pendapatan_r, tot_pendapatan_b)
 ach_prestasi = achievement(tot_prestasi_r, tot_prestasi_b)
 ach_biaya = achievement(tot_biaya_r, tot_biaya_b)
 
-st.markdown('<h3 class="section-title">Ringkasan Target vs Realisasi</h3>', unsafe_allow_html=True)
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Pendapatan (Realisasi)", fmt_rp(tot_pendapatan_r),
-          f"{ach_pendapatan-100:+.1f}% vs Budget ({fmt_rp(tot_pendapatan_b)})" if ach_pendapatan is not None else "Budget = 0")
-c2.metric("Prestasi (Realisasi)", f"{tot_prestasi_r:,.0f}",
-          f"{ach_prestasi-100:+.1f}% vs Target ({tot_prestasi_b:,.0f})" if ach_prestasi is not None else "Target = 0")
-c3.metric("Total Biaya (Realisasi)", fmt_rp(tot_biaya_r),
-          f"{ach_biaya-100:+.1f}% vs Budget ({fmt_rp(tot_biaya_b)})" if ach_biaya is not None else "Budget = 0",
-          delta_color="inverse")
-margin = tot_pendapatan_r - tot_biaya_r
-c4.metric("Margin (Pendapatan - Biaya)", fmt_rp(margin))
+target_populasi = df.loc[df["pendapatan_budget"] > 0, "nama_unit"].nunique()
+realisasi_populasi = df.loc[df["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
+pct_populasi = (realisasi_populasi / target_populasi * 100) if target_populasi else None
+
+# ---------------------------------------------------------------
+# POWERPOINT EXPORT
+# ---------------------------------------------------------------
+def build_pptx(data, maint_data, site_list, month_list, kat_list) -> bytes:
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+    from pptx.enum.shapes import MSO_SHAPE
+    import io as _io
+
+    GREEN = RGBColor(0x0B, 0x3D, 0x2E)
+    GREEN_LIGHT = RGBColor(0x3F, 0xA7, 0x72)
+    GOLD_C = RGBColor(0xC9, 0xA2, 0x27)
+    DARK_BG_C = RGBColor(0x0A, 0x0A, 0x0A)
+    CARD_BG_C = RGBColor(0x16, 0x1B, 0x22)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    MUTED = RGBColor(0x9C, 0xA3, 0xAF)
+    RED_C = RGBColor(0xE4, 0x57, 0x4C)
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+
+    def add_slide():
+        s = prs.slides.add_slide(blank)
+        bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = DARK_BG_C
+        bg.line.fill.background()
+        bg.shadow.inherit = False
+        s.shapes._spTree.remove(bg._element)
+        s.shapes._spTree.insert(2, bg._element)
+        return s
+
+    def add_textbox(slide, left, top, width, height, text, size=18, bold=False,
+                     color=WHITE, align=PP_ALIGN.LEFT, font="Calibri"):
+        tb = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.alignment = align
+        run = p.add_run()
+        run.text = text
+        run.font.size = Pt(size)
+        run.font.bold = bold
+        run.font.color.rgb = color
+        run.font.name = font
+        return tb
+
+    def add_bullets(slide, left, top, width, height, lines, size=14):
+        tb = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        for i, line in enumerate(lines):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            r = p.add_run()
+            r.text = f"•  {line}"
+            r.font.size = Pt(size)
+            r.font.color.rgb = WHITE
+            p.space_after = Pt(10)
+        return tb
+
+    def add_card(slide, left, top, width, height, label, value, sub=None, sub_color=GREEN_LIGHT):
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+        card.adjustments[0] = 0.06
+        card.fill.solid()
+        card.fill.fore_color.rgb = CARD_BG_C
+        card.line.color.rgb = GOLD_C
+        card.line.width = Pt(1.5)
+        card.shadow.inherit = False
+        tf = card.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = Inches(0.18)
+        tf.margin_right = Inches(0.18)
+        p1 = tf.paragraphs[0]
+        r1 = p1.add_run()
+        r1.text = label
+        r1.font.size = Pt(12)
+        r1.font.color.rgb = MUTED
+        r1.font.bold = True
+        p2 = tf.add_paragraph()
+        r2 = p2.add_run()
+        r2.text = value
+        r2.font.size = Pt(22)
+        r2.font.bold = True
+        r2.font.color.rgb = WHITE
+        if sub:
+            p3 = tf.add_paragraph()
+            r3 = p3.add_run()
+            r3.text = sub
+            r3.font.size = Pt(11)
+            r3.font.bold = True
+            r3.font.color.rgb = sub_color
+        return card
+
+    def style_chart(chart, legend=True):
+        chart.has_legend = legend
+        if legend:
+            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+            chart.legend.include_in_layout = False
+            chart.legend.font.color.rgb = WHITE
+            chart.legend.font.size = Pt(11)
+        cat_ax = chart.category_axis
+        cat_ax.tick_labels.font.color.rgb = WHITE
+        cat_ax.tick_labels.font.size = Pt(10)
+        cat_ax.format.line.color.rgb = MUTED
+        val_ax = chart.value_axis
+        val_ax.tick_labels.font.color.rgb = WHITE
+        val_ax.tick_labels.font.size = Pt(10)
+        val_ax.format.line.color.rgb = MUTED
+        val_ax.has_major_gridlines = True
+        val_ax.major_gridlines.format.line.color.rgb = RGBColor(0x2D, 0x33, 0x3B)
+
+    def ach_txt(real, budget, label="Target"):
+        if budget == 0:
+            return f"{label} = 0"
+        pct = real / budget * 100
+        return f"{pct:.1f}% dari {label.lower()}"
+
+    # ---------- SLIDE 1: TITLE ----------
+    s = add_slide()
+    accent = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(3.15), prs.slide_width, Inches(1.2))
+    accent.fill.solid()
+    accent.fill.fore_color.rgb = GREEN
+    accent.line.fill.background()
+    accent.shadow.inherit = False
+    add_textbox(s, 0.8, 2.05, 11.7, 1.0, "Dashboard Biaya & Pendapatan", size=40, bold=True, color=GOLD_C)
+    add_textbox(s, 0.8, 3.35, 11.7, 0.6, "PT BUANA KARYA MANDIRI SEJAHTERA (BKMS)", size=20, bold=True, color=WHITE)
+    period = ", ".join(month_list) if month_list else "-"
+    site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
+    kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
+    add_textbox(s, 0.8, 4.7, 11.7, 1.4,
+                f"Periode: {period}\nSite: {site_txt}\nKategori: {kat_txt}",
+                size=14, color=MUTED)
+
+    # ---------- SLIDE 2: CAPAIAN UTAMA ----------
+    s = add_slide()
+    add_textbox(s, 0.6, 0.35, 11, 0.6, "Capaian Utama: Pendapatan, Prestasi, Biaya", size=24, bold=True, color=GOLD_C)
+
+    r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
+    pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
+    br_ = data["total_biaya_realisasi"].sum(); bb_ = data["total_biaya_budget"].sum()
+
+    card_w, card_h, gap = 3.7, 1.9, 0.4
+    add_card(s, 0.6, 1.2, card_w, card_h, "PENDAPATAN", fmt_rp(r_), ach_txt(r_, b_, "Target"))
+    add_card(s, 0.6 + (card_w + gap), 1.2, card_w, card_h, "PRESTASI", f"{pr_:,.0f}", ach_txt(pr_, pb_, "Target"))
+    add_card(s, 0.6 + 2 * (card_w + gap), 1.2, card_w, card_h, "BIAYA", fmt_rp(br_), ach_txt(br_, bb_, "Target"), sub_color=RED_C)
+
+    cd = CategoryChartData()
+    cd.categories = ["Pendapatan", "Biaya"]
+    cd.add_series("Target", (b_, bb_))
+    cd.add_series("Realisasi", (r_, br_))
+    gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(3.6), Inches(6.2), Inches(3.5), cd)
+    chart = gframe.chart
+    chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = MUTED
+    chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
+    style_chart(chart)
+
+    cd2 = CategoryChartData()
+    cd2.categories = ["Prestasi"]
+    cd2.add_series("Target", (pb_,))
+    cd2.add_series("Realisasi", (pr_,))
+    gframe2 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(3.6), Inches(5.6), Inches(3.5), cd2)
+    chart2 = gframe2.chart
+    chart2.series[0].format.fill.solid(); chart2.series[0].format.fill.fore_color.rgb = MUTED
+    chart2.series[1].format.fill.solid(); chart2.series[1].format.fill.fore_color.rgb = GOLD_C
+    style_chart(chart2)
+
+    # ---------- SLIDE 3: POPULASI UNIT ----------
+    s = add_slide()
+    add_textbox(s, 0.6, 0.35, 11, 0.6, "Populasi Unit: Target vs Realisasi", size=24, bold=True, color=GOLD_C)
+    tp = data.loc[data["pendapatan_budget"] > 0, "nama_unit"].nunique()
+    rp = data.loc[data["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
+    pct_p = (rp / tp * 100) if tp else 0
+    add_card(s, 0.6, 1.4, 3.9, 1.9, "TARGET POPULASI", f"{tp:,}", "Unit dengan target Pendapatan")
+    add_card(s, 4.75, 1.4, 3.9, 1.9, "REALISASI POPULASI", f"{rp:,}", "Unit dengan realisasi Pendapatan")
+    add_card(s, 8.9, 1.4, 3.85, 1.9, "CAPAIAN POPULASI", f"{pct_p:.1f}%", "Realisasi vs Target", sub_color=GOLD_C)
+
+    cd3 = CategoryChartData()
+    cd3.categories = ["Populasi Unit"]
+    cd3.add_series("Target", (tp,))
+    cd3.add_series("Realisasi", (rp,))
+    gframe3 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(2.5), Inches(3.8), Inches(8.3), Inches(3.2), cd3)
+    chart3 = gframe3.chart
+    chart3.series[0].format.fill.solid(); chart3.series[0].format.fill.fore_color.rgb = MUTED
+    chart3.series[1].format.fill.solid(); chart3.series[1].format.fill.fore_color.rgb = GREEN_LIGHT
+    style_chart(chart3)
+
+    # ---------- SLIDE 4: MAINTENANCE REKAP ----------
+    if maint_data is not None and not maint_data.empty:
+        s = add_slide()
+        add_textbox(s, 0.6, 0.35, 11, 0.6, "Rekap Biaya Maintenance", size=24, bold=True, color=GOLD_C)
+
+        total_m = maint_data["biaya"].sum()
+        n_trx = len(maint_data)
+        rutin_b = maint_data.loc[maint_data["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum()
+        nonrutin_b = maint_data.loc[maint_data["jenis_pemeliharaan"] == "NON RUTIN", "biaya"].sum()
+
+        add_card(s, 0.6, 1.2, 3.7, 1.6, "TOTAL BIAYA MAINTENANCE", fmt_rp(total_m), f"{n_trx:,} transaksi")
+        add_card(s, 4.5, 1.2, 3.7, 1.6, "BIAYA RUTIN", fmt_rp(rutin_b))
+        add_card(s, 8.4, 1.2, 4.3, 1.6, "BIAYA NON RUTIN", fmt_rp(nonrutin_b), sub_color=RED_C)
+
+        cat_agg = maint_data.groupby("kategori_sparepart", as_index=False)["biaya"].sum().sort_values("biaya", ascending=False).head(10)
+        cd4 = CategoryChartData()
+        cd4.categories = list(cat_agg["kategori_sparepart"])
+        cd4.add_series("Biaya", tuple(cat_agg["biaya"]))
+        gframe4 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.6), Inches(3.1), Inches(12.1), Inches(4.1), cd4)
+        chart4 = gframe4.chart
+        chart4.series[0].format.fill.solid(); chart4.series[0].format.fill.fore_color.rgb = GREEN_LIGHT
+        chart4.has_title = False
+        style_chart(chart4, legend=False)
+
+    buf = _io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+colX, colY = st.columns([5, 1.4])
+with colY:
+    if st.button("📽️ Buat Presentasi (PPTX)", use_container_width=True, type="primary"):
+        with st.spinner("Menyusun slide presentasi..."):
+            maint_for_pptx = maint_df_site_bulan if not maint_raw.empty else pd.DataFrame()
+            pptx_bytes = build_pptx(df, maint_for_pptx, sel_site, sel_month, sel_kat)
+        st.session_state["pptx_bytes"] = pptx_bytes
+    if "pptx_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Unduh PPTX",
+            data=st.session_state["pptx_bytes"],
+            file_name="Laporan_Biaya_Pendapatan_BKMS.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            use_container_width=True,
+        )
 
 st.markdown("---")
 
 # ---------------------------------------------------------------
-# POPULASI UNIT: TARGET VS AKTIF
+# 1-3. CAPAIAN: PENDAPATAN, PRESTASI, BIAYA
 # ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Populasi Unit: Target vs Aktif</h3>', unsafe_allow_html=True)
-st.caption("**Total Populasi** = jumlah unit yang memiliki target/budget Pendapatan (budget > 0). **Populasi Aktif** = jumlah unit yang memiliki realisasi Pendapatan (realisasi > 0), sesuai filter & periode yang dipilih.")
+st.markdown('<h3 class="section-title">Capaian Utama</h3>', unsafe_allow_html=True)
 
-total_populasi = df.loc[df["pendapatan_budget"] > 0, "nama_unit"].nunique()
-populasi_aktif = df.loc[df["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
-gap_populasi = total_populasi - populasi_aktif
-pct_aktif = (populasi_aktif / total_populasi * 100) if total_populasi else 0
-
-colQ1, colQ2 = st.columns([2, 3])
-
-with colQ1:
-    q1, q2, q3 = st.columns(3)
-    q1.metric("Total Populasi", f"{total_populasi:,}", "Punya target Pendapatan")
-    q2.metric("Populasi Aktif", f"{populasi_aktif:,}",
-              f"{pct_aktif:.1f}% dari total" if total_populasi else "Punya realisasi Pendapatan")
-    if gap_populasi >= 0:
-        q3.metric("Unit Belum Aktif", f"{gap_populasi:,}",
-                  "Target ada, realisasi belum tercatat", delta_color="inverse")
-    else:
-        q3.metric("Unit di Luar Target", f"{abs(gap_populasi):,}",
-                  "Ada realisasi, tapi target belum tercatat", delta_color="inverse")
-
-    pop_site = df.groupby("lokasi").apply(
-        lambda g: pd.Series({
-            "Total Populasi": g.loc[g["pendapatan_budget"] > 0, "nama_unit"].nunique(),
-            "Populasi Aktif": g.loc[g["pendapatan_realisasi"] > 0, "nama_unit"].nunique(),
-        })
-    ).reset_index().sort_values("Total Populasi", ascending=False)
-
-    st.dataframe(pop_site, use_container_width=True, height=220, hide_index=True)
-
-with colQ2:
-    fig_pop = go.Figure()
-    fig_pop.add_bar(x=pop_site["lokasi"], y=pop_site["Total Populasi"], name="Total Populasi", marker_color=GREY)
-    fig_pop.add_bar(x=pop_site["lokasi"], y=pop_site["Populasi Aktif"], name="Populasi Aktif", marker_color=CHART_GREEN)
-    fig_pop.update_layout(title="Populasi Unit per Site: Target vs Aktif", barmode="group",
-                           yaxis_title="Jumlah Unit", legend=dict(orientation="h", y=1.15), height=380,
-                           margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig_pop), use_container_width=True)
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# UNIT PRODUKTIF VS TIDAK PRODUKTIF
-# ---------------------------------------------------------------
-PRODUKTIF_THRESHOLD = 90  # persen realisasi terhadap target/budget
-
-st.markdown('<h3 class="section-title">Unit Produktif vs Tidak Produktif</h3>', unsafe_allow_html=True)
-st.caption(f"Unit dengan **Budget = 0 dan Realisasi = 0** tidak dihitung. Sisanya dikategorikan **Produktif** jika realisasi ≥ {PRODUKTIF_THRESHOLD}% dari target/budget (dijumlahkan per unit sesuai filter & periode yang dipilih), selain itu **Tidak Produktif**.")
-
-def hitung_produktif(data: pd.DataFrame, col_real: str, col_target: str, threshold: float = PRODUKTIF_THRESHOLD):
-    agg = data.groupby("nama_unit", as_index=False).agg(
-        kode_unit=("kode_unit", "first"),
-        realisasi=(col_real, "sum"),
-        target=(col_target, "sum"),
-    )
-    # Unit dengan budget = 0 DAN realisasi = 0 tidak dihitung sama sekali
-    agg = agg[~((agg["target"] == 0) & (agg["realisasi"] == 0))].copy()
-    def pct(row):
-        if row["target"] > 0:
-            return row["realisasi"] / row["target"] * 100
-        return 100.0 if row["realisasi"] > 0 else 0.0
-    agg["pct"] = agg.apply(pct, axis=1)
-    agg["status"] = agg["pct"].apply(lambda p: "Produktif" if p >= threshold else "Tidak Produktif")
-    return agg
-
-unit_pendapatan_agg = hitung_produktif(df, "pendapatan_realisasi", "pendapatan_budget")
-produktif_pendapatan = int((unit_pendapatan_agg["status"] == "Produktif").sum())
-tidak_produktif_pendapatan = int((unit_pendapatan_agg["status"] == "Tidak Produktif").sum())
-total_unit_pendapatan = produktif_pendapatan + tidak_produktif_pendapatan
-
-unit_prestasi_agg = hitung_produktif(df, "prestasi_realisasi", "prestasi_budget")
-produktif_prestasi = int((unit_prestasi_agg["status"] == "Produktif").sum())
-tidak_produktif_prestasi = int((unit_prestasi_agg["status"] == "Tidak Produktif").sum())
-total_unit_prestasi = produktif_prestasi + tidak_produktif_prestasi
-
-colP1, colP2 = st.columns(2)
-
-with colP1:
-    m0, m1, m2 = st.columns(3)
-    m0.metric("Total Unit (Pendapatan)", f"{total_unit_pendapatan:,}",
-               "Budget/Realisasi tercatat")
-    m1.metric("Unit Produktif (Pendapatan)", f"{produktif_pendapatan:,}",
-               f"{produktif_pendapatan/total_unit_pendapatan*100:.1f}% dari total" if total_unit_pendapatan else "")
-    m2.metric("Unit Tidak Produktif (Pendapatan)", f"{tidak_produktif_pendapatan:,}",
-               f"{tidak_produktif_pendapatan/total_unit_pendapatan*100:.1f}% dari total" if total_unit_pendapatan else "",
-               delta_color="inverse")
-    pie_pend = pd.DataFrame({
-        "Status": ["Produktif", "Tidak Produktif"],
-        "Jumlah": [produktif_pendapatan, tidak_produktif_pendapatan],
-    })
-    fig_p1 = px.pie(pie_pend, names="Status", values="Jumlah", hole=0.5,
-                     title=f"Unit Berdasarkan Pendapatan (≥{PRODUKTIF_THRESHOLD}% Budget)",
-                     color_discrete_sequence=[CHART_GREEN, RED])
-    fig_p1.update_layout(height=340, margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig_p1), use_container_width=True)
-
-with colP2:
-    m0b, m3, m4 = st.columns(3)
-    m0b.metric("Total Unit (Prestasi)", f"{total_unit_prestasi:,}",
-               "Target/Realisasi tercatat")
-    m3.metric("Unit Produktif (Prestasi)", f"{produktif_prestasi:,}",
-               f"{produktif_prestasi/total_unit_prestasi*100:.1f}% dari total" if total_unit_prestasi else "")
-    m4.metric("Unit Tidak Produktif (Prestasi)", f"{tidak_produktif_prestasi:,}",
-               f"{tidak_produktif_prestasi/total_unit_prestasi*100:.1f}% dari total" if total_unit_prestasi else "",
-               delta_color="inverse")
-    pie_prest = pd.DataFrame({
-        "Status": ["Produktif", "Tidak Produktif"],
-        "Jumlah": [produktif_prestasi, tidak_produktif_prestasi],
-    })
-    fig_p2 = px.pie(pie_prest, names="Status", values="Jumlah", hole=0.5,
-                     title=f"Unit Berdasarkan Prestasi (≥{PRODUKTIF_THRESHOLD}% Target)",
-                     color_discrete_sequence=[CHART_GREEN, RED])
-    fig_p2.update_layout(height=340, margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig_p2), use_container_width=True)
-
-with st.expander("🔍 Lihat detail % pencapaian per unit"):
-    dcol1, dcol2 = st.columns(2)
-    with dcol1:
-        st.markdown("**Pendapatan (Realisasi vs Budget)**")
-        show_pend = unit_pendapatan_agg.rename(columns={
-            "kode_unit": "Kode Unit", "nama_unit": "Nama Unit",
-            "realisasi": "Realisasi", "target": "Budget",
-            "pct": "% Pencapaian", "status": "Status",
-        })[["Kode Unit", "Nama Unit", "Realisasi", "Budget", "% Pencapaian", "Status"]]\
-            .sort_values("% Pencapaian").reset_index(drop=True)
-        st.dataframe(show_pend, use_container_width=True, height=300,
-                     column_config={
-                         "Realisasi": st.column_config.NumberColumn(format="Rp %,.0f"),
-                         "Budget": st.column_config.NumberColumn(format="Rp %,.0f"),
-                         "% Pencapaian": st.column_config.NumberColumn(format="%.1f%%"),
-                     })
-    with dcol2:
-        st.markdown("**Prestasi (Realisasi vs Target)**")
-        show_prest = unit_prestasi_agg.rename(columns={
-            "kode_unit": "Kode Unit", "nama_unit": "Nama Unit",
-            "realisasi": "Realisasi", "target": "Target",
-            "pct": "% Pencapaian", "status": "Status",
-        })[["Kode Unit", "Nama Unit", "Realisasi", "Target", "% Pencapaian", "Status"]]\
-            .sort_values("% Pencapaian").reset_index(drop=True)
-        st.dataframe(show_prest, use_container_width=True, height=300,
-                     column_config={
-                         "Realisasi": st.column_config.NumberColumn(format="%,.0f"),
-                         "Target": st.column_config.NumberColumn(format="%,.0f"),
-                         "% Pencapaian": st.column_config.NumberColumn(format="%.1f%%"),
-                     })
-
-st.markdown("---")
-
-
-st.markdown('<h3 class="section-title">Target vs Realisasi per Site</h3>', unsafe_allow_html=True)
-
-colA, colB = st.columns(2)
-
-site_agg = df.groupby("lokasi", as_index=False).agg(
-    pendapatan_realisasi=("pendapatan_realisasi", "sum"),
-    pendapatan_budget=("pendapatan_budget", "sum"),
-    prestasi_realisasi=("prestasi_realisasi", "sum"),
-    prestasi_budget=("prestasi_budget", "sum"),
-).sort_values("pendapatan_realisasi", ascending=False)
-
-with colA:
-    fig = go.Figure()
-    fig.add_bar(x=site_agg["lokasi"], y=site_agg["pendapatan_budget"], name="Budget", marker_color=GREY)
-    fig.add_bar(x=site_agg["lokasi"], y=site_agg["pendapatan_realisasi"], name="Realisasi", marker_color=CHART_GREEN)
-    fig.update_layout(title="Pendapatan: Budget vs Realisasi", barmode="group",
-                       yaxis_title="Rupiah", legend=dict(orientation="h", y=1.12), height=380,
-                       margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig), use_container_width=True)
-
-with colB:
-    fig2 = go.Figure()
-    fig2.add_bar(x=site_agg["lokasi"], y=site_agg["prestasi_budget"], name="Target", marker_color=GOLD)
-    fig2.add_bar(x=site_agg["lokasi"], y=site_agg["prestasi_realisasi"], name="Realisasi", marker_color=CHART_GREEN)
-    fig2.update_layout(title="Prestasi: Target vs Realisasi", barmode="group",
-                        yaxis_title="Unit Prestasi", legend=dict(orientation="h", y=1.12), height=380,
-                        margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig2), use_container_width=True)
-
-# ---------------------------------------------------------------
-# TREND BULANAN
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Tren Bulanan</h3>', unsafe_allow_html=True)
-
-month_agg = df.groupby(["bulan_no", "bulan"], as_index=False).agg(
-    pendapatan_realisasi=("pendapatan_realisasi", "sum"),
-    pendapatan_budget=("pendapatan_budget", "sum"),
-    total_biaya_realisasi=("total_biaya_realisasi", "sum"),
-    total_biaya_budget=("total_biaya_budget", "sum"),
-).sort_values("bulan_no")
-
-fig3 = go.Figure()
-fig3.add_trace(go.Scatter(x=month_agg["bulan"], y=month_agg["pendapatan_budget"], name="Budget Pendapatan",
-                           mode="lines+markers", line=dict(color=GREY, dash="dash")))
-fig3.add_trace(go.Scatter(x=month_agg["bulan"], y=month_agg["pendapatan_realisasi"], name="Realisasi Pendapatan",
-                           mode="lines+markers", line=dict(color=CHART_GREEN, width=3)))
-fig3.add_trace(go.Scatter(x=month_agg["bulan"], y=month_agg["total_biaya_realisasi"], name="Realisasi Total Biaya",
-                           mode="lines+markers", line=dict(color=RED, width=3)))
-fig3.update_layout(height=400, yaxis_title="Rupiah", legend=dict(orientation="h", y=1.12), margin=dict(t=50, b=10))
-st.plotly_chart(style_fig(fig3), use_container_width=True)
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# BIAYA BREAKDOWN
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Perbandingan Komponen Biaya</h3>', unsafe_allow_html=True)
-
-cost_components = {
-    "Upah": ("upah_realisasi", "upah_budget"),
-    "BBM": ("biaya_bbm_realisasi", "biaya_bbm_budget"),
-    "Maintenance": ("maintenance_realisasi", "maintenance_budget"),
-    "Penyusutan": ("penyusutan_realisasi", "penyusutan_budget"),
-    "Lainnya": ("lainnya_realisasi", "lainnya_budget"),
-}
-comp_rows = []
-for label, (rcol, bcol) in cost_components.items():
-    comp_rows.append(dict(Komponen=label, Realisasi=df[rcol].sum(), Budget=df[bcol].sum()))
-comp_df = pd.DataFrame(comp_rows)
-
-colC, colD = st.columns([3, 2])
-
-with colC:
-    fig4 = go.Figure()
-    fig4.add_bar(x=comp_df["Komponen"], y=comp_df["Budget"], name="Budget", marker_color=GREY)
-    fig4.add_bar(x=comp_df["Komponen"], y=comp_df["Realisasi"], name="Realisasi", marker_color=GOLD)
-    fig4.update_layout(title="Biaya per Komponen: Budget vs Realisasi", barmode="group",
-                        yaxis_title="Rupiah", legend=dict(orientation="h", y=1.12), height=400,
-                        margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig4), use_container_width=True)
-
-with colD:
-    fig5 = px.pie(comp_df, names="Komponen", values="Realisasi", hole=0.5,
-                   color_discrete_sequence=[CHART_GREEN, GOLD, "#4E8D7C", "#A9C7B8", RED])
-    fig5.update_layout(title="Komposisi Biaya Realisasi", height=400, margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig5), use_container_width=True)
-
-# Biaya Langsung vs Tidak Langsung
-st.markdown("##### Biaya Langsung vs Biaya Tidak Langsung")
-colE, colF = st.columns([2, 3])
-
-bl_r = df["biaya_langsung_realisasi"].sum()
-bl_b = df["biaya_langsung_budget"].sum()
-btl_r = df["biaya_tidak_langsung_realisasi"].sum()
-btl_b = df["biaya_tidak_langsung_budget"].sum()
-
-with colE:
-    dl_df = pd.DataFrame({
-        "Jenis": ["Biaya Langsung", "Biaya Tidak Langsung"],
-        "Realisasi": [bl_r, btl_r],
-    })
-    fig6 = px.pie(dl_df, names="Jenis", values="Realisasi", hole=0.5,
-                   color_discrete_sequence=[CHART_GREEN, GOLD])
-    fig6.update_layout(title="Komposisi: Langsung vs Tidak Langsung", height=360, margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig6), use_container_width=True)
-
-with colF:
-    m1, m2 = st.columns(2)
-    a1 = achievement(bl_r, bl_b)
-    a2 = achievement(btl_r, btl_b)
-    m1.metric("Biaya Langsung (Realisasi)", fmt_rp(bl_r), f"{a1-100:+.1f}% vs Budget" if a1 is not None else "Budget = 0", delta_color="inverse")
-    m2.metric("Biaya Tidak Langsung (Realisasi)", fmt_rp(btl_r), f"{a2-100:+.1f}% vs Budget" if a2 is not None else "Budget = 0", delta_color="inverse")
-
-    fig7 = go.Figure()
-    fig7.add_bar(x=["Biaya Langsung", "Biaya Tidak Langsung"], y=[bl_b, btl_b], name="Budget", marker_color=GREY)
-    fig7.add_bar(x=["Biaya Langsung", "Biaya Tidak Langsung"], y=[bl_r, btl_r], name="Realisasi", marker_color=CHART_GREEN)
-    fig7.update_layout(barmode="group", height=280, yaxis_title="Rupiah",
-                        legend=dict(orientation="h", y=1.15), margin=dict(t=30, b=10))
-    st.plotly_chart(style_fig(fig7), use_container_width=True)
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# PER SITE x KATEGORI BREAKDOWN
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Biaya per Site & Kategori</h3>', unsafe_allow_html=True)
-
-site_kat = df.groupby(["lokasi", "kategori"], as_index=False).agg(
-    total_biaya_realisasi=("total_biaya_realisasi", "sum"),
-    total_biaya_budget=("total_biaya_budget", "sum"),
-    pendapatan_realisasi=("pendapatan_realisasi", "sum"),
+c1, c2, c3 = st.columns(3)
+c1.metric(
+    "Pendapatan: Realisasi vs Target",
+    fmt_rp(tot_pendapatan_r),
+    f"{ach_pendapatan:.1f}% dari target ({fmt_rp(tot_pendapatan_b)})" if ach_pendapatan is not None else "Target = 0",
 )
-site_kat["kategori_label"] = site_kat["kategori"].map(KATEGORI_LABEL).fillna(site_kat["kategori"])
-
-fig8 = px.bar(site_kat, x="lokasi", y="total_biaya_realisasi", color="kategori_label",
-              barmode="stack", color_discrete_sequence=[CHART_GREEN, GOLD],
-              labels={"total_biaya_realisasi": "Total Biaya Realisasi (Rp)", "lokasi": "Site", "kategori_label": "Kategori"})
-fig8.update_layout(height=380, legend=dict(orientation="h", y=1.12), margin=dict(t=50, b=10))
-st.plotly_chart(style_fig(fig8), use_container_width=True)
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# DETAIL TABLE - PER UNIT
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Detail Data per Unit</h3>', unsafe_allow_html=True)
-
-detail_cols = {
-    "nama_unit": "Nama Unit", "lokasi": "Site", "bulan": "Bulan", "kategori": "Kategori",
-    "pendapatan_realisasi": "Pendapatan (Real)", "pendapatan_budget": "Pendapatan (Budget)",
-    "prestasi_realisasi": "Prestasi (Real)", "prestasi_budget": "Prestasi (Target)",
-    "upah_realisasi": "Upah", "biaya_bbm_realisasi": "BBM",
-    "maintenance_realisasi": "Maintenance", "lainnya_realisasi": "Lainnya",
-    "biaya_langsung_realisasi": "Biaya Langsung", "biaya_tidak_langsung_realisasi": "Biaya Tdk Langsung",
-    "total_biaya_realisasi": "Total Biaya",
-}
-detail_df = df[list(detail_cols.keys())].rename(columns=detail_cols)
-detail_df["kategori"] = detail_df["Kategori"].map(KATEGORI_LABEL).fillna(detail_df["Kategori"]) if "Kategori" in detail_df.columns else None
-
-search = st.text_input("🔍 Cari nama unit...", "")
-show_df = detail_df.copy()
-if search:
-    show_df = show_df[show_df["Nama Unit"].str.contains(search, case=False, na=False)]
-
-st.dataframe(
-    show_df.sort_values("Total Biaya", ascending=False),
-    use_container_width=True,
-    height=420,
-    column_config={
-        c: st.column_config.NumberColumn(format="Rp %,.0f")
-        for c in ["Pendapatan (Real)", "Pendapatan (Budget)", "Upah", "BBM", "Maintenance",
-                   "Lainnya", "Biaya Langsung", "Biaya Tdk Langsung", "Total Biaya"]
-    },
+c2.metric(
+    "Prestasi: Realisasi vs Target",
+    f"{tot_prestasi_r:,.0f}",
+    f"{ach_prestasi:.1f}% dari target ({tot_prestasi_b:,.0f})" if ach_prestasi is not None else "Target = 0",
+)
+c3.metric(
+    "Biaya: Realisasi vs Target",
+    fmt_rp(tot_biaya_r),
+    f"{ach_biaya:.1f}% dari target ({fmt_rp(tot_biaya_b)})" if ach_biaya is not None else "Target = 0",
+    delta_color="inverse",
 )
 
-csv_export = show_df.to_csv(index=False).encode("utf-8")
-st.download_button("⬇️ Unduh Data (CSV)", csv_export, file_name="detail_biaya_pendapatan_bkms.csv", mime="text/csv")
-
 st.markdown("---")
 
 # ---------------------------------------------------------------
-# DETAIL BIAYA MAINTENANCE (SPAREPART)
+# 4. REKAP BIAYA MAINTENANCE (filter ID Unit + Rutin/Non Rutin + frekuensi)
 # ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Detail Biaya Maintenance (Sparepart)</h3>', unsafe_allow_html=True)
+st.markdown('<h3 class="section-title">Rekap Biaya Maintenance</h3>', unsafe_allow_html=True)
 
 if maint_raw.empty:
-    st.info("Data maintenance belum tersedia. Upload file Pemeliharaan (.xls/.xlsx) di sidebar untuk menampilkan rincian ini.")
-elif maint_df.empty:
-    st.warning("Tidak ada data maintenance untuk kombinasi filter Site/Bulan yang dipilih.")
+    st.info("Data maintenance belum tersedia. Upload file Pemeliharaan (.xls/.xlsx) di sidebar untuk menampilkan bagian ini.")
 else:
-    st.caption("Rincian biaya maintenance per kategori sparepart/sistem, mengikuti filter Site & Bulan di sidebar. Sumber: data transaksi pemeliharaan (bukan dari Gabungan.xlsx).")
+    code_pattern = re.compile(r'(\d{3}-\d{3})\s*$')
+    def _unit_label(name):
+        if not isinstance(name, str):
+            return name
+        m = code_pattern.search(name)
+        code = m.group(1) if m else "?"
+        return f"{code} — {name}"
 
-    total_maint = maint_df["biaya"].sum()
-    n_transaksi = len(maint_df)
-    n_unit_maint = maint_df["nama_unit"].nunique()
-    rutin_pct = maint_df.loc[maint_df["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum() / total_maint * 100 if total_maint else 0
+    maint_df_site_bulan = maint_df_site_bulan.copy()
+    maint_df_site_bulan["unit_label"] = maint_df_site_bulan["nama_unit"].apply(_unit_label)
+    unit_maint_opts = sorted(maint_df_site_bulan["unit_label"].dropna().unique().tolist())
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Biaya Maintenance", fmt_rp(total_maint))
-    m2.metric("Jumlah Transaksi", f"{n_transaksi:,}")
-    m3.metric("Unit Ter-maintenance", f"{n_unit_maint:,}")
-    m4.metric("Porsi Rutin", f"{rutin_pct:.1f}%", "vs Non Rutin")
-
-    colM1, colM2 = st.columns([3, 2])
-
-    with colM1:
-        cat_agg = maint_df.groupby("kategori_sparepart", as_index=False)["biaya"].sum().sort_values("biaya", ascending=True)
-        fig_m1 = go.Figure()
-        fig_m1.add_bar(y=cat_agg["kategori_sparepart"], x=cat_agg["biaya"], orientation="h", marker_color=CHART_GREEN)
-        fig_m1.update_layout(title="Biaya Maintenance per Kategori Sparepart/Sistem",
-                              xaxis_title="Rupiah", height=460, margin=dict(t=60, b=10, l=10))
-        st.plotly_chart(style_fig(fig_m1), use_container_width=True)
-
-    with colM2:
-        tipe_agg = maint_df.groupby("tipe_biaya", as_index=False)["biaya"].sum()
-        fig_m2 = px.pie(tipe_agg, names="tipe_biaya", values="biaya", hole=0.5,
-                         color_discrete_sequence=[CHART_GREEN, GOLD, "#4E8D7C", RED])
-        fig_m2.update_layout(title="Komposisi berdasarkan Tipe Biaya", height=230, margin=dict(t=50, b=10))
-        st.plotly_chart(style_fig(fig_m2), use_container_width=True)
-
-        jenis_agg = maint_df.groupby("jenis_pemeliharaan", as_index=False)["biaya"].sum()
-        fig_m3 = px.pie(jenis_agg, names="jenis_pemeliharaan", values="biaya", hole=0.5,
-                         color_discrete_sequence=[CHART_GREEN, GOLD])
-        fig_m3.update_layout(title="Rutin vs Non Rutin", height=230, margin=dict(t=50, b=10))
-        st.plotly_chart(style_fig(fig_m3), use_container_width=True)
-
-    st.markdown("##### Tren Biaya Maintenance Bulanan per Kategori")
-    month_cat = maint_df.groupby(["bulan_no", "bulan", "kategori_sparepart"], as_index=False)["biaya"].sum().sort_values("bulan_no")
-    fig_m4 = px.bar(month_cat, x="bulan", y="biaya", color="kategori_sparepart", barmode="stack",
-                     labels={"biaya": "Biaya (Rp)", "bulan": "Bulan", "kategori_sparepart": "Kategori"})
-    fig_m4.update_layout(height=420, legend=dict(orientation="h", y=1.2, font=dict(size=9)), margin=dict(t=60, b=10))
-    st.plotly_chart(style_fig(fig_m4), use_container_width=True)
-
-    st.markdown("##### Top 10 Unit - Biaya Maintenance Tertinggi")
-    top_unit_maint = maint_df.groupby("nama_unit", as_index=False)["biaya"].sum().sort_values("biaya", ascending=False).head(10)
-    fig_m5 = go.Figure()
-    fig_m5.add_bar(y=top_unit_maint["nama_unit"], x=top_unit_maint["biaya"], orientation="h", marker_color=GOLD)
-    fig_m5.update_layout(xaxis_title="Rupiah", height=380, margin=dict(t=20, b=10, l=10))
-    fig_m5.update_yaxes(autorange="reversed")
-    st.plotly_chart(style_fig(fig_m5), use_container_width=True)
-
-    st.markdown("##### Detail Transaksi Maintenance")
-    search_maint = st.text_input("🔍 Cari nama unit / kategori sparepart...", "", key="search_maint")
-    show_maint = maint_df[["tanggal", "lokasi", "nama_unit", "kategori_sparepart", "jenis_pemeliharaan", "tipe_biaya", "biaya", "keterangan"]].rename(columns={
-        "tanggal": "Tanggal", "lokasi": "Site", "nama_unit": "Nama Unit", "kategori_sparepart": "Kategori Sparepart",
-        "jenis_pemeliharaan": "Jenis", "tipe_biaya": "Tipe Biaya", "biaya": "Biaya", "keterangan": "Keterangan",
-    })
-    if search_maint:
-        mask = (show_maint["Nama Unit"].str.contains(search_maint, case=False, na=False) |
-                show_maint["Kategori Sparepart"].str.contains(search_maint, case=False, na=False))
-        show_maint = show_maint[mask]
-    st.dataframe(
-        show_maint.sort_values("Biaya", ascending=False),
-        use_container_width=True, height=380,
-        column_config={"Biaya": st.column_config.NumberColumn(format="Rp %,.0f")},
+    sel_unit_maint = st.multiselect(
+        "Filter berdasarkan ID Unit (opsional, kosongkan = semua unit) — ketik ID Unit atau nama unit",
+        unit_maint_opts, default=[],
     )
-    csv_maint = show_maint.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Unduh Detail Maintenance (CSV)", csv_maint, file_name="detail_maintenance_bkms.csv", mime="text/csv")
+
+    maint_df = maint_df_site_bulan
+    if sel_unit_maint:
+        maint_df = maint_df[maint_df["unit_label"].isin(sel_unit_maint)]
+
+    if maint_df.empty:
+        st.warning("Tidak ada data maintenance untuk kombinasi filter yang dipilih.")
+    else:
+        total_maint = maint_df["biaya"].sum()
+        n_transaksi = len(maint_df)
+        rutin_biaya = maint_df.loc[maint_df["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum()
+        nonrutin_biaya = maint_df.loc[maint_df["jenis_pemeliharaan"] == "NON RUTIN", "biaya"].sum()
+        rutin_n = int((maint_df["jenis_pemeliharaan"] == "RUTIN").sum())
+        nonrutin_n = int((maint_df["jenis_pemeliharaan"] == "NON RUTIN").sum())
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), f"{n_transaksi:,} transaksi")
+        k2.metric("Unit Ter-maintenance", f"{maint_df['nama_unit'].nunique():,}")
+        k3.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
+        k4.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
+
+        rekap = maint_df.groupby(["kategori_sparepart", "jenis_pemeliharaan"], as_index=False).agg(
+            jumlah_transaksi=("biaya", "count"),
+            total_biaya=("biaya", "sum"),
+        )
+
+        fig_rekap = px.bar(
+            rekap, x="kategori_sparepart", y="total_biaya", color="jenis_pemeliharaan",
+            barmode="group", color_discrete_map={"RUTIN": CHART_GREEN, "NON RUTIN": GOLD},
+            labels={"kategori_sparepart": "Kategori Sparepart / Sistem", "total_biaya": "Total Biaya (Rp)", "jenis_pemeliharaan": "Jenis"},
+        )
+        fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=460,
+                                 legend=dict(orientation="h", y=1.15), margin=dict(t=60, b=10), xaxis_tickangle=-30)
+        st.plotly_chart(style_fig(fig_rekap), use_container_width=True)
+
+        st.markdown("##### Rincian: Kategori, Jenis, Frekuensi (Berapa Kali), Total Biaya")
+        rekap_tbl = rekap.sort_values("total_biaya", ascending=False).rename(columns={
+            "kategori_sparepart": "Kategori (Maintenance atas Apa Saja)",
+            "jenis_pemeliharaan": "Jenis (Rutin / Non Rutin)",
+            "jumlah_transaksi": "Berapa Kali (Jumlah Transaksi)",
+            "total_biaya": "Total Biaya",
+        })
+        st.dataframe(
+            rekap_tbl, use_container_width=True, hide_index=True, height=380,
+            column_config={"Total Biaya": st.column_config.NumberColumn(format="Rp %,.0f")},
+        )
+        csv_rekap = rekap_tbl.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Unduh Rekap Maintenance (CSV)", csv_rekap, file_name="rekap_maintenance_bkms.csv", mime="text/csv")
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
+# 5. POPULASI: TARGET VS REALISASI
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Populasi Unit: Target vs Realisasi</h3>', unsafe_allow_html=True)
+st.caption("**Target Populasi** = jumlah unit yang memiliki target/budget Pendapatan (budget > 0). **Realisasi Populasi** = jumlah unit yang memiliki realisasi Pendapatan (realisasi > 0).")
+
+p1, p2, p3 = st.columns(3)
+p1.metric("Target Populasi", f"{target_populasi:,}", "Unit dengan target Pendapatan")
+p2.metric("Realisasi Populasi", f"{realisasi_populasi:,}", "Unit dengan realisasi Pendapatan")
+p3.metric(
+    "Capaian Populasi",
+    f"{pct_populasi:.1f}%" if pct_populasi is not None else "-",
+    "Realisasi vs Target Populasi",
+)
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
+# 6. ANALISA: PENYEBAB CAPAIAN PENDAPATAN
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Analisa: Penyebab Capaian Pendapatan</h3>', unsafe_allow_html=True)
+
+if ach_pendapatan is None:
+    st.info("Target Pendapatan belum tersedia untuk kombinasi filter ini, sehingga analisa capaian tidak bisa dihitung.")
+elif ach_pendapatan >= 100:
+    st.success(f"Realisasi Pendapatan sudah mencapai **{ach_pendapatan:.1f}%** dari target — tidak ada gap yang perlu dianalisa lebih lanjut untuk periode/filter ini.")
+else:
+    gap_rp = tot_pendapatan_b - tot_pendapatan_r
+    insights = []
+    insights.append(
+        f"Realisasi Pendapatan mencapai <b>{ach_pendapatan:.1f}%</b> dari target, dengan selisih (gap) sebesar <b>{fmt_rp(gap_rp)}</b>."
+    )
+
+    if ach_prestasi is not None:
+        diff = ach_pendapatan - ach_prestasi
+        if ach_prestasi < 100 and abs(diff) <= 10:
+            insights.append(
+                f"Prestasi juga hanya mencapai <b>{ach_prestasi:.1f}%</b> dari target — pola ini sejalan dengan capaian Pendapatan, "
+                f"mengindikasikan bahwa <b>volume pekerjaan/prestasi unit yang belum tercapai</b> menjadi salah satu faktor utama rendahnya Pendapatan."
+            )
+        elif ach_prestasi < 100:
+            lebih = "lebih kecil" if ach_prestasi > ach_pendapatan else "lebih besar"
+            insights.append(
+                f"Prestasi mencapai <b>{ach_prestasi:.1f}%</b> dari target — meski sama-sama di bawah target, gap-nya {lebih} dibanding Pendapatan, "
+                f"sehingga faktor prestasi kemungkinan <b>{'turut berkontribusi namun bukan penyebab dominan' if ach_prestasi > ach_pendapatan else 'menjadi kontributor signifikan'}</b>."
+            )
+        else:
+            insights.append(
+                f"Prestasi justru mencapai <b>{ach_prestasi:.1f}%</b> (di atas target), sehingga rendahnya Pendapatan kemungkinan besar "
+                f"<b>bukan disebabkan oleh volume pekerjaan/prestasi</b>, melainkan faktor lain seperti tarif/harga satuan atau piutang yang belum tertagih."
+            )
+
+    if target_populasi:
+        gap_pop = target_populasi - realisasi_populasi
+        gap_pop_pct = gap_pop / target_populasi * 100
+        if gap_pop > 0:
+            insights.append(
+                f"Sebanyak <b>{gap_pop} unit ({gap_pop_pct:.1f}%)</b> dari total populasi yang ditargetkan <b>tidak mencatatkan realisasi Pendapatan sama sekali</b> "
+                f"pada periode/filter ini — indikasi kuat adanya <b>unit yang tidak beroperasi (downtime/idle)</b>, yang turut menekan capaian Pendapatan secara keseluruhan."
+            )
+        else:
+            insights.append(
+                "Seluruh unit yang ditargetkan sudah mencatatkan realisasi Pendapatan (tidak ada indikasi unit idle/downtime dari sisi populasi)."
+            )
+
+    site_group = df.groupby("lokasi").agg(
+        realisasi=("pendapatan_realisasi", "sum"),
+        budget=("pendapatan_budget", "sum"),
+    ).reset_index()
+    site_group = site_group[site_group["budget"] > 0]
+    if not site_group.empty:
+        site_group["capaian"] = site_group["realisasi"] / site_group["budget"] * 100
+        worst = site_group.sort_values("capaian").iloc[0]
+        if worst["capaian"] < 100:
+            insights.append(
+                f"Site dengan capaian Pendapatan terendah adalah <b>{worst['lokasi']}</b> ({worst['capaian']:.1f}% dari target), "
+                f"menjadi kontributor terbesar terhadap gap Pendapatan secara keseluruhan pada filter ini."
+            )
+
+    bullets_html = "".join([f"<li>{ins}</li>" for ins in insights])
+    st.markdown(f'<div class="insight-box"><ul>{bullets_html}</ul></div>', unsafe_allow_html=True)
+    st.caption("Catatan: analisa ini bersifat indikatif berdasarkan pola data (capaian Prestasi & Populasi unit), bukan kesimpulan pasti atas penyebab operasional di lapangan.")
 
 st.markdown("---")
 st.caption("Dashboard Biaya & Pendapatan • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat dengan Streamlit")
