@@ -109,10 +109,60 @@ st.markdown(f"""
     }}
     .insight-box li {{ margin-bottom: 8px; line-height: 1.5; }}
 
+    /* KPI cards (icon + big number + status pill), styled after the RTM report format */
+    .kpi-card {{
+        background: {CARD_BG};
+        border: 1px solid {BORDER};
+        border-top: 4px solid var(--accent, {GOLD});
+        border-radius: 12px;
+        padding: 18px 18px 16px 18px;
+        height: 100%;
+    }}
+    .kpi-icon {{
+        width: 40px; height: 40px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 19px; margin-bottom: 10px;
+    }}
+    .kpi-label {{ color: {TEXT_MUTED} !important; font-size: 13px; font-weight: 600; margin-bottom: 4px; }}
+    .kpi-value {{ color: {TEXT_LIGHT} !important; font-size: 28px; font-weight: 800; line-height: 1.15; margin-bottom: 6px; }}
+    .kpi-budget {{ color: {TEXT_MUTED} !important; font-size: 12.5px; margin-bottom: 10px; }}
+    .kpi-pill {{
+        display: inline-block; padding: 5px 12px; border-radius: 20px;
+        font-size: 12.5px; font-weight: 700;
+    }}
+    .kpi-pill-green {{ background: rgba(63,167,114,0.18); color: #6EE7A8 !important; }}
+    .kpi-pill-red {{ background: rgba(228,87,76,0.18); color: #FF9A91 !important; }}
+    .kpi-pill-amber {{ background: rgba(201,162,39,0.18); color: {GOLD} !important; }}
+
     [data-testid="stDataFrame"] {{ background-color: {CARD_BG} !important; }}
     .stTextInput input {{ background-color: {CARD_BG} !important; color: {TEXT_LIGHT} !important; }}
 </style>
 """, unsafe_allow_html=True)
+
+def kpi_card(icon, icon_bg, accent, label, value, budget_text, pill_text, pill_style):
+    """Render one KPI card matching the RTM-report visual style (icon circle, big number, status pill)."""
+    return f"""
+    <div class="kpi-card" style="--accent:{accent}">
+        <div class="kpi-icon" style="background:{icon_bg}">{icon}</div>
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-value">{value}</div>
+        <div class="kpi-budget">{budget_text}</div>
+        <span class="kpi-pill {pill_style}">{pill_text}</span>
+    </div>
+    """
+
+def achievement_pill(pct, higher_is_better=True, target_label="Target"):
+    """Return (pill_text, pill_style) for a metric vs its target/budget."""
+    if pct is None:
+        return (f"{target_label} = 0", "kpi-pill-amber")
+    if higher_is_better:
+        if pct >= 100:
+            return (f"✓ {pct:.1f}% — Tercapai", "kpi-pill-green")
+        return (f"✗ {pct:.1f}% vs {target_label}", "kpi-pill-red")
+    else:
+        if pct <= 100:
+            return (f"✓ {pct:.1f}% — Under Budget", "kpi-pill-green")
+        return (f"✗ {pct:.1f}% — Over Budget", "kpi-pill-red")
 
 # ---------------------------------------------------------------
 # DATA LOADING
@@ -622,23 +672,35 @@ st.markdown("---")
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Capaian Utama</h3>', unsafe_allow_html=True)
 
+pendapatan_pill, pendapatan_style = achievement_pill(ach_pendapatan, higher_is_better=True)
+prestasi_pill, prestasi_style = achievement_pill(ach_prestasi, higher_is_better=True)
+biaya_pill, biaya_style = achievement_pill(ach_biaya, higher_is_better=False)
+
 c1, c2, c3 = st.columns(3)
-c1.metric(
-    "Pendapatan: Realisasi vs Target",
-    fmt_rp(tot_pendapatan_r),
-    f"{ach_pendapatan:.1f}% dari target ({fmt_rp(tot_pendapatan_b)})" if ach_pendapatan is not None else "Target = 0",
-)
-c2.metric(
-    "Prestasi: Realisasi vs Target",
-    f"{tot_prestasi_r:,.0f}",
-    f"{ach_prestasi:.1f}% dari target ({tot_prestasi_b:,.0f})" if ach_prestasi is not None else "Target = 0",
-)
-c3.metric(
-    "Biaya: Realisasi vs Target",
-    fmt_rp(tot_biaya_r),
-    f"{ach_biaya:.1f}% dari target ({fmt_rp(tot_biaya_b)})" if ach_biaya is not None else "Target = 0",
-    delta_color="inverse",
-)
+with c1:
+    st.markdown(kpi_card(
+        icon="💰", icon_bg=RED, accent=RED,
+        label="Pendapatan: Realisasi vs Target",
+        value=fmt_rp(tot_pendapatan_r),
+        budget_text=f"Target: {fmt_rp(tot_pendapatan_b)}",
+        pill_text=pendapatan_pill, pill_style=pendapatan_style,
+    ), unsafe_allow_html=True)
+with c2:
+    st.markdown(kpi_card(
+        icon="📈", icon_bg=CHART_GREEN, accent=CHART_GREEN,
+        label="Prestasi: Realisasi vs Target",
+        value=f"{tot_prestasi_r:,.0f}",
+        budget_text=f"Target: {tot_prestasi_b:,.0f}",
+        pill_text=prestasi_pill, pill_style=prestasi_style,
+    ), unsafe_allow_html=True)
+with c3:
+    st.markdown(kpi_card(
+        icon="⚙️", icon_bg=GOLD, accent=GOLD,
+        label="Biaya: Realisasi vs Target",
+        value=fmt_rp(tot_biaya_r),
+        budget_text=f"Target: {fmt_rp(tot_biaya_b)}",
+        pill_text=biaya_pill, pill_style=biaya_style,
+    ), unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -663,9 +725,27 @@ else:
 
     st.markdown("##### Rekonsiliasi: Total Maintenance = Pemakaian Persediaan + Service Luar")
     rc1, rc2, rc3 = st.columns(3)
-    rc1.metric("Total Biaya Maintenance", fmt_rp(total_maint_all))
-    rc2.metric("Pemakaian Persediaan (Sparepart)", fmt_rp(total_persediaan_all), f"{pct_persediaan:.1f}% dari total")
-    rc3.metric("Service Luar (di luar persediaan)", fmt_rp(service_luar_all), f"{pct_service_luar:.1f}% dari total", delta_color="inverse")
+    with rc1:
+        st.markdown(kpi_card(
+            icon="🔧", icon_bg=GREY, accent=GREY,
+            label="Total Biaya Maintenance", value=fmt_rp(total_maint_all),
+            budget_text="Persediaan + Service Luar",
+            pill_text="100%", pill_style="kpi-pill-amber",
+        ), unsafe_allow_html=True)
+    with rc2:
+        st.markdown(kpi_card(
+            icon="📦", icon_bg=CHART_GREEN, accent=CHART_GREEN,
+            label="Pemakaian Persediaan (Sparepart)", value=fmt_rp(total_persediaan_all),
+            budget_text="Dari data Rincian Pemakaian",
+            pill_text=f"{pct_persediaan:.1f}% dari total", pill_style="kpi-pill-green",
+        ), unsafe_allow_html=True)
+    with rc3:
+        st.markdown(kpi_card(
+            icon="🛠️", icon_bg=GOLD, accent=GOLD,
+            label="Service Luar (di luar persediaan)", value=fmt_rp(service_luar_all),
+            budget_text="Selisih Total − Persediaan",
+            pill_text=f"{pct_service_luar:.1f}% dari total", pill_style="kpi-pill-amber",
+        ), unsafe_allow_html=True)
 
     fig_rekon = go.Figure()
     fig_rekon.add_bar(
@@ -827,14 +907,30 @@ st.markdown("---")
 st.markdown('<h3 class="section-title">Populasi Unit: Target vs Realisasi</h3>', unsafe_allow_html=True)
 st.caption("**Target Populasi** = jumlah unit yang memiliki target/budget Pendapatan (budget > 0). **Realisasi Populasi** = jumlah unit yang memiliki realisasi Pendapatan (realisasi > 0).")
 
+populasi_pill, populasi_style = achievement_pill(pct_populasi, higher_is_better=True)
+
 p1, p2, p3 = st.columns(3)
-p1.metric("Target Populasi", f"{target_populasi:,}", "Unit dengan target Pendapatan")
-p2.metric("Realisasi Populasi", f"{realisasi_populasi:,}", "Unit dengan realisasi Pendapatan")
-p3.metric(
-    "Capaian Populasi",
-    f"{pct_populasi:.1f}%" if pct_populasi is not None else "-",
-    "Realisasi vs Target Populasi",
-)
+with p1:
+    st.markdown(kpi_card(
+        icon="🎯", icon_bg=GREY, accent=GREY,
+        label="Target Populasi", value=f"{target_populasi:,}",
+        budget_text="Unit dengan target Pendapatan",
+        pill_text="Baseline", pill_style="kpi-pill-amber",
+    ), unsafe_allow_html=True)
+with p2:
+    st.markdown(kpi_card(
+        icon="✅", icon_bg=CHART_GREEN, accent=CHART_GREEN,
+        label="Realisasi Populasi", value=f"{realisasi_populasi:,}",
+        budget_text="Unit dengan realisasi Pendapatan",
+        pill_text=f"vs Target: {target_populasi:,}", pill_style="kpi-pill-amber",
+    ), unsafe_allow_html=True)
+with p3:
+    st.markdown(kpi_card(
+        icon="📊", icon_bg=GOLD, accent=GOLD,
+        label="Capaian Populasi", value=f"{pct_populasi:.1f}%" if pct_populasi is not None else "-",
+        budget_text="Realisasi vs Target Populasi",
+        pill_text=populasi_pill, pill_style=populasi_style,
+    ), unsafe_allow_html=True)
 
 st.markdown("---")
 
