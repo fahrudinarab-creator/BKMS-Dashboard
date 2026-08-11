@@ -119,6 +119,7 @@ st.markdown(f"""
 # ---------------------------------------------------------------
 DATA_PATH = Path(__file__).parent / "data_bkms.csv"
 MAINT_DATA_PATH = Path(__file__).parent / "data_maintenance.csv"
+SPAREPART_DATA_PATH = Path(__file__).parent / "data_sparepart.csv"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Truck / Ritase (TR)"}
 
@@ -128,6 +129,12 @@ def load_data(file) -> pd.DataFrame:
 
 @st.cache_data
 def load_maintenance_data(file) -> pd.DataFrame:
+    if not Path(file).exists():
+        return pd.DataFrame()
+    return pd.read_csv(file)
+
+@st.cache_data
+def load_sparepart_data(file) -> pd.DataFrame:
     if not Path(file).exists():
         return pd.DataFrame()
     return pd.read_csv(file)
@@ -200,6 +207,39 @@ def load_from_upload_maintenance(uploaded_file) -> pd.DataFrame:
         ))
     return pd.DataFrame(rows)
 
+def load_from_upload_sparepart(uploaded_file) -> pd.DataFrame:
+    """Parse an uploaded spare-part usage detail file (e.g. 'Rincian_Pemakaian.xls').
+    Note: in the source export, the long description text is actually stored in the
+    'ACCOUNT_DESC' column (the 'KETERANGAN' column only holds the unit code)."""
+    raw = pd.read_excel(uploaded_file, sheet_name=0, header=0)
+    pattern = re.compile(
+        r'^PEMELIHARAAN\s+(RUTIN|NON RUTIN)\s+(.*?)\s+(SPAREPART|ALOKASI WORKSHOP|SERVICE LUAR|LAIN-LAIN)\s+(PLANTATION|MINING)\s+(.*?)\s+-\s+(.*)$'
+    )
+    month_id_map = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+                     7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
+    raw["TGL"] = pd.to_datetime(raw["TGL"], errors="coerce")
+    raw = raw.dropna(subset=["TGL", "ACCOUNT_DESC", "TOTAL"])
+
+    rows = []
+    for _, r in raw.iterrows():
+        desc = str(r["ACCOUNT_DESC"]).strip()
+        m = pattern.match(desc)
+        if not m:
+            continue
+        jenis, kategori_sparepart, tipe_biaya, kelompok, lokasi, unit = m.groups()
+        dt = r["TGL"]
+        rows.append(dict(
+            tanggal=dt.date().isoformat(), bulan=month_id_map.get(dt.month, ''), bulan_no=dt.month,
+            lokasi=lokasi.strip(), kelompok=kelompok.strip(),
+            jenis_pemeliharaan=jenis.strip(), kategori_sparepart=kategori_sparepart.strip(),
+            nama_unit=unit.strip(), kode_barang=str(r["KODE BRG"]),
+            part_number=str(r["PART NUMBER"]) if pd.notna(r["PART NUMBER"]) else '',
+            nama_barang=str(r["NAMA BARANG"]), qty=float(r["QTY"]), satuan=str(r["SAT"]),
+            biaya=float(r["TOTAL"]),
+            group_desc=str(r["GROUP_DESC"]), class_desc=str(r["CLASS_DESC"]), subclass_desc=str(r["SUBCLASS_DESC"]),
+        ))
+    return pd.DataFrame(rows)
+
 with st.sidebar:
     st.markdown("### 📁 Sumber Data")
     uploaded = st.file_uploader("Upload file Gabungan.xlsx terbaru (opsional)", type=["xlsx"])
@@ -223,6 +263,17 @@ with st.sidebar:
             maint_raw = load_maintenance_data(MAINT_DATA_PATH)
     else:
         maint_raw = load_maintenance_data(MAINT_DATA_PATH)
+
+    uploaded_sparepart = st.file_uploader("Upload data Rincian Pemakaian Sparepart terbaru (opsional)", type=["xls", "xlsx"])
+    if uploaded_sparepart is not None:
+        try:
+            sparepart_raw = load_from_upload_sparepart(uploaded_sparepart)
+            st.success(f"Berhasil memuat {len(sparepart_raw):,} baris data pemakaian sparepart dari file upload.")
+        except Exception as e:
+            st.error(f"Gagal membaca file sparepart: {e}")
+            sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
+    else:
+        sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
 
     st.markdown("---")
     st.markdown("### 🔎 Filter")
@@ -254,6 +305,13 @@ if not maint_raw.empty:
         maint_raw["bulan"].isin(sel_month)
     ].copy()
 
+sparepart_df_site_bulan = pd.DataFrame()
+if not sparepart_raw.empty:
+    sparepart_df_site_bulan = sparepart_raw[
+        sparepart_raw["lokasi"].isin(sel_site) &
+        sparepart_raw["bulan"].isin(sel_month)
+    ].copy()
+
 def fmt_rp(x):
     if abs(x) >= 1e9:
         return f"Rp {x/1e9:,.2f} M"
@@ -265,6 +323,14 @@ def achievement(real, budget):
     if budget == 0:
         return None
     return real / budget * 100
+
+_unit_code_pattern = re.compile(r'(\d{3}-\d{3})\s*$')
+def _unit_label(name):
+    if not isinstance(name, str):
+        return name
+    m = _unit_code_pattern.search(name)
+    code = m.group(1) if m else "?"
+    return f"{code} — {name}"
 
 # ---------------------------------------------------------------
 # HEADER
@@ -584,14 +650,6 @@ st.markdown('<h3 class="section-title">Rekap Biaya Maintenance</h3>', unsafe_all
 if maint_raw.empty:
     st.info("Data maintenance belum tersedia. Upload file Pemeliharaan (.xls/.xlsx) di sidebar untuk menampilkan bagian ini.")
 else:
-    code_pattern = re.compile(r'(\d{3}-\d{3})\s*$')
-    def _unit_label(name):
-        if not isinstance(name, str):
-            return name
-        m = code_pattern.search(name)
-        code = m.group(1) if m else "?"
-        return f"{code} — {name}"
-
     maint_df_site_bulan = maint_df_site_bulan.copy()
     maint_df_site_bulan["unit_label"] = maint_df_site_bulan["nama_unit"].apply(_unit_label)
     unit_maint_opts = sorted(maint_df_site_bulan["unit_label"].dropna().unique().tolist())
@@ -648,6 +706,84 @@ else:
         )
         csv_rekap = rekap_tbl.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Unduh Rekap Maintenance (CSV)", csv_rekap, file_name="rekap_maintenance_bkms.csv", mime="text/csv")
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
+# REKAP PEMAKAIAN SPAREPART (PERSEDIAAN)
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Rekap Pemakaian Sparepart (Persediaan)</h3>', unsafe_allow_html=True)
+st.caption(
+    "Data ini hanya mencakup **pemakaian sparepart dari persediaan/gudang** (item, part number, dan quantity per transaksi maintenance). "
+    "Biaya maintenance di luar pemakaian persediaan ini (alokasi workshop, dan lainnya) dianggap sebagai **service luar** — lihat bagian Rekap Biaya Maintenance di atas untuk totalnya."
+)
+
+if sparepart_raw.empty:
+    st.info("Data pemakaian sparepart belum tersedia. Upload file Rincian Pemakaian (.xls/.xlsx) di sidebar untuk menampilkan bagian ini.")
+else:
+    sparepart_df_site_bulan = sparepart_df_site_bulan.copy()
+    sparepart_df_site_bulan["unit_label"] = sparepart_df_site_bulan["nama_unit"].apply(_unit_label)
+    unit_sparepart_opts = sorted(sparepart_df_site_bulan["unit_label"].dropna().unique().tolist())
+
+    sel_unit_sparepart = st.multiselect(
+        "Filter berdasarkan ID Unit (opsional, kosongkan = semua unit) — ketik ID Unit atau nama unit",
+        unit_sparepart_opts, default=[], key="sel_unit_sparepart",
+    )
+
+    sparepart_df = sparepart_df_site_bulan
+    if sel_unit_sparepart:
+        sparepart_df = sparepart_df[sparepart_df["unit_label"].isin(sel_unit_sparepart)]
+
+    if sparepart_df.empty:
+        st.warning("Tidak ada data pemakaian sparepart untuk kombinasi filter yang dipilih.")
+    else:
+        total_sp = sparepart_df["biaya"].sum()
+        total_qty_trx = len(sparepart_df)
+        n_jenis_barang = sparepart_df["nama_barang"].nunique()
+
+        s1, s2, s3 = st.columns(3)
+        s1.metric("Total Biaya Pemakaian Sparepart", fmt_rp(total_sp))
+        s2.metric("Jumlah Transaksi Pengambilan", f"{total_qty_trx:,}")
+        s3.metric("Jenis Barang Berbeda", f"{n_jenis_barang:,}")
+
+        colS1, colS2 = st.columns([3, 2])
+        with colS1:
+            top_barang = sparepart_df.groupby("nama_barang", as_index=False).agg(
+                total_qty=("qty", "sum"), total_biaya=("biaya", "sum"),
+            ).sort_values("total_biaya", ascending=False).head(15)
+            fig_sp1 = go.Figure()
+            fig_sp1.add_bar(y=top_barang["nama_barang"], x=top_barang["total_biaya"], orientation="h", marker_color=CHART_GREEN)
+            fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Rupiah",
+                                   height=460, margin=dict(t=60, b=10, l=10))
+            fig_sp1.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_sp1), use_container_width=True)
+
+        with colS2:
+            cat_sp = sparepart_df.groupby("kategori_sparepart", as_index=False)["biaya"].sum()
+            fig_sp2 = px.pie(cat_sp, names="kategori_sparepart", values="biaya", hole=0.5)
+            fig_sp2.update_layout(title="Komposisi per Kategori Sparepart", height=460, margin=dict(t=60, b=10),
+                                   showlegend=True, legend=dict(font=dict(size=9)))
+            st.plotly_chart(style_fig(fig_sp2), use_container_width=True)
+
+        st.markdown("##### Rincian Pemakaian per Barang")
+        search_sp = st.text_input("🔍 Cari nama barang / part number...", "", key="search_sparepart")
+        show_sp = sparepart_df[["tanggal", "lokasi", "nama_unit", "kategori_sparepart", "jenis_pemeliharaan",
+                                 "kode_barang", "part_number", "nama_barang", "qty", "satuan", "biaya"]].rename(columns={
+            "tanggal": "Tanggal", "lokasi": "Site", "nama_unit": "Nama Unit", "kategori_sparepart": "Kategori Sparepart",
+            "jenis_pemeliharaan": "Jenis", "kode_barang": "Kode Barang", "part_number": "Part Number",
+            "nama_barang": "Nama Barang", "qty": "Qty", "satuan": "Satuan", "biaya": "Biaya",
+        })
+        if search_sp:
+            mask = (show_sp["Nama Barang"].str.contains(search_sp, case=False, na=False) |
+                    show_sp["Part Number"].str.contains(search_sp, case=False, na=False))
+            show_sp = show_sp[mask]
+        st.dataframe(
+            show_sp.sort_values("Biaya", ascending=False),
+            use_container_width=True, height=380,
+            column_config={"Biaya": st.column_config.NumberColumn(format="Rp %,.0f")},
+        )
+        csv_sp = show_sp.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Unduh Rincian Pemakaian Sparepart (CSV)", csv_sp, file_name="rincian_sparepart_bkms.csv", mime="text/csv")
 
 st.markdown("---")
 
