@@ -419,10 +419,16 @@ tot_prestasi_r = df["prestasi_realisasi"].sum()
 tot_prestasi_b = df["prestasi_budget"].sum()
 tot_biaya_r = df["total_biaya_realisasi"].sum()
 tot_biaya_b = df["total_biaya_budget"].sum()
+tot_biaya_langsung_r = df["biaya_langsung_realisasi"].sum()
+tot_biaya_langsung_b = df["biaya_langsung_budget"].sum()
+tot_biaya_tdklangsung_r = df["biaya_tidak_langsung_realisasi"].sum()
+tot_biaya_tdklangsung_b = df["biaya_tidak_langsung_budget"].sum()
 
 ach_pendapatan = achievement(tot_pendapatan_r, tot_pendapatan_b)
 ach_prestasi = achievement(tot_prestasi_r, tot_prestasi_b)
 ach_biaya = achievement(tot_biaya_r, tot_biaya_b)
+ach_biaya_langsung = achievement(tot_biaya_langsung_r, tot_biaya_langsung_b)
+ach_biaya_tdklangsung = achievement(tot_biaya_tdklangsung_r, tot_biaya_tdklangsung_b)
 
 target_populasi = df.loc[df["pendapatan_budget"] > 0, "nama_unit"].nunique()
 realisasi_populasi = df.loc[df["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
@@ -653,46 +659,53 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     s = add_content_slide("KPI DASHBOARD — Capaian Utama", "Capaian Utama · 01")
     r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
     pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
-    br_ = data["total_biaya_realisasi"].sum(); bb_ = data["total_biaya_budget"].sum()
-    ach_r = ach_txt_pct(r_, b_); ach_p = ach_txt_pct(pr_, pb_); ach_b = ach_txt_pct(br_, bb_)
+    bl_r = data["biaya_langsung_realisasi"].sum(); bl_b = data["biaya_langsung_budget"].sum()
+    btl_r = data["biaya_tidak_langsung_realisasi"].sum(); btl_b = data["biaya_tidak_langsung_budget"].sum()
+    ach_r = ach_txt_pct(r_, b_); ach_p = ach_txt_pct(pr_, pb_)
+    ach_bl = ach_txt_pct(bl_r, bl_b); ach_btl = ach_txt_pct(btl_r, btl_b)
 
-    card_w, card_h, gap, cy = 3.75, 2.4, 0.35, 1.25
-    add_kpi_card(s, 0.55, cy, card_w, card_h, "Rp", RED, RED if (ach_r is not None and ach_r < 100) else GREEN,
+    card_w4, card_h4, gap4, cy4 = 2.85, 2.3, 0.25, 1.15
+    add_kpi_card(s, 0.55, cy4, card_w4, card_h4, "Rp", RED, RED if (ach_r is not None and ach_r < 100) else GREEN,
                  "Pendapatan (Realisasi)", fmt_rp(r_), f"Target: {fmt_rp(b_)}",
                  (f"✓ {ach_r:.1f}% — Tercapai" if ach_r is not None and ach_r >= 100 else (f"✗ {ach_r:.1f}% vs Target" if ach_r is not None else "Target = 0")),
                  ach_r is not None and ach_r >= 100)
-    add_kpi_card(s, 0.55 + (card_w + gap), cy, card_w, card_h, "▲", TEAL, TEAL if (ach_p is not None and ach_p < 100) else GREEN,
+    add_kpi_card(s, 0.55 + (card_w4 + gap4), cy4, card_w4, card_h4, "▲", TEAL, TEAL if (ach_p is not None and ach_p < 100) else GREEN,
                  "Prestasi (Realisasi)", f"{pr_:,.0f}", f"Target: {pb_:,.0f}",
                  (f"✓ {ach_p:.1f}% — Tercapai" if ach_p is not None and ach_p >= 100 else (f"✗ {ach_p:.1f}% vs Target" if ach_p is not None else "Target = 0")),
                  ach_p is not None and ach_p >= 100)
-    add_kpi_card(s, 0.55 + 2 * (card_w + gap), cy, card_w, card_h, "◆", GOLD, GREEN if (ach_b is not None and ach_b <= 100) else RED,
-                 "Biaya (Realisasi)", fmt_rp(br_), f"Target: {fmt_rp(bb_)}",
-                 (f"✓ {ach_b:.1f}% — Under Budget" if ach_b is not None and ach_b <= 100 else (f"✗ {ach_b:.1f}% — Over Budget" if ach_b is not None else "Target = 0")),
-                 ach_b is not None and ach_b <= 100)
+    add_kpi_card(s, 0.55 + 2 * (card_w4 + gap4), cy4, card_w4, card_h4, "◆", GOLD, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
+                 "Biaya Langsung (Realisasi)", fmt_rp(bl_r), f"Target: {fmt_rp(bl_b)}",
+                 (f"✓ {ach_bl:.1f}% — Under Budget" if ach_bl is not None and ach_bl <= 100 else (f"✗ {ach_bl:.1f}% — Over Budget" if ach_bl is not None else "Target = 0")),
+                 ach_bl is not None and ach_bl <= 100)
+    add_kpi_card(s, 0.55 + 3 * (card_w4 + gap4), cy4, card_w4, card_h4, "🧾", RGBColor(0xB8, 0xBE, 0xCC), GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
+                 "Biaya Tdk Langsung (Realisasi)", fmt_rp(btl_r), f"Target: {fmt_rp(btl_b)}",
+                 (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
+                 ach_btl is not None and ach_btl <= 100)
 
-    add_textbox(s, 0.55, 4.0, 6, 0.4, "Pendapatan & Biaya: Realisasi vs Target", size=13, bold=True, color=TEXT_DARK)
+    add_textbox(s, 0.55, 3.85, 6, 0.4, "Pendapatan: Realisasi vs Target", size=13, bold=True, color=TEXT_DARK)
     cd = CategoryChartData()
-    cd.categories = ["Pendapatan", "Biaya"]
-    cd.add_series("Target", (b_, bb_))
-    cd.add_series("Realisasi", (r_, br_))
-    gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(4.4), Inches(6.0), Inches(2.85), cd)
+    cd.categories = ["Pendapatan"]
+    cd.add_series("Target", (b_,))
+    cd.add_series("Realisasi", (r_,))
+    gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(4.25), Inches(6.0), Inches(3.0), cd)
     chart = gframe.chart
     chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
     chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = TEAL
     style_chart_light(chart)
 
-    add_textbox(s, 6.9, 4.0, 6, 0.4, "Prestasi: Realisasi vs Target", size=13, bold=True, color=TEXT_DARK)
+    add_textbox(s, 6.9, 3.85, 6, 0.4, "Biaya Langsung vs Tidak Langsung: Realisasi vs Target", size=13, bold=True, color=TEXT_DARK)
     cd2 = CategoryChartData()
-    cd2.categories = ["Prestasi"]
-    cd2.add_series("Target", (pb_,))
-    cd2.add_series("Realisasi", (pr_,))
-    gframe2 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(6.9), Inches(4.4), Inches(5.9), Inches(2.85), cd2)
+    cd2.categories = ["Biaya Langsung", "Biaya Tdk Langsung"]
+    cd2.add_series("Target", (bl_b, btl_b))
+    cd2.add_series("Realisasi", (bl_r, btl_r))
+    gframe2 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(6.9), Inches(4.25), Inches(5.9), Inches(3.0), cd2)
     chart2 = gframe2.chart
     chart2.series[0].format.fill.solid(); chart2.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
     chart2.series[1].format.fill.solid(); chart2.series[1].format.fill.fore_color.rgb = GOLD
     style_chart_light(chart2)
 
     # ================= SLIDE 3: POPULASI UNIT =================
+    card_w, card_h, gap, cy = 3.75, 2.4, 0.35, 1.25
     s = add_content_slide("POPULASI UNIT — Target vs Realisasi", "Populasi Unit · 02")
     tp = data.loc[data["pendapatan_budget"] > 0, "nama_unit"].nunique()
     rp = data.loc[data["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
@@ -848,15 +861,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     summary_rows = [
         ["Pendapatan (Realisasi vs Target)", fmt_rp(tot_pendapatan_r), (f"{ach_pendapatan:.1f}%" if ach_pendapatan is not None else "-")],
         ["Prestasi (Realisasi vs Target)", f"{tot_prestasi_r:,.0f}", (f"{ach_prestasi:.1f}%" if ach_prestasi is not None else "-")],
-        ["Biaya (Realisasi vs Target)", fmt_rp(tot_biaya_r), (f"{ach_biaya:.1f}%" if ach_biaya is not None else "-")],
+        ["Biaya Langsung (Realisasi vs Target)", fmt_rp(tot_biaya_langsung_r), (f"{ach_biaya_langsung:.1f}%" if ach_biaya_langsung is not None else "-")],
+        ["Biaya Tdk Langsung (Realisasi vs Target)", fmt_rp(tot_biaya_tdklangsung_r), (f"{ach_biaya_tdklangsung:.1f}%" if ach_biaya_tdklangsung is not None else "-")],
         ["Populasi Unit (Realisasi vs Target)", f"{realisasi_populasi:,} / {target_populasi:,}", (f"{pct_populasi:.1f}%" if pct_populasi is not None else "-")],
     ]
-    tbl_box = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(2.4), Inches(11.7), Inches(3.6))
+    tbl_box = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(2.2), Inches(11.7), Inches(4.2))
     tbl_box.adjustments[0] = 0.03
     tbl_box.fill.solid(); tbl_box.fill.fore_color.rgb = RGBColor(0x1F, 0x28, 0x4E)
     tbl_box.line.color.rgb = RGBColor(0x33, 0x3E, 0x6B); tbl_box.line.width = Pt(1)
     tbl_box.shadow.inherit = False
-    gframe_sum = s.shapes.add_table(len(summary_rows) + 1, 3, Inches(1.05), Inches(2.65), Inches(11.2), Inches(3.1))
+    gframe_sum = s.shapes.add_table(len(summary_rows) + 1, 3, Inches(1.05), Inches(2.45), Inches(11.2), Inches(3.7))
     tsum = gframe_sum.table
     for j, h in enumerate(["Metrik", "Realisasi", "Capaian"]):
         cell = tsum.cell(0, j)
@@ -902,15 +916,16 @@ with colY:
 st.markdown("---")
 
 # ---------------------------------------------------------------
-# 1-3. CAPAIAN: PENDAPATAN, PRESTASI, BIAYA
+# 1-3. CAPAIAN: PENDAPATAN, PRESTASI, BIAYA LANGSUNG & TIDAK LANGSUNG
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Capaian Utama</h3>', unsafe_allow_html=True)
 
 pendapatan_pill, pendapatan_style = achievement_pill(ach_pendapatan, higher_is_better=True)
 prestasi_pill, prestasi_style = achievement_pill(ach_prestasi, higher_is_better=True)
-biaya_pill, biaya_style = achievement_pill(ach_biaya, higher_is_better=False)
+biaya_langsung_pill, biaya_langsung_style = achievement_pill(ach_biaya_langsung, higher_is_better=False)
+biaya_tdklangsung_pill, biaya_tdklangsung_style = achievement_pill(ach_biaya_tdklangsung, higher_is_better=False)
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 with c1:
     st.markdown(kpi_card(
         icon="💰", icon_bg=RED, accent=RED,
@@ -930,10 +945,18 @@ with c2:
 with c3:
     st.markdown(kpi_card(
         icon="⚙️", icon_bg=GOLD, accent=GOLD,
-        label="Biaya: Realisasi vs Target",
-        value=fmt_rp(tot_biaya_r),
-        budget_text=f"Target: {fmt_rp(tot_biaya_b)}",
-        pill_text=biaya_pill, pill_style=biaya_style,
+        label="Biaya Langsung: Realisasi vs Target",
+        value=fmt_rp(tot_biaya_langsung_r),
+        budget_text=f"Target: {fmt_rp(tot_biaya_langsung_b)}",
+        pill_text=biaya_langsung_pill, pill_style=biaya_langsung_style,
+    ), unsafe_allow_html=True)
+with c4:
+    st.markdown(kpi_card(
+        icon="🧾", icon_bg=GREY, accent=GREY,
+        label="Biaya Tdk Langsung: Realisasi vs Target",
+        value=fmt_rp(tot_biaya_tdklangsung_r),
+        budget_text=f"Target: {fmt_rp(tot_biaya_tdklangsung_b)}",
+        pill_text=biaya_tdklangsung_pill, pill_style=biaya_tdklangsung_style,
     ), unsafe_allow_html=True)
 
 st.markdown("---")
