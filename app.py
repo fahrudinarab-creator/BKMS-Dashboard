@@ -27,7 +27,7 @@ def style_fig(fig):
 # ---------------------------------------------------------------
 st.set_page_config(
     page_title="Dashboard Biaya & Pendapatan | PT BKMS",
-    page_icon="🏗️",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -339,11 +339,6 @@ with st.sidebar:
     sel_kat_labels = st.multiselect("Kategori Unit", kat_labels, default=kat_labels)
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
 
-    TARIF_TIDAK_DITENTUKAN = "Tidak Ditentukan"
-    tarif_opts_raw = sorted(df_raw["kriteria_unit"].dropna().unique().tolist())
-    tarif_opts = tarif_opts_raw + ([TARIF_TIDAK_DITENTUKAN] if df_raw["kriteria_unit"].isna().any() else [])
-    sel_tarif = st.multiselect("Kriteria Tarif", tarif_opts, default=tarif_opts)
-
 # ---------------------------------------------------------------
 # KLASIFIKASI SATUAN PRESTASI: Rp/KM, Rp/HM, Rp/Tonase per site
 # ---------------------------------------------------------------
@@ -380,12 +375,10 @@ def classify_satuan(lokasi, kategori):
 # ---------------------------------------------------------------
 # APPLY FILTERS (data utama)
 # ---------------------------------------------------------------
-df_raw["_kriteria_tarif_filter"] = df_raw["kriteria_unit"].fillna(TARIF_TIDAK_DITENTUKAN)
 df = df_raw[
     df_raw["lokasi"].isin(sel_site) &
     df_raw["bulan"].isin(sel_month) &
-    df_raw["kategori"].isin(sel_kat) &
-    df_raw["_kriteria_tarif_filter"].isin(sel_tarif)
+    df_raw["kategori"].isin(sel_kat)
 ].copy()
 df["satuan_tipe"] = df.apply(lambda r: classify_satuan(r["lokasi"], r["kategori"]), axis=1)
 
@@ -449,11 +442,7 @@ if df.empty:
     st.warning("Tidak ada data untuk kombinasi filter yang dipilih. Silakan ubah filter di sidebar.")
     st.stop()
 
-st.caption(
-    f"Site: {', '.join(sel_site) if len(sel_site)<=4 else f'{len(sel_site)} site'} • "
-    f"Bulan: {', '.join(sel_month)} • "
-    f"Kriteria Tarif: {', '.join(sel_tarif) if sel_tarif else '-'}"
-)
+st.caption(f"Site: {', '.join(sel_site) if len(sel_site)<=4 else f'{len(sel_site)} site'} • Bulan: {', '.join(sel_month)}")
 
 # ---------------------------------------------------------------
 # HITUNG METRIK UTAMA (dipakai di beberapa bagian + PPTX)
