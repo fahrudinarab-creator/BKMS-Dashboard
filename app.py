@@ -27,7 +27,7 @@ def style_fig(fig):
 # ---------------------------------------------------------------
 st.set_page_config(
     page_title="Dashboard Biaya & Pendapatan | PT BKMS",
-    page_icon="📊",
+    page_icon="🚜",
     layout="wide",
     initial_sidebar_state="expanded",
 )
