@@ -171,7 +171,7 @@ DATA_PATH = Path(__file__).parent / "data_bkms.csv"
 MAINT_DATA_PATH = Path(__file__).parent / "data_maintenance.csv"
 SPAREPART_DATA_PATH = Path(__file__).parent / "data_sparepart.csv"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Transportasi (TR)"}
+KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Truck / Ritase (TR)"}
 
 @st.cache_data
 def load_data(file) -> pd.DataFrame:
@@ -989,20 +989,26 @@ df["satuan_prestasi"] = df.apply(klasifikasi_satuan_prestasi, axis=1)
 
 satuan_order = ["Rp/HM", "Rp/KM", "Rp/Tonase"]
 satuan_icon = {"Rp/HM": ("⏱️", CHART_GREEN), "Rp/KM": ("🚚", GOLD), "Rp/Tonase": ("⚖️", RED)}
+satuan_suffix = {"Rp/HM": "/HM", "Rp/KM": "/KM", "Rp/Tonase": "/Ton"}
 cols_satuan = st.columns(3)
 for i, sat in enumerate(satuan_order):
     sub = df[df["satuan_prestasi"] == sat]
-    real = sub["prestasi_realisasi"].sum()
-    target = sub["prestasi_budget"].sum()
-    ach = achievement(real, target)
+    pendapatan_r = sub["pendapatan_realisasi"].sum()
+    pendapatan_b = sub["pendapatan_budget"].sum()
+    prestasi_r = sub["prestasi_realisasi"].sum()
+    prestasi_b = sub["prestasi_budget"].sum()
+    rate_r = (pendapatan_r / prestasi_r) if prestasi_r else None
+    rate_b = (pendapatan_b / prestasi_b) if prestasi_b else None
+    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
     pill_txt, pill_style = achievement_pill(ach, higher_is_better=True)
     icon, icon_color = satuan_icon[sat]
+    suf = satuan_suffix[sat]
     with cols_satuan[i]:
         st.markdown(kpi_card(
             icon=icon, icon_bg=icon_color, accent=icon_color,
-            label=f"Capaian Prestasi ({sat})",
-            value=f"{real:,.0f}",
-            budget_text=f"Target: {target:,.0f} • {sub['nama_unit'].nunique():,} unit",
+            label=f"Capaian {sat} (Pendapatan ÷ Prestasi)",
+            value=(f"{fmt_rp(rate_r)}{suf}" if rate_r is not None else "-"),
+            budget_text=(f"Target: {fmt_rp(rate_b)}{suf} • {sub['nama_unit'].nunique():,} unit" if rate_b is not None else f"{sub['nama_unit'].nunique():,} unit"),
             pill_text=pill_txt, pill_style=pill_style,
         ), unsafe_allow_html=True)
 
