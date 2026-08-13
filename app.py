@@ -171,7 +171,7 @@ DATA_PATH = Path(__file__).parent / "data_bkms.csv"
 MAINT_DATA_PATH = Path(__file__).parent / "data_maintenance.csv"
 SPAREPART_DATA_PATH = Path(__file__).parent / "data_sparepart.csv"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Transportasi (TR)"}
+KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Truck / Ritase (TR)"}
 
 @st.cache_data
 def load_data(file) -> pd.DataFrame:
@@ -340,39 +340,6 @@ with st.sidebar:
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
 
 # ---------------------------------------------------------------
-# KLASIFIKASI SATUAN PRESTASI: Rp/KM, Rp/HM, Rp/Tonase per site
-# ---------------------------------------------------------------
-# Aturan (sesuai arahan):
-# 1. Rp/KM     -> Transportasi (kategori TR) di site Sungai Danau & Kumai
-# 2. Rp/HM     -> Alat Berat (kategori AB) di site Sungai Danau & Kumai
-# 3. Rp/Tonase -> site LHL
-# 4. Khusus (override) -> site Tanjung & Buhut selalu masuk Rp/HM
-SATUAN_LABEL = {"KM": "Rp / KM (Transportasi)", "HM": "Rp / HM (Alat Berat)", "TONASE": "Rp / Tonase"}
-SATUAN_ICON = {"KM": "🚚", "HM": "🚜", "TONASE": "⚖️"}
-SATUAN_COLOR = {"KM": CHART_GREEN, "HM": GOLD, "TONASE": "#2E7D9A"}
-
-def classify_satuan(lokasi, kategori):
-    """Tentukan tipe satuan (KM/HM/TONASE) berdasarkan site & kategori unit."""
-    if not isinstance(lokasi, str):
-        return None
-    loc = lokasi.strip().lower()
-    kat = str(kategori).strip().upper() if kategori is not None else ""
-
-    # Rule 4 (khusus/override): Tanjung & Buhut -> Rp/HM
-    if loc in ("tanjung", "buhut"):
-        return "HM"
-    # Rule 3: LHL -> Rp/Tonase
-    if loc in ("lhl", "buhut lhl"):
-        return "TONASE"
-    # Rule 1 & 2: Sungai Danau & Kumai -> Rp/KM (TR) atau Rp/HM (AB)
-    if loc in ("sungai danau", "kumai"):
-        if kat == "TR":
-            return "KM"
-        if kat == "AB":
-            return "HM"
-    return None
-
-# ---------------------------------------------------------------
 # APPLY FILTERS (data utama)
 # ---------------------------------------------------------------
 df = df_raw[
@@ -380,7 +347,6 @@ df = df_raw[
     df_raw["bulan"].isin(sel_month) &
     df_raw["kategori"].isin(sel_kat)
 ].copy()
-df["satuan_tipe"] = df.apply(lambda r: classify_satuan(r["lokasi"], r["kategori"]), axis=1)
 
 maint_df_site_bulan = pd.DataFrame()
 if not maint_raw.empty:
@@ -996,85 +962,49 @@ with c4:
 st.markdown("---")
 
 # ---------------------------------------------------------------
-# CAPAIAN PRESTASI PER SATUAN: Rp/KM, Rp/HM, Rp/Tonase
+# CAPAIAN PRESTASI PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase)
 # ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Capaian Prestasi per Satuan (Rp/KM · Rp/HM · Rp/Tonase)</h3>', unsafe_allow_html=True)
+st.markdown('<h3 class="section-title">Capaian Prestasi per Satuan</h3>', unsafe_allow_html=True)
 st.caption(
-    "Rp/Satuan = Pendapatan ÷ Prestasi.  •  Rp/KM: Transportasi di site Sungai Danau & Kumai.  •  "
-    "Rp/HM: Alat Berat di site Sungai Danau & Kumai, serta khusus site Tanjung & Buhut.  •  Rp/Tonase: site Buhut LHL.  •  "
-    "Site Ampah tidak termasuk breakdown ini."
+    "**Rp/HM**: kategori Alat Berat (AB) di Sungai Danau & Kumai, serta seluruh unit di Tanjung, Buhut, dan Ampah.  "
+    "**Rp/KM**: kategori Truck (TR) di Sungai Danau & Kumai.  "
+    "**Rp/Tonase**: seluruh unit di Buhut LHL."
 )
 
-satuan_group = df[df["satuan_tipe"].notna()].groupby("satuan_tipe", as_index=False).agg(
-    pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
-    prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
-)
+def klasifikasi_satuan_prestasi(row):
+    lok = row["lokasi"]
+    kat = row["kategori"]
+    if lok == "BUHUT LHL":
+        return "Rp/Tonase"
+    if lok in ("SUNGAI DANAU", "KUMAI"):
+        if kat == "AB":
+            return "Rp/HM"
+        if kat == "TR":
+            return "Rp/KM"
+        return "Rp/HM"
+    # TANJUNG, BUHUT, AMPAH, dan site lain di luar aturan eksplisit -> default Rp/HM
+    return "Rp/HM"
 
-sat_cols = st.columns(3)
-for i, tipe in enumerate(["KM", "HM", "TONASE"]):
-    row = satuan_group[satuan_group["satuan_tipe"] == tipe]
-    with sat_cols[i]:
-        if row.empty:
-            st.markdown(kpi_card(
-                icon=SATUAN_ICON[tipe], icon_bg=GREY, accent=GREY,
-                label=SATUAN_LABEL[tipe],
-                value="Tidak ada data",
-                budget_text="Site terkait tidak ditemukan pada filter saat ini",
-                pill_text="—", pill_style="kpi-pill-amber",
-            ), unsafe_allow_html=True)
-            continue
-        pr_ = row["pendapatan_r"].iloc[0]; pb_ = row["pendapatan_b"].iloc[0]
-        prr_ = row["prestasi_r"].iloc[0]; prb_ = row["prestasi_b"].iloc[0]
-        rate_r = (pr_ / prr_) if prr_ else None
-        rate_b = (pb_ / prb_) if prb_ else None
-        ach_rate = achievement(rate_r, rate_b) if (rate_r is not None and rate_b) else None
-        pill_txt, pill_sty = achievement_pill(ach_rate, higher_is_better=True)
-        val_txt = fmt_rp(rate_r) if rate_r is not None else "-"
-        budget_txt = f"Target: {fmt_rp(rate_b)}" if rate_b is not None else "Target belum tersedia (Prestasi Budget = 0)"
+df["satuan_prestasi"] = df.apply(klasifikasi_satuan_prestasi, axis=1)
+
+satuan_order = ["Rp/HM", "Rp/KM", "Rp/Tonase"]
+satuan_icon = {"Rp/HM": ("⏱️", CHART_GREEN), "Rp/KM": ("🚚", GOLD), "Rp/Tonase": ("⚖️", RED)}
+cols_satuan = st.columns(3)
+for i, sat in enumerate(satuan_order):
+    sub = df[df["satuan_prestasi"] == sat]
+    real = sub["prestasi_realisasi"].sum()
+    target = sub["prestasi_budget"].sum()
+    ach = achievement(real, target)
+    pill_txt, pill_style = achievement_pill(ach, higher_is_better=True)
+    icon, icon_color = satuan_icon[sat]
+    with cols_satuan[i]:
         st.markdown(kpi_card(
-            icon=SATUAN_ICON[tipe], icon_bg=SATUAN_COLOR[tipe], accent=SATUAN_COLOR[tipe],
-            label=SATUAN_LABEL[tipe],
-            value=val_txt,
-            budget_text=budget_txt,
-            pill_text=pill_txt, pill_style=pill_sty,
+            icon=icon, icon_bg=icon_color, accent=icon_color,
+            label=f"Capaian Prestasi ({sat})",
+            value=f"{real:,.0f}",
+            budget_text=f"Target: {target:,.0f} • {sub['nama_unit'].nunique():,} unit",
+            pill_text=pill_txt, pill_style=pill_style,
         ), unsafe_allow_html=True)
-
-with st.expander("📋 Rincian Rp/Satuan per Site & Kategori"):
-    detail = df[df["satuan_tipe"].notna()].groupby(["satuan_tipe", "lokasi", "kategori"], as_index=False).agg(
-        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
-        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
-    )
-    detail["rate_r"] = detail.apply(lambda r: (r["pendapatan_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
-    detail["rate_b"] = detail.apply(lambda r: (r["pendapatan_b"] / r["prestasi_b"]) if r["prestasi_b"] else None, axis=1)
-    detail["capaian"] = detail.apply(
-        lambda r: (r["rate_r"] / r["rate_b"] * 100) if (r["rate_r"] is not None and r["rate_b"]) else None, axis=1
-    )
-    show = pd.DataFrame({
-        "Satuan": detail["satuan_tipe"].map(SATUAN_LABEL),
-        "Site": detail["lokasi"],
-        "Kategori": detail["kategori"].map(lambda k: KATEGORI_LABEL.get(k, k)),
-        "Pendapatan Realisasi": detail["pendapatan_r"].apply(fmt_rp),
-        "Prestasi Realisasi": detail["prestasi_r"].apply(lambda v: f"{v:,.0f}"),
-        "Rp/Satuan (Realisasi)": detail["rate_r"].apply(lambda v: fmt_rp(v) if pd.notna(v) else "-"),
-        "Rp/Satuan (Target)": detail["rate_b"].apply(lambda v: fmt_rp(v) if pd.notna(v) else "-"),
-        "Capaian (%)": detail["capaian"].apply(lambda v: f"{v:.1f}%" if pd.notna(v) else "-"),
-    })
-    st.dataframe(show, use_container_width=True, hide_index=True)
-
-unmapped_sites = sorted(df.loc[df["satuan_tipe"].isna(), "lokasi"].dropna().unique().tolist())
-EXCLUDED_SITES_KNOWN = {"ampah"}  # sengaja tidak dimasukkan ke breakdown Rp/Satuan
-truly_unmapped = [s for s in unmapped_sites if s.strip().lower() not in EXCLUDED_SITES_KNOWN]
-known_excluded = [s for s in unmapped_sites if s.strip().lower() in EXCLUDED_SITES_KNOWN]
-
-if known_excluded:
-    st.caption(f"ℹ️ Site {', '.join(known_excluded)} tidak dimasukkan ke breakdown Rp/Satuan ini (di luar cakupan Rp/KM, Rp/HM, Rp/Tonase).")
-
-if truly_unmapped:
-    st.warning(
-        "Site berikut belum termasuk kategori Rp/KM, Rp/HM, atau Rp/Tonase (nama site tidak cocok dengan aturan "
-        "Sungai Danau / Kumai / Buhut LHL / Tanjung / Buhut): **" + ", ".join(truly_unmapped) + "**. "
-        "Jika nama site di data Anda berbeda ejaannya, beri tahu nama persisnya agar pemetaan bisa disesuaikan."
-    )
 
 st.markdown("---")
 
