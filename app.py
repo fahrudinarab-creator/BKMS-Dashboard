@@ -1037,6 +1037,39 @@ for i, sat in enumerate(satuan_order):
 st.markdown("---")
 
 # ---------------------------------------------------------------
+# CAPAIAN BIAYA PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase) — pembagian sama dengan Prestasi
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Capaian Biaya per Satuan</h3>', unsafe_allow_html=True)
+st.caption(
+    "Pembagian sama seperti Capaian Prestasi per Satuan di atas — hanya di sini yang dibagi adalah **Total Biaya** (Langsung + Tidak Langsung), bukan Pendapatan. "
+    "Nilai lebih rendah dari target = lebih efisien (Under Budget)."
+)
+
+cols_satuan_biaya = st.columns(3)
+for i, sat in enumerate(satuan_order):
+    sub = df[df["satuan_prestasi"] == sat]
+    biaya_r = sub["total_biaya_realisasi"].sum()
+    biaya_b = sub["total_biaya_budget"].sum()
+    prestasi_r = sub["prestasi_realisasi"].sum()
+    prestasi_b = sub["prestasi_budget"].sum()
+    rate_r = (biaya_r / prestasi_r) if prestasi_r else None
+    rate_b = (biaya_b / prestasi_b) if prestasi_b else None
+    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
+    pill_txt, pill_style = achievement_pill(ach, higher_is_better=False)
+    icon, icon_color = satuan_icon[sat]
+    suf = satuan_suffix[sat]
+    with cols_satuan_biaya[i]:
+        st.markdown(kpi_card(
+            icon=icon, icon_bg=icon_color, accent=icon_color,
+            label=f"Capaian Biaya {sat} (Biaya ÷ Prestasi)",
+            value=(f"{fmt_rp(rate_r)}{suf}" if rate_r is not None else "-"),
+            budget_text=(f"Target: {fmt_rp(rate_b)}{suf} • {sub['nama_unit'].nunique():,} unit" if rate_b is not None else f"{sub['nama_unit'].nunique():,} unit"),
+            pill_text=pill_txt, pill_style=pill_style,
+        ), unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
 # 4. REKAP BIAYA MAINTENANCE (filter ID Unit + Rutin/Non Rutin + frekuensi)
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Rekap Biaya Maintenance</h3>', unsafe_allow_html=True)
