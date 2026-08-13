@@ -190,7 +190,12 @@ def load_sparepart_data(file) -> pd.DataFrame:
     return pd.read_csv(file)
 
 def load_from_upload(uploaded_file) -> pd.DataFrame:
-    """Parse an uploaded 'Gabungan.xlsx' file with the same fixed layout used to build data_bkms.csv."""
+    """Parse an uploaded 'Gabungan.xlsx' file with the same fixed layout used to build data_bkms.csv.
+    Layout (1-indexed columns): A=ID Unit, B=Kode Unit, C=Nama Unit, D=Nilai Asset,
+    E=Kriteria Unit, F=Jenis Unit, G-H=Prestasi (R/B), I-J=Pendapatan (R/B), K-L=Upah (R/B),
+    M-N=Qty BBM (R/B), O-P=Harga BBM (R/B), Q-R=Biaya BBM (R/B), S-T=Maintenance (R/B),
+    U-V=Penyusutan (R/B), W-X=Lainnya (R/B), Y-Z=Biaya Langsung (R/B), AA-AB=Biaya Tdk Langsung (R/B),
+    AC-AD=Total Biaya (R/B), AE=Lokasi, AF=Status, AG=Kategori."""
     import openpyxl
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     ws = wb[wb.sheetnames[0]]
@@ -201,27 +206,28 @@ def load_from_upload(uploaded_file) -> pd.DataFrame:
         id_unit = ws.cell(row=r, column=1).value
         if not id_unit:
             continue
-        lokasi = ws.cell(row=r, column=29).value
-        bulan_nama = ws.cell(row=r, column=30).value
-        kategori = ws.cell(row=r, column=31).value
+        lokasi = ws.cell(row=r, column=31).value
+        bulan_nama = ws.cell(row=r, column=32).value
+        kategori = ws.cell(row=r, column=33).value
         if not lokasi or not bulan_nama:
             continue
         rows.append(dict(
             id_unit=id_unit, kode_unit=ws.cell(row=r, column=2).value,
             nama_unit=ws.cell(row=r, column=3).value, nilai_asset=ws.cell(row=r, column=4).value or 0,
+            kriteria_unit=ws.cell(row=r, column=5).value, jenis_unit=ws.cell(row=r, column=6).value,
             lokasi=lokasi, bulan=bulan_nama, bulan_no=month_map.get(bulan_nama, 0), kategori=kategori,
-            prestasi_realisasi=ws.cell(row=r, column=5).value or 0, prestasi_budget=ws.cell(row=r, column=6).value or 0,
-            pendapatan_realisasi=ws.cell(row=r, column=7).value or 0, pendapatan_budget=ws.cell(row=r, column=8).value or 0,
-            upah_realisasi=ws.cell(row=r, column=9).value or 0, upah_budget=ws.cell(row=r, column=10).value or 0,
-            qty_bbm_realisasi=ws.cell(row=r, column=11).value or 0, qty_bbm_budget=ws.cell(row=r, column=12).value or 0,
-            harga_bbm_realisasi=ws.cell(row=r, column=13).value or 0, harga_bbm_budget=ws.cell(row=r, column=14).value or 0,
-            biaya_bbm_realisasi=ws.cell(row=r, column=15).value or 0, biaya_bbm_budget=ws.cell(row=r, column=16).value or 0,
-            maintenance_realisasi=ws.cell(row=r, column=17).value or 0, maintenance_budget=ws.cell(row=r, column=18).value or 0,
-            penyusutan_realisasi=ws.cell(row=r, column=19).value or 0, penyusutan_budget=ws.cell(row=r, column=20).value or 0,
-            lainnya_realisasi=ws.cell(row=r, column=21).value or 0, lainnya_budget=ws.cell(row=r, column=22).value or 0,
-            biaya_langsung_realisasi=ws.cell(row=r, column=23).value or 0, biaya_langsung_budget=ws.cell(row=r, column=24).value or 0,
-            biaya_tidak_langsung_realisasi=ws.cell(row=r, column=25).value or 0, biaya_tidak_langsung_budget=ws.cell(row=r, column=26).value or 0,
-            total_biaya_realisasi=ws.cell(row=r, column=27).value or 0, total_biaya_budget=ws.cell(row=r, column=28).value or 0,
+            prestasi_realisasi=ws.cell(row=r, column=7).value or 0, prestasi_budget=ws.cell(row=r, column=8).value or 0,
+            pendapatan_realisasi=ws.cell(row=r, column=9).value or 0, pendapatan_budget=ws.cell(row=r, column=10).value or 0,
+            upah_realisasi=ws.cell(row=r, column=11).value or 0, upah_budget=ws.cell(row=r, column=12).value or 0,
+            qty_bbm_realisasi=ws.cell(row=r, column=13).value or 0, qty_bbm_budget=ws.cell(row=r, column=14).value or 0,
+            harga_bbm_realisasi=ws.cell(row=r, column=15).value or 0, harga_bbm_budget=ws.cell(row=r, column=16).value or 0,
+            biaya_bbm_realisasi=ws.cell(row=r, column=17).value or 0, biaya_bbm_budget=ws.cell(row=r, column=18).value or 0,
+            maintenance_realisasi=ws.cell(row=r, column=19).value or 0, maintenance_budget=ws.cell(row=r, column=20).value or 0,
+            penyusutan_realisasi=ws.cell(row=r, column=21).value or 0, penyusutan_budget=ws.cell(row=r, column=22).value or 0,
+            lainnya_realisasi=ws.cell(row=r, column=23).value or 0, lainnya_budget=ws.cell(row=r, column=24).value or 0,
+            biaya_langsung_realisasi=ws.cell(row=r, column=25).value or 0, biaya_langsung_budget=ws.cell(row=r, column=26).value or 0,
+            biaya_tidak_langsung_realisasi=ws.cell(row=r, column=27).value or 0, biaya_tidak_langsung_budget=ws.cell(row=r, column=28).value or 0,
+            total_biaya_realisasi=ws.cell(row=r, column=29).value or 0, total_biaya_budget=ws.cell(row=r, column=30).value or 0,
         ))
     return pd.DataFrame(rows)
 
@@ -339,6 +345,14 @@ with st.sidebar:
     sel_kat_labels = st.multiselect("Kategori Unit", kat_labels, default=kat_labels)
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
 
+    kriteria_opts_raw = sorted(df_raw["kriteria_unit"].dropna().unique().tolist()) if "kriteria_unit" in df_raw.columns else []
+    has_null_kriteria = ("kriteria_unit" in df_raw.columns) and df_raw["kriteria_unit"].isna().any()
+    kriteria_opts = kriteria_opts_raw + (["Tidak Diketahui"] if has_null_kriteria else [])
+    if kriteria_opts:
+        sel_kriteria = st.multiselect("Kriteria Unit (Tarif)", kriteria_opts, default=kriteria_opts)
+    else:
+        sel_kriteria = []
+
 # ---------------------------------------------------------------
 # APPLY FILTERS (data utama)
 # ---------------------------------------------------------------
@@ -347,6 +361,14 @@ df = df_raw[
     df_raw["bulan"].isin(sel_month) &
     df_raw["kategori"].isin(sel_kat)
 ].copy()
+
+if "kriteria_unit" in df.columns and kriteria_opts:
+    sel_kriteria_actual = [k for k in sel_kriteria if k != "Tidak Diketahui"]
+    include_null = "Tidak Diketahui" in sel_kriteria
+    mask = df["kriteria_unit"].isin(sel_kriteria_actual)
+    if include_null:
+        mask = mask | df["kriteria_unit"].isna()
+    df = df[mask]
 
 maint_df_site_bulan = pd.DataFrame()
 if not maint_raw.empty:
