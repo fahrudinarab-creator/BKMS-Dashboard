@@ -171,7 +171,7 @@ DATA_PATH = Path(__file__).parent / "data_bkms.csv"
 MAINT_DATA_PATH = Path(__file__).parent / "data_maintenance.csv"
 SPAREPART_DATA_PATH = Path(__file__).parent / "data_sparepart.csv"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Truck / Ritase (TR)"}
+KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Transportasi (TR)"}
 
 @st.cache_data
 def load_data(file) -> pd.DataFrame:
