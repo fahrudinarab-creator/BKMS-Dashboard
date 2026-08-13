@@ -1103,21 +1103,17 @@ def rk_badge(pct, higher_is_better, na=False):
     return f'<span class="rk-badge {cls}">{pct:.1f}%</span>'
 
 ringkasan_rows = []
-ringkasan_rows.append(("Total Biaya (Rp M)", tot_biaya_b / 1e9, tot_biaya_r / 1e9, ach_biaya, False))
-ringkasan_rows.append(("Biaya Langsung (Rp M)", tot_biaya_langsung_b / 1e9, tot_biaya_langsung_r / 1e9, ach_biaya_langsung, False))
+ringkasan_rows.append(("Upah Operator (Rp M)", df["upah_budget"].sum() / 1e9, df["upah_realisasi"].sum() / 1e9,
+                        achievement(df["upah_realisasi"].sum(), df["upah_budget"].sum()), False))
+ringkasan_rows.append(("Biaya BBM (Rp M)", df["biaya_bbm_budget"].sum() / 1e9, df["biaya_bbm_realisasi"].sum() / 1e9,
+                        achievement(df["biaya_bbm_realisasi"].sum(), df["biaya_bbm_budget"].sum()), False))
+ringkasan_rows.append(("Biaya Maintenance (Rp M)", df["maintenance_budget"].sum() / 1e9, df["maintenance_realisasi"].sum() / 1e9,
+                        achievement(df["maintenance_realisasi"].sum(), df["maintenance_budget"].sum()), False))
+ringkasan_rows.append(("Penyusutan (Rp M)", df["penyusutan_budget"].sum() / 1e9, df["penyusutan_realisasi"].sum() / 1e9,
+                        achievement(df["penyusutan_realisasi"].sum(), df["penyusutan_budget"].sum()), False))
+ringkasan_rows.append(("Lainnya (Rp M)", df["lainnya_budget"].sum() / 1e9, df["lainnya_realisasi"].sum() / 1e9,
+                        achievement(df["lainnya_realisasi"].sum(), df["lainnya_budget"].sum()), False))
 ringkasan_rows.append(("Biaya Tidak Langsung (Rp M)", tot_biaya_tdklangsung_b / 1e9, tot_biaya_tdklangsung_r / 1e9, ach_biaya_tdklangsung, False))
-
-for sat in satuan_order:
-    sub = df[df["satuan_prestasi"] == sat]
-    biaya_r = sub["total_biaya_realisasi"].sum()
-    biaya_b = sub["total_biaya_budget"].sum()
-    prestasi_r = sub["prestasi_realisasi"].sum()
-    prestasi_b = sub["prestasi_budget"].sum()
-    rate_r = (biaya_r / prestasi_r) if prestasi_r else None
-    rate_b = (biaya_b / prestasi_b) if prestasi_b else None
-    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    label = f"Biaya {sat} ({satuan_suffix[sat].lstrip('/')})"
-    ringkasan_rows.append((label, rate_b, rate_r, ach, rate_r is None))
 
 table_rows_html = ""
 for label, budget_val, aktual_val, ach, na in ringkasan_rows:
