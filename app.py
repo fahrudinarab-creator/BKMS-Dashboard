@@ -1094,6 +1094,7 @@ st.markdown("---")
 # RINGKASAN BIAYA (tabel Budget vs Aktual vs Capaian)
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=True)
+st.caption("Nilai = Total Biaya komponen ÷ Total Prestasi (semua satuan digabung) — menunjukkan tarif Rp per satuan Prestasi untuk masing-masing komponen biaya.")
 
 def rk_badge(pct, higher_is_better, na=False):
     if na or pct is None:
@@ -1102,24 +1103,29 @@ def rk_badge(pct, higher_is_better, na=False):
     cls = "rk-green" if good else "rk-red"
     return f'<span class="rk-badge {cls}">{pct:.1f}%</span>'
 
+tot_prestasi_r_all = df["prestasi_realisasi"].sum()
+tot_prestasi_b_all = df["prestasi_budget"].sum()
+
+def rate_row(label, real_col, budget_col):
+    comp_r = df[real_col].sum()
+    comp_b = df[budget_col].sum()
+    rate_r = (comp_r / tot_prestasi_r_all) if tot_prestasi_r_all else None
+    rate_b = (comp_b / tot_prestasi_b_all) if tot_prestasi_b_all else None
+    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
+    return (label, rate_b, rate_r, ach, rate_r is None)
+
 ringkasan_rows = []
-ringkasan_rows.append(("Upah Operator (Rp M)", df["upah_budget"].sum() / 1e9, df["upah_realisasi"].sum() / 1e9,
-                        achievement(df["upah_realisasi"].sum(), df["upah_budget"].sum()), False))
-ringkasan_rows.append(("Biaya BBM (Rp M)", df["biaya_bbm_budget"].sum() / 1e9, df["biaya_bbm_realisasi"].sum() / 1e9,
-                        achievement(df["biaya_bbm_realisasi"].sum(), df["biaya_bbm_budget"].sum()), False))
-ringkasan_rows.append(("Biaya Maintenance (Rp M)", df["maintenance_budget"].sum() / 1e9, df["maintenance_realisasi"].sum() / 1e9,
-                        achievement(df["maintenance_realisasi"].sum(), df["maintenance_budget"].sum()), False))
-ringkasan_rows.append(("Penyusutan (Rp M)", df["penyusutan_budget"].sum() / 1e9, df["penyusutan_realisasi"].sum() / 1e9,
-                        achievement(df["penyusutan_realisasi"].sum(), df["penyusutan_budget"].sum()), False))
-ringkasan_rows.append(("Lainnya (Rp M)", df["lainnya_budget"].sum() / 1e9, df["lainnya_realisasi"].sum() / 1e9,
-                        achievement(df["lainnya_realisasi"].sum(), df["lainnya_budget"].sum()), False))
-ringkasan_rows.append(("Biaya Tidak Langsung (Rp M)", tot_biaya_tdklangsung_b / 1e9, tot_biaya_tdklangsung_r / 1e9, ach_biaya_tdklangsung, False))
+ringkasan_rows.append(rate_row("Upah Operator", "upah_realisasi", "upah_budget"))
+ringkasan_rows.append(rate_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"))
+ringkasan_rows.append(rate_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"))
+ringkasan_rows.append(rate_row("Penyusutan", "penyusutan_realisasi", "penyusutan_budget"))
+ringkasan_rows.append(rate_row("Lainnya", "lainnya_realisasi", "lainnya_budget"))
+ringkasan_rows.append(rate_row("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"))
 
 table_rows_html = ""
 for label, budget_val, aktual_val, ach, na in ringkasan_rows:
-    is_rpm_row = "(Rp M)" in label
-    budget_disp = f"{budget_val:,.2f}" if is_rpm_row else (fmt_rp(budget_val) if budget_val is not None else "-")
-    aktual_disp = f"{aktual_val:,.2f}" if is_rpm_row else (fmt_rp(aktual_val) if aktual_val is not None else "-")
+    budget_disp = fmt_rp(budget_val) if budget_val is not None else "-"
+    aktual_disp = fmt_rp(aktual_val) if aktual_val is not None else "-"
     table_rows_html += f"""
     <tr>
         <td>{label}</td>
