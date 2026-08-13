@@ -134,6 +134,27 @@ st.markdown(f"""
     .kpi-pill-red {{ background: rgba(228,87,76,0.18); color: #FF9A91 !important; }}
     .kpi-pill-amber {{ background: rgba(201,162,39,0.18); color: {GOLD} !important; }}
 
+    .ringkasan-table {{
+        width: 100%; border-collapse: collapse; border-radius: 10px; overflow: hidden;
+        border: 1px solid {BORDER};
+    }}
+    .ringkasan-table th {{
+        background: {PRIMARY}; color: white !important; text-align: left;
+        padding: 10px 14px; font-size: 13px;
+    }}
+    .ringkasan-table td {{
+        padding: 10px 14px; font-size: 13.5px; color: {TEXT_LIGHT} !important;
+        border-top: 1px solid {BORDER}; background: {CARD_BG};
+    }}
+    .ringkasan-table tr:nth-child(even) td {{ background: #1B212B; }}
+    .rk-badge {{
+        display: inline-block; padding: 4px 10px; border-radius: 14px;
+        font-size: 12.5px; font-weight: 700; text-align: center; min-width: 55px;
+    }}
+    .rk-green {{ background: rgba(63,167,114,0.20); color: #6EE7A8 !important; }}
+    .rk-red {{ background: rgba(228,87,76,0.20); color: #FF9A91 !important; }}
+    .rk-grey {{ background: rgba(156,163,175,0.20); color: {TEXT_MUTED} !important; }}
+
     [data-testid="stDataFrame"] {{ background-color: {CARD_BG} !important; }}
     .stTextInput input {{ background-color: {CARD_BG} !important; color: {TEXT_LIGHT} !important; }}
 </style>
@@ -1066,6 +1087,61 @@ for i, sat in enumerate(satuan_order):
             budget_text=(f"Target: {fmt_rp(rate_b)}{suf} • {sub['nama_unit'].nunique():,} unit" if rate_b is not None else f"{sub['nama_unit'].nunique():,} unit"),
             pill_text=pill_txt, pill_style=pill_style,
         ), unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
+# RINGKASAN BIAYA (tabel Budget vs Aktual vs Capaian)
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=True)
+
+def rk_badge(pct, higher_is_better, na=False):
+    if na or pct is None:
+        return '<span class="rk-badge rk-grey">N/A</span>'
+    good = (pct >= 100) if higher_is_better else (pct <= 100)
+    cls = "rk-green" if good else "rk-red"
+    return f'<span class="rk-badge {cls}">{pct:.1f}%</span>'
+
+ringkasan_rows = []
+ringkasan_rows.append(("Total Biaya (Rp M)", tot_biaya_b / 1e9, tot_biaya_r / 1e9, ach_biaya, False))
+ringkasan_rows.append(("Biaya Langsung (Rp M)", tot_biaya_langsung_b / 1e9, tot_biaya_langsung_r / 1e9, ach_biaya_langsung, False))
+ringkasan_rows.append(("Biaya Tidak Langsung (Rp M)", tot_biaya_tdklangsung_b / 1e9, tot_biaya_tdklangsung_r / 1e9, ach_biaya_tdklangsung, False))
+
+for sat in satuan_order:
+    sub = df[df["satuan_prestasi"] == sat]
+    biaya_r = sub["total_biaya_realisasi"].sum()
+    biaya_b = sub["total_biaya_budget"].sum()
+    prestasi_r = sub["prestasi_realisasi"].sum()
+    prestasi_b = sub["prestasi_budget"].sum()
+    rate_r = (biaya_r / prestasi_r) if prestasi_r else None
+    rate_b = (biaya_b / prestasi_b) if prestasi_b else None
+    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
+    label = f"Biaya {sat} ({satuan_suffix[sat].lstrip('/')})"
+    ringkasan_rows.append((label, rate_b, rate_r, ach, rate_r is None))
+
+table_rows_html = ""
+for label, budget_val, aktual_val, ach, na in ringkasan_rows:
+    is_rpm_row = "(Rp M)" in label
+    budget_disp = f"{budget_val:,.2f}" if is_rpm_row else (fmt_rp(budget_val) if budget_val is not None else "-")
+    aktual_disp = f"{aktual_val:,.2f}" if is_rpm_row else (fmt_rp(aktual_val) if aktual_val is not None else "-")
+    table_rows_html += f"""
+    <tr>
+        <td>{label}</td>
+        <td>{budget_disp}</td>
+        <td>{aktual_disp}</td>
+        <td>{rk_badge(ach, higher_is_better=False, na=na)}</td>
+    </tr>"""
+
+st.markdown(f"""
+<table class="ringkasan-table">
+    <thead>
+        <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th></tr>
+    </thead>
+    <tbody>{table_rows_html}
+    </tbody>
+</table>
+""", unsafe_allow_html=True)
+st.caption("Capaian < 100% (hijau) = di bawah budget/lebih efisien. Capaian > 100% (merah) = melebihi budget.")
 
 st.markdown("---")
 
