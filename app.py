@@ -1224,18 +1224,33 @@ else:
     if maint_df.empty:
         st.warning("Tidak ada data maintenance untuk kombinasi filter yang dipilih.")
     else:
-        total_maint = maint_df["biaya"].sum()
         n_transaksi = len(maint_df)
         rutin_biaya = maint_df.loc[maint_df["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum()
         nonrutin_biaya = maint_df.loc[maint_df["jenis_pemeliharaan"] == "NON RUTIN", "biaya"].sum()
         rutin_n = int((maint_df["jenis_pemeliharaan"] == "RUTIN").sum())
         nonrutin_n = int((maint_df["jenis_pemeliharaan"] == "NON RUTIN").sum())
 
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), f"{n_transaksi:,} transaksi")
-        k2.metric("Unit Ter-maintenance", f"{maint_df['nama_unit'].nunique():,}")
-        k3.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
-        k4.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
+        # Workshop Sendiri = total biaya di data_maintenance.csv (maint_df, sudah difilter ID Unit)
+        workshop_biaya = maint_df["biaya"].sum()
+        workshop_n = n_transaksi
+
+        # Total Biaya Maintenance = dari data_bkms.csv (kolom maintenance_realisasi), scope unit yang sama
+        if sel_unit_maint:
+            kode_selected = [lbl.split(" — ")[0].strip() for lbl in sel_unit_maint]
+            df_maint_scope = df[df["kode_unit"].astype(str).isin(kode_selected)]
+        else:
+            df_maint_scope = df
+        total_maint = df_maint_scope["maintenance_realisasi"].sum()
+
+        # Service Luar = selisih Biaya Maintenance (data_bkms.csv) - Workshop Sendiri (data_maintenance.csv)
+        service_luar_biaya = total_maint - workshop_biaya
+
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), "dari data_bkms.csv")
+        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya), f"{workshop_n:,} transaksi")
+        k3.metric("Service Luar", fmt_rp(service_luar_biaya), "selisih Total − Workshop Sendiri")
+        k4.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
+        k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
 
         rekap = maint_df.groupby(["kategori_sparepart", "jenis_pemeliharaan"], as_index=False).agg(
             jumlah_transaksi=("biaya", "count"),
