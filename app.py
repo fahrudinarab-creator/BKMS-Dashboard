@@ -1230,24 +1230,26 @@ else:
         rutin_n = int((maint_df["jenis_pemeliharaan"] == "RUTIN").sum())
         nonrutin_n = int((maint_df["jenis_pemeliharaan"] == "NON RUTIN").sum())
 
-        # Workshop Sendiri = total biaya di data_maintenance.csv (maint_df, sudah difilter ID Unit)
-        workshop_biaya = maint_df["biaya"].sum()
-        workshop_n = n_transaksi
+        # Total Biaya Maintenance = total biaya di data_maintenance.csv (maint_df, sudah difilter ID Unit)
+        total_maint = maint_df["biaya"].sum()
 
-        # Total Biaya Maintenance = dari data_bkms.csv (kolom maintenance_realisasi), scope unit yang sama
-        if sel_unit_maint:
-            kode_selected = [lbl.split(" — ")[0].strip() for lbl in sel_unit_maint]
-            df_maint_scope = df[df["kode_unit"].astype(str).isin(kode_selected)]
+        # Workshop Sendiri = total biaya di data_sparepart.csv (pemakaian persediaan), scope ID Unit yang sama
+        if not sparepart_raw.empty:
+            sparepart_scope = sparepart_df_site_bulan.copy()
+            sparepart_scope["unit_label"] = sparepart_scope["nama_unit"].apply(_unit_label)
+            if sel_unit_maint:
+                sparepart_scope = sparepart_scope[sparepart_scope["unit_label"].isin(sel_unit_maint)]
         else:
-            df_maint_scope = df
-        total_maint = df_maint_scope["maintenance_realisasi"].sum()
+            sparepart_scope = pd.DataFrame(columns=["biaya"])
+        workshop_biaya = sparepart_scope["biaya"].sum() if not sparepart_scope.empty else 0
+        workshop_n = len(sparepart_scope)
 
-        # Service Luar = selisih Biaya Maintenance (data_bkms.csv) - Workshop Sendiri (data_maintenance.csv)
+        # Service Luar = selisih Total Biaya Maintenance (data_maintenance.csv) - Workshop Sendiri (data_sparepart.csv)
         service_luar_biaya = total_maint - workshop_biaya
 
         k1, k2, k3, k4, k5 = st.columns(5)
-        k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), "dari data_bkms.csv")
-        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya), f"{workshop_n:,} transaksi")
+        k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), f"{n_transaksi:,} transaksi")
+        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya), f"{workshop_n:,} item (dari data_sparepart.csv)")
         k3.metric("Service Luar", fmt_rp(service_luar_biaya), "selisih Total − Workshop Sendiri")
         k4.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
         k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
