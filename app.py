@@ -1143,7 +1143,6 @@ st.markdown(f"""
     </tbody>
 </table>
 """, unsafe_allow_html=True)
-st.caption("Capaian < 100% (hijau) = di bawah budget/lebih efisien. Capaian > 100% (merah) = melebihi budget.")
 
 st.markdown("---")
 
