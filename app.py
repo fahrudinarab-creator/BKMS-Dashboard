@@ -1151,6 +1151,8 @@ st.markdown("---")
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Rekap Biaya Maintenance</h3>', unsafe_allow_html=True)
 
+sel_unit_maint = []
+
 if maint_raw.empty:
     st.info("Data maintenance belum tersedia. Upload file Pemeliharaan (.xls/.xlsx) di sidebar untuk menampilkan bagian ini.")
 else:
@@ -1271,7 +1273,8 @@ st.markdown("---")
 st.markdown('<h3 class="section-title">Rekap Pemakaian Sparepart (Persediaan)</h3>', unsafe_allow_html=True)
 st.caption(
     "Data ini hanya mencakup **pemakaian sparepart dari persediaan/gudang** (item, part number, dan quantity per transaksi maintenance). "
-    "Biaya maintenance di luar pemakaian persediaan ini (alokasi workshop, dan lainnya) dianggap sebagai **service luar** — lihat bagian Rekap Biaya Maintenance di atas untuk totalnya."
+    "Biaya maintenance di luar pemakaian persediaan ini (alokasi workshop, dan lainnya) dianggap sebagai **service luar** — lihat bagian Rekap Biaya Maintenance di atas untuk totalnya. "
+    "Filter ID Unit mengikuti otomatis dari filter ID Unit di bagian Rekap Biaya Maintenance."
 )
 
 if sparepart_raw.empty:
@@ -1279,16 +1282,13 @@ if sparepart_raw.empty:
 else:
     sparepart_df_site_bulan = sparepart_df_site_bulan.copy()
     sparepart_df_site_bulan["unit_label"] = sparepart_df_site_bulan["nama_unit"].apply(_unit_label)
-    unit_sparepart_opts = sorted(sparepart_df_site_bulan["unit_label"].dropna().unique().tolist())
-
-    sel_unit_sparepart = st.multiselect(
-        "Filter berdasarkan ID Unit (opsional, kosongkan = semua unit) — ketik ID Unit atau nama unit",
-        unit_sparepart_opts, default=[], key="sel_unit_sparepart",
-    )
 
     sparepart_df = sparepart_df_site_bulan
-    if sel_unit_sparepart:
-        sparepart_df = sparepart_df[sparepart_df["unit_label"].isin(sel_unit_sparepart)]
+    if sel_unit_maint:
+        sparepart_df = sparepart_df[sparepart_df["unit_label"].isin(sel_unit_maint)]
+
+    if sel_unit_maint:
+        st.caption(f"🔗 Sedang difilter mengikuti ID Unit: {', '.join(sel_unit_maint)}")
 
     if sparepart_df.empty:
         st.warning("Tidak ada data pemakaian sparepart untuk kombinasi filter yang dipilih.")
