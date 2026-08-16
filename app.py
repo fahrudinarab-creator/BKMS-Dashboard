@@ -1193,17 +1193,18 @@ else:
 
     fig_rekon = go.Figure()
     fig_rekon.add_bar(
-        y=["Total Maintenance"], x=[total_persediaan_all], name="Pemakaian Persediaan",
+        y=["Total Maintenance"], x=[total_persediaan_all / 1e6], name="Pemakaian Persediaan",
         orientation="h", marker_color=CHART_GREEN,
     )
     fig_rekon.add_bar(
-        y=["Total Maintenance"], x=[service_luar_all], name="Service Luar",
+        y=["Total Maintenance"], x=[service_luar_all / 1e6], name="Service Luar",
         orientation="h", marker_color=GOLD,
     )
     fig_rekon.update_layout(
         barmode="stack", height=160, margin=dict(t=10, b=10, l=10, r=10),
-        xaxis_title="Rupiah", legend=dict(orientation="h", y=1.3),
+        xaxis_title="Juta Rupiah", legend=dict(orientation="h", y=1.3),
     )
+    fig_rekon.update_xaxes(ticksuffix=" Jt")
     st.plotly_chart(style_fig(fig_rekon), use_container_width=True)
     if not sparepart_raw.empty:
         st.caption("Pemakaian Persediaan dihitung dari data Rincian Pemakaian Sparepart. Service Luar adalah selisih Total Maintenance dikurangi Pemakaian Persediaan.")
@@ -1258,14 +1259,16 @@ else:
             jumlah_transaksi=("biaya", "count"),
             total_biaya=("biaya", "sum"),
         )
+        rekap["total_biaya_jt"] = rekap["total_biaya"] / 1e6
 
         fig_rekap = px.bar(
-            rekap, x="kategori_sparepart", y="total_biaya", color="jenis_pemeliharaan",
+            rekap, x="kategori_sparepart", y="total_biaya_jt", color="jenis_pemeliharaan",
             barmode="group", color_discrete_map={"RUTIN": CHART_GREEN, "NON RUTIN": GOLD},
-            labels={"kategori_sparepart": "Kategori Sparepart / Sistem", "total_biaya": "Total Biaya (Rp)", "jenis_pemeliharaan": "Jenis"},
+            labels={"kategori_sparepart": "Kategori Sparepart / Sistem", "total_biaya_jt": "Total Biaya (Juta Rupiah)", "jenis_pemeliharaan": "Jenis"},
         )
         fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=460,
                                  legend=dict(orientation="h", y=1.15), margin=dict(t=60, b=10), xaxis_tickangle=-30)
+        fig_rekap.update_yaxes(ticksuffix=" Jt")
         st.plotly_chart(style_fig(fig_rekap), use_container_width=True)
 
         st.markdown("##### Rincian: Kategori, Jenis, Frekuensi (Berapa Kali), Total Biaya")
@@ -1275,11 +1278,18 @@ else:
             "jumlah_transaksi": "Berapa Kali (Jumlah Transaksi)",
             "total_biaya": "Total Biaya",
         })
+        total_row = pd.DataFrame([{
+            "Kategori (Maintenance atas Apa Saja)": "TOTAL",
+            "Jenis (Rutin / Non Rutin)": "",
+            "Berapa Kali (Jumlah Transaksi)": rekap_tbl["Berapa Kali (Jumlah Transaksi)"].sum(),
+            "Total Biaya": rekap_tbl["Total Biaya"].sum(),
+        }])
+        rekap_tbl_display = pd.concat([rekap_tbl, total_row], ignore_index=True)
         st.dataframe(
-            rekap_tbl, use_container_width=True, hide_index=True, height=380,
+            rekap_tbl_display, use_container_width=True, hide_index=True, height=420,
             column_config={"Total Biaya": st.column_config.NumberColumn(format="Rp %,.0f")},
         )
-        csv_rekap = rekap_tbl.to_csv(index=False).encode("utf-8")
+        csv_rekap = rekap_tbl_display.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Unduh Rekap Maintenance (CSV)", csv_rekap, file_name="rekap_maintenance_bkms.csv", mime="text/csv")
 
 st.markdown("---")
@@ -1324,10 +1334,12 @@ else:
             top_barang = sparepart_df.groupby("nama_barang", as_index=False).agg(
                 total_qty=("qty", "sum"), total_biaya=("biaya", "sum"),
             ).sort_values("total_biaya", ascending=False).head(15)
+            top_barang["total_biaya_jt"] = top_barang["total_biaya"] / 1e6
             fig_sp1 = go.Figure()
-            fig_sp1.add_bar(y=top_barang["nama_barang"], x=top_barang["total_biaya"], orientation="h", marker_color=CHART_GREEN)
-            fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Rupiah",
+            fig_sp1.add_bar(y=top_barang["nama_barang"], x=top_barang["total_biaya_jt"], orientation="h", marker_color=CHART_GREEN)
+            fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Juta Rupiah",
                                    height=460, margin=dict(t=60, b=10, l=10))
+            fig_sp1.update_xaxes(ticksuffix=" Jt")
             fig_sp1.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_sp1), use_container_width=True)
 
