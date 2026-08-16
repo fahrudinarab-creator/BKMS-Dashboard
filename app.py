@@ -1260,13 +1260,16 @@ else:
             total_biaya=("biaya", "sum"),
         )
         rekap["total_biaya_jt"] = rekap["total_biaya"] / 1e6
+        rekap["label_biaya"] = rekap["total_biaya_jt"].apply(lambda v: f"{v:,.1f} Jt")
 
         fig_rekap = px.bar(
             rekap, x="kategori_sparepart", y="total_biaya_jt", color="jenis_pemeliharaan",
             barmode="group", color_discrete_map={"RUTIN": CHART_GREEN, "NON RUTIN": GOLD},
             labels={"kategori_sparepart": "Kategori Sparepart / Sistem", "total_biaya_jt": "Total Biaya (Juta Rupiah)", "jenis_pemeliharaan": "Jenis"},
+            text="label_biaya",
         )
-        fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=460,
+        fig_rekap.update_traces(textposition="outside", textfont=dict(size=10, color=TEXT_LIGHT))
+        fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=500,
                                  legend=dict(orientation="h", y=1.15), margin=dict(t=60, b=10), xaxis_tickangle=-30)
         fig_rekap.update_yaxes(ticksuffix=" Jt")
         st.plotly_chart(style_fig(fig_rekap), use_container_width=True)
