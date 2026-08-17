@@ -1233,53 +1233,28 @@ else:
         # Service Luar = selisih Total Biaya Maintenance (data_maintenance.csv) - Workshop Sendiri (data_sparepart.csv)
         service_luar_biaya = total_maint - workshop_biaya
 
-        k1, k2, k3, k4, k5 = st.columns(5)
-        k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), f"{n_transaksi:,} transaksi")
-        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya), f"{workshop_n:,} item (dari data_sparepart.csv)")
-        k3.metric("Service Luar", fmt_rp(service_luar_biaya), "selisih Total − Workshop Sendiri")
-        k4.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
-        k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
-
-        # Realisasi vs Budget — Budget diambil dari kolom maintenance_budget di data_bkms.csv,
-        # dengan scope site/bulan/kategori yang sama, dan ikut mengikuti filter ID Unit jika dipilih.
+        # Budget Maintenance diambil dari kolom maintenance_budget di data_bkms.csv, dengan
+        # scope site/bulan/kategori yang sama, dan ikut mengikuti filter ID Unit jika dipilih.
         if sel_unit_maint:
             budget_scope = df[df["nama_unit"].apply(_unit_label).isin(sel_unit_maint)]
         else:
             budget_scope = df
         total_maint_budget = budget_scope["maintenance_budget"].sum()
         maint_ach = achievement(total_maint, total_maint_budget)
-        maint_pill_txt, maint_pill_sty = achievement_pill(maint_ach, higher_is_better=False)
+        if maint_ach is not None:
+            diff_pp = maint_ach - 100  # positif = over budget (buruk), negatif = under budget (baik)
+            maint_delta = f"{diff_pp:+.1f}% vs Budget (capaian {maint_ach:.1f}%) • {n_transaksi:,} transaksi"
+        else:
+            maint_delta = f"{n_transaksi:,} transaksi (budget belum tersedia)"
 
-        st.markdown("##### Realisasi vs Budget — Biaya Maintenance")
-        bm1, bm2, bm3 = st.columns(3)
-        with bm1:
-            st.markdown(kpi_card(
-                icon="🔧", icon_bg=GREY, accent=GREY,
-                label="Biaya Maintenance: Realisasi",
-                value=fmt_rp(total_maint),
-                budget_text=f"{n_transaksi:,} transaksi (data_maintenance.csv)",
-                pill_text="Realisasi", pill_style="kpi-pill-amber",
-            ), unsafe_allow_html=True)
-        with bm2:
-            st.markdown(kpi_card(
-                icon="🎯", icon_bg=GOLD, accent=GOLD,
-                label="Biaya Maintenance: Budget",
-                value=fmt_rp(total_maint_budget) if total_maint_budget else "-",
-                budget_text=("Dari data_bkms.csv (maintenance_budget)" if total_maint_budget
-                              else "Budget tidak tersedia untuk scope/filter ini"),
-                pill_text="Target", pill_style="kpi-pill-amber",
-            ), unsafe_allow_html=True)
-        with bm3:
-            selisih = total_maint - total_maint_budget
-            st.markdown(kpi_card(
-                icon=("✅" if (maint_ach is not None and maint_ach <= 100) else "⚠️"),
-                icon_bg=(CHART_GREEN if (maint_ach is not None and maint_ach <= 100) else RED),
-                accent=(CHART_GREEN if (maint_ach is not None and maint_ach <= 100) else RED),
-                label="Capaian vs Budget",
-                value=(f"{maint_ach:.1f}%" if maint_ach is not None else "N/A"),
-                budget_text=(f"Selisih: {fmt_rp(selisih)}" if total_maint_budget else "Budget belum tersedia untuk dibandingkan"),
-                pill_text=maint_pill_txt, pill_style=maint_pill_sty,
-            ), unsafe_allow_html=True)
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), maint_delta, delta_color="inverse")
+        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya), f"{workshop_n:,} item (dari data_sparepart.csv)")
+        k3.metric("Service Luar", fmt_rp(service_luar_biaya), "selisih Total − Workshop Sendiri")
+        k4.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
+        k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
+        if total_maint_budget:
+            st.caption(f"Budget Maintenance: {fmt_rp(total_maint_budget)} (dari data_bkms.csv, kolom maintenance_budget)")
 
         rekap = maint_df.groupby(["kategori_sparepart", "jenis_pemeliharaan"], as_index=False).agg(
             jumlah_transaksi=("biaya", "count"),
