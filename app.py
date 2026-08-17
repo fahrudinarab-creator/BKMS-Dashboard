@@ -9,6 +9,14 @@ from pathlib import Path
 
 pio.templates.default = "plotly_dark"
 
+_unit_code_pattern = re.compile(r'(\d{3}-\d{3})\s*$')
+def _unit_label(name):
+    if not isinstance(name, str):
+        return name
+    m = _unit_code_pattern.search(name)
+    code = m.group(1) if m else "?"
+    return f"{code} — {name}"
+
 def style_fig(fig):
     """Make chart background transparent so it blends with the black page,
     and keep text light/readable."""
@@ -392,6 +400,14 @@ with st.sidebar:
     else:
         sel_kriteria = []
 
+    unit_opts_df = df_raw[["nama_unit"]].dropna().drop_duplicates().copy()
+    unit_opts_df["unit_label"] = unit_opts_df["nama_unit"].apply(_unit_label)
+    unit_opts = sorted(unit_opts_df["unit_label"].unique().tolist())
+    sel_id_unit = st.multiselect(
+        "ID Unit (opsional, kosongkan = semua unit) — ketik ID Unit atau nama unit",
+        unit_opts, default=[],
+    )
+
 # ---------------------------------------------------------------
 # APPLY FILTERS (data utama)
 # ---------------------------------------------------------------
@@ -409,12 +425,19 @@ if "kriteria_unit" in df.columns and kriteria_opts:
         mask = mask | df["kriteria_unit"].isna()
     df = df[mask]
 
+if sel_id_unit:
+    df["unit_label"] = df["nama_unit"].apply(_unit_label)
+    df = df[df["unit_label"].isin(sel_id_unit)]
+
 maint_df_site_bulan = pd.DataFrame()
 if not maint_raw.empty:
     maint_df_site_bulan = maint_raw[
         maint_raw["lokasi"].isin(sel_site) &
         maint_raw["bulan"].isin(sel_month)
     ].copy()
+    if sel_id_unit:
+        maint_df_site_bulan["unit_label"] = maint_df_site_bulan["nama_unit"].apply(_unit_label)
+        maint_df_site_bulan = maint_df_site_bulan[maint_df_site_bulan["unit_label"].isin(sel_id_unit)]
 
 sparepart_df_site_bulan = pd.DataFrame()
 if not sparepart_raw.empty:
@@ -422,6 +445,13 @@ if not sparepart_raw.empty:
         sparepart_raw["lokasi"].isin(sel_site) &
         sparepart_raw["bulan"].isin(sel_month)
     ].copy()
+    if sel_id_unit:
+        sparepart_df_site_bulan["unit_label"] = sparepart_df_site_bulan["nama_unit"].apply(_unit_label)
+        sparepart_df_site_bulan = sparepart_df_site_bulan[sparepart_df_site_bulan["unit_label"].isin(sel_id_unit)]
+
+if sel_id_unit:
+    st.caption(f"🔗 Dashboard sedang difilter untuk ID Unit: {', '.join(sel_id_unit)}")
+
 
 def fmt_rp(x):
     if abs(x) >= 1e9:
@@ -434,14 +464,6 @@ def achievement(real, budget):
     if budget == 0:
         return None
     return real / budget * 100
-
-_unit_code_pattern = re.compile(r'(\d{3}-\d{3})\s*$')
-def _unit_label(name):
-    if not isinstance(name, str):
-        return name
-    m = _unit_code_pattern.search(name)
-    code = m.group(1) if m else "?"
-    return f"{code} — {name}"
 
 # ---------------------------------------------------------------
 # HEADER
