@@ -1191,21 +1191,6 @@ else:
             pill_text=f"{pct_service_luar:.1f}% dari total", pill_style="kpi-pill-amber",
         ), unsafe_allow_html=True)
 
-    fig_rekon = go.Figure()
-    fig_rekon.add_bar(
-        y=["Total Maintenance"], x=[total_persediaan_all / 1e6], name="Pemakaian Persediaan",
-        orientation="h", marker_color=CHART_GREEN,
-    )
-    fig_rekon.add_bar(
-        y=["Total Maintenance"], x=[service_luar_all / 1e6], name="Service Luar",
-        orientation="h", marker_color=GOLD,
-    )
-    fig_rekon.update_layout(
-        barmode="stack", height=160, margin=dict(t=10, b=10, l=10, r=10),
-        xaxis_title="Juta Rupiah", legend=dict(orientation="h", y=1.3),
-    )
-    fig_rekon.update_xaxes(ticksuffix=" Jt")
-    st.plotly_chart(style_fig(fig_rekon), use_container_width=True)
     if not sparepart_raw.empty:
         st.caption("Pemakaian Persediaan dihitung dari data Rincian Pemakaian Sparepart. Service Luar adalah selisih Total Maintenance dikurangi Pemakaian Persediaan.")
     else:
