@@ -149,16 +149,16 @@ st.markdown(f"""
     .ringkasan-table tr:nth-child(even) td {{ background: #1B212B; }}
 
     .ringkasan-table-sm {{
-        width: 100%; border-collapse: collapse; border-radius: 8px; overflow: hidden;
+        width: auto; max-width: 420px; border-collapse: collapse; border-radius: 8px; overflow: hidden;
         border: 1px solid {BORDER};
     }}
     .ringkasan-table-sm th {{
         background: {PRIMARY}; color: white !important; text-align: left;
-        padding: 6px 10px; font-size: 11px;
+        padding: 4px 8px; font-size: 10px; white-space: nowrap;
     }}
     .ringkasan-table-sm td {{
-        padding: 6px 10px; font-size: 11.5px; color: {TEXT_LIGHT} !important;
-        border-top: 1px solid {BORDER}; background: {CARD_BG};
+        padding: 4px 8px; font-size: 10.5px; color: {TEXT_LIGHT} !important;
+        border-top: 1px solid {BORDER}; background: {CARD_BG}; white-space: nowrap;
     }}
     .ringkasan-table-sm tr:nth-child(even) td {{ background: #1B212B; }}
     .rk-badge {{
@@ -168,8 +168,8 @@ st.markdown(f"""
     .rk-green {{ background: rgba(63,167,114,0.20); color: #6EE7A8 !important; }}
     .rk-red {{ background: rgba(228,87,76,0.20); color: #FF9A91 !important; }}
     .rk-badge-sm {{
-        display: inline-block; padding: 2px 8px; border-radius: 12px;
-        font-size: 10.5px; font-weight: 700; text-align: center; min-width: 42px;
+        display: inline-block; padding: 1px 6px; border-radius: 10px;
+        font-size: 9.5px; font-weight: 700; text-align: center; min-width: 36px;
     }}
     .rk-grey {{ background: rgba(156,163,175,0.20); color: {TEXT_MUTED} !important; }}
 
@@ -1112,7 +1112,6 @@ st.markdown("---")
 # RINGKASAN BIAYA (tabel Budget vs Aktual vs Capaian)
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=True)
-st.caption("Nilai = Total Biaya komponen ÷ Total Prestasi (semua satuan digabung) — menunjukkan tarif Rp per satuan Prestasi untuk masing-masing komponen biaya.")
 
 def rk_badge(pct, higher_is_better, na=False, small=False):
     cls_base = "rk-badge-sm" if small else "rk-badge"
@@ -1153,9 +1152,11 @@ for label, budget_val, aktual_val, ach, na, _comp_r in ringkasan_rows:
         <td>{rk_badge(ach, higher_is_better=False, na=na, small=True)}</td>
     </tr>"""
 
-col_tbl, col_pie = st.columns([1.1, 1])
+col_tbl, col_pie = st.columns([0.8, 1.2])
 with col_tbl:
+    st.markdown("##### Ringkasan Biaya (Budget vs Aktual)")
     st.markdown(f"""
+    <div style="display:flex; justify-content:flex-start;">
     <table class="ringkasan-table-sm">
         <thead>
             <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th></tr>
@@ -1163,8 +1164,10 @@ with col_tbl:
         <tbody>{table_rows_html}
         </tbody>
     </table>
+    </div>
     """, unsafe_allow_html=True)
 with col_pie:
+    st.markdown("##### Komposisi Biaya Aktual terhadap Total Biaya")
     comp_pie_df = pd.DataFrame({
         "Komponen": [r[0] for r in ringkasan_rows],
         "Biaya": [r[5] for r in ringkasan_rows],
@@ -1174,8 +1177,8 @@ with col_pie:
         fig_comp = px.pie(comp_pie_df, names="Komponen", values="Biaya", hole=0.5)
         fig_comp.update_traces(textinfo="percent", textfont=dict(size=10))
         fig_comp.update_layout(
-            title="Komposisi Biaya Aktual terhadap Total Biaya", height=340,
-            margin=dict(t=50, b=10), showlegend=True, legend=dict(font=dict(size=9)),
+            height=300, margin=dict(t=10, b=10, l=10, r=10),
+            showlegend=True, legend=dict(font=dict(size=9)),
         )
         st.plotly_chart(style_fig(fig_comp), use_container_width=True)
     else:
