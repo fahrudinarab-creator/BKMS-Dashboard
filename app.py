@@ -147,12 +147,30 @@ st.markdown(f"""
         border-top: 1px solid {BORDER}; background: {CARD_BG};
     }}
     .ringkasan-table tr:nth-child(even) td {{ background: #1B212B; }}
+
+    .ringkasan-table-sm {{
+        width: 100%; border-collapse: collapse; border-radius: 8px; overflow: hidden;
+        border: 1px solid {BORDER};
+    }}
+    .ringkasan-table-sm th {{
+        background: {PRIMARY}; color: white !important; text-align: left;
+        padding: 6px 10px; font-size: 11px;
+    }}
+    .ringkasan-table-sm td {{
+        padding: 6px 10px; font-size: 11.5px; color: {TEXT_LIGHT} !important;
+        border-top: 1px solid {BORDER}; background: {CARD_BG};
+    }}
+    .ringkasan-table-sm tr:nth-child(even) td {{ background: #1B212B; }}
     .rk-badge {{
         display: inline-block; padding: 4px 10px; border-radius: 14px;
         font-size: 12.5px; font-weight: 700; text-align: center; min-width: 55px;
     }}
     .rk-green {{ background: rgba(63,167,114,0.20); color: #6EE7A8 !important; }}
     .rk-red {{ background: rgba(228,87,76,0.20); color: #FF9A91 !important; }}
+    .rk-badge-sm {{
+        display: inline-block; padding: 2px 8px; border-radius: 12px;
+        font-size: 10.5px; font-weight: 700; text-align: center; min-width: 42px;
+    }}
     .rk-grey {{ background: rgba(156,163,175,0.20); color: {TEXT_MUTED} !important; }}
 
     [data-testid="stDataFrame"] {{ background-color: {CARD_BG} !important; }}
@@ -1096,12 +1114,13 @@ st.markdown("---")
 st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=True)
 st.caption("Nilai = Total Biaya komponen ÷ Total Prestasi (semua satuan digabung) — menunjukkan tarif Rp per satuan Prestasi untuk masing-masing komponen biaya.")
 
-def rk_badge(pct, higher_is_better, na=False):
+def rk_badge(pct, higher_is_better, na=False, small=False):
+    cls_base = "rk-badge-sm" if small else "rk-badge"
     if na or pct is None:
-        return '<span class="rk-badge rk-grey">N/A</span>'
+        return f'<span class="{cls_base} rk-grey">N/A</span>'
     good = (pct >= 100) if higher_is_better else (pct <= 100)
     cls = "rk-green" if good else "rk-red"
-    return f'<span class="rk-badge {cls}">{pct:.1f}%</span>'
+    return f'<span class="{cls_base} {cls}">{pct:.1f}%</span>'
 
 tot_prestasi_r_all = df["prestasi_realisasi"].sum()
 tot_prestasi_b_all = df["prestasi_budget"].sum()
@@ -1112,7 +1131,7 @@ def rate_row(label, real_col, budget_col):
     rate_r = (comp_r / tot_prestasi_r_all) if tot_prestasi_r_all else None
     rate_b = (comp_b / tot_prestasi_b_all) if tot_prestasi_b_all else None
     ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    return (label, rate_b, rate_r, ach, rate_r is None)
+    return (label, rate_b, rate_r, ach, rate_r is None, comp_r)
 
 ringkasan_rows = []
 ringkasan_rows.append(rate_row("Upah Operator", "upah_realisasi", "upah_budget"))
@@ -1123,7 +1142,7 @@ ringkasan_rows.append(rate_row("Lainnya", "lainnya_realisasi", "lainnya_budget")
 ringkasan_rows.append(rate_row("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"))
 
 table_rows_html = ""
-for label, budget_val, aktual_val, ach, na in ringkasan_rows:
+for label, budget_val, aktual_val, ach, na, _comp_r in ringkasan_rows:
     budget_disp = fmt_rp(budget_val) if budget_val is not None else "-"
     aktual_disp = fmt_rp(aktual_val) if aktual_val is not None else "-"
     table_rows_html += f"""
@@ -1131,18 +1150,36 @@ for label, budget_val, aktual_val, ach, na in ringkasan_rows:
         <td>{label}</td>
         <td>{budget_disp}</td>
         <td>{aktual_disp}</td>
-        <td>{rk_badge(ach, higher_is_better=False, na=na)}</td>
+        <td>{rk_badge(ach, higher_is_better=False, na=na, small=True)}</td>
     </tr>"""
 
-st.markdown(f"""
-<table class="ringkasan-table">
-    <thead>
-        <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th></tr>
-    </thead>
-    <tbody>{table_rows_html}
-    </tbody>
-</table>
-""", unsafe_allow_html=True)
+col_tbl, col_pie = st.columns([1.1, 1])
+with col_tbl:
+    st.markdown(f"""
+    <table class="ringkasan-table-sm">
+        <thead>
+            <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th></tr>
+        </thead>
+        <tbody>{table_rows_html}
+        </tbody>
+    </table>
+    """, unsafe_allow_html=True)
+with col_pie:
+    comp_pie_df = pd.DataFrame({
+        "Komponen": [r[0] for r in ringkasan_rows],
+        "Biaya": [r[5] for r in ringkasan_rows],
+    })
+    comp_pie_df = comp_pie_df[comp_pie_df["Biaya"] > 0]
+    if not comp_pie_df.empty:
+        fig_comp = px.pie(comp_pie_df, names="Komponen", values="Biaya", hole=0.5)
+        fig_comp.update_traces(textinfo="percent", textfont=dict(size=10))
+        fig_comp.update_layout(
+            title="Komposisi Biaya Aktual terhadap Total Biaya", height=340,
+            margin=dict(t=50, b=10), showlegend=True, legend=dict(font=dict(size=9)),
+        )
+        st.plotly_chart(style_fig(fig_comp), use_container_width=True)
+    else:
+        st.info("Data biaya aktual belum tersedia untuk ditampilkan sebagai diagram komposisi.")
 
 st.markdown("---")
 
