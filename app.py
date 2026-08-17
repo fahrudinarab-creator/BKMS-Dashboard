@@ -1310,11 +1310,6 @@ st.markdown("---")
 # REKAP PEMAKAIAN SPAREPART (PERSEDIAAN)
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Rekap Pemakaian Sparepart (Persediaan)</h3>', unsafe_allow_html=True)
-st.caption(
-    "Data ini hanya mencakup **pemakaian sparepart dari persediaan/gudang** (item, part number, dan quantity per transaksi maintenance). "
-    "Biaya maintenance di luar pemakaian persediaan ini (alokasi workshop, dan lainnya) dianggap sebagai **service luar** — lihat bagian Rekap Biaya Maintenance di atas untuk totalnya. "
-    "Filter ID Unit mengikuti otomatis dari filter ID Unit di bagian Rekap Biaya Maintenance."
-)
 
 if sparepart_raw.empty:
     st.info("Data pemakaian sparepart belum tersedia. Upload file Rincian Pemakaian (.xls/.xlsx) di sidebar untuk menampilkan bagian ini.")
