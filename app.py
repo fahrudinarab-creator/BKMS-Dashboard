@@ -1249,10 +1249,10 @@ else:
 
         k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), maint_delta, delta_color="inverse")
-        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya), f"{workshop_n:,} item (dari data_sparepart.csv)")
-        k3.metric("Service Luar", fmt_rp(service_luar_biaya), "selisih Total − Workshop Sendiri")
-        k4.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
-        k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
+        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya))
+        k3.metric("Service Luar", fmt_rp(service_luar_biaya))
+        k4.metric("Biaya Rutin", fmt_rp(rutin_biaya))
+        k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya))
         if total_maint_budget:
             st.caption(f"Budget Maintenance: {fmt_rp(total_maint_budget)} (dari data_bkms.csv, kolom maintenance_budget)")
 
