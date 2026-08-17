@@ -1243,9 +1243,9 @@ else:
         maint_ach = achievement(total_maint, total_maint_budget)
         if maint_ach is not None:
             diff_pp = maint_ach - 100  # positif = over budget (buruk), negatif = under budget (baik)
-            maint_delta = f"{diff_pp:+.1f}% vs Budget (capaian {maint_ach:.1f}%) • {n_transaksi:,} transaksi"
+            maint_delta = f"{diff_pp:+.1f}% vs Budget {fmt_rp(total_maint_budget)}"
         else:
-            maint_delta = f"{n_transaksi:,} transaksi (budget belum tersedia)"
+            maint_delta = "Budget belum tersedia"
 
         k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), maint_delta, delta_color="inverse")
