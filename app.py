@@ -1489,4 +1489,160 @@ else:
     st.caption("Catatan: analisa ini bersifat indikatif berdasarkan pola data (capaian Prestasi & Populasi unit), bukan kesimpulan pasti atas penyebab operasional di lapangan.")
 
 st.markdown("---")
+
+# ---------------------------------------------------------------
+# 7. ANALISA: UNIT TIDAK PRODUKTIF
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Analisa: Unit Tidak Produktif</h3>', unsafe_allow_html=True)
+st.caption(
+    "Sebuah unit ditandai **Tidak Produktif** jika marginnya negatif (Pendapatan lebih kecil dari Total Biaya — "
+    "pendapatan sedikit, biaya banyak), DAN didukung minimal 2 dari 3 indikator berikut: "
+    "capaian Pendapatan di bawah budget, capaian Prestasi di bawah budget, dan frekuensi maintenance "
+    "termasuk 25% unit paling sering melakukan maintenance."
+)
+
+# --- Agregasi per unit dari data utama: Pendapatan, Prestasi, Total Biaya ---
+unit_fin = df.groupby(["id_unit", "nama_unit"], as_index=False).agg(
+    lokasi=("lokasi", lambda s: s.mode().iat[0] if not s.mode().empty else s.iloc[0]),
+    kategori=("kategori", lambda s: s.mode().iat[0] if not s.mode().empty else s.iloc[0]),
+    pendapatan_r=("pendapatan_realisasi", "sum"),
+    pendapatan_b=("pendapatan_budget", "sum"),
+    prestasi_r=("prestasi_realisasi", "sum"),
+    prestasi_b=("prestasi_budget", "sum"),
+    total_biaya_r=("total_biaya_realisasi", "sum"),
+)
+unit_fin["unit_label"] = unit_fin["nama_unit"].apply(_unit_label)
+
+# --- Agregasi maintenance per unit: frekuensi & biaya (scope site/bulan yang sama) ---
+if not maint_raw.empty:
+    maint_unit_agg = maint_df_site_bulan.copy()
+    maint_unit_agg["unit_label"] = maint_unit_agg["nama_unit"].apply(_unit_label)
+    maint_unit_agg = maint_unit_agg.groupby("unit_label", as_index=False).agg(
+        maintenance_biaya=("biaya", "sum"),
+        maintenance_freq=("biaya", "count"),
+    )
+else:
+    maint_unit_agg = pd.DataFrame(columns=["unit_label", "maintenance_biaya", "maintenance_freq"])
+
+unit_analysis = unit_fin.merge(maint_unit_agg, on="unit_label", how="left")
+unit_analysis["maintenance_biaya"] = unit_analysis["maintenance_biaya"].fillna(0)
+unit_analysis["maintenance_freq"] = unit_analysis["maintenance_freq"].fillna(0).astype(int)
+
+unit_analysis["capaian_pendapatan"] = unit_analysis.apply(lambda r: achievement(r["pendapatan_r"], r["pendapatan_b"]), axis=1)
+unit_analysis["capaian_prestasi"] = unit_analysis.apply(lambda r: achievement(r["prestasi_r"], r["prestasi_b"]), axis=1)
+unit_analysis["margin"] = unit_analysis["pendapatan_r"] - unit_analysis["total_biaya_r"]
+
+nonzero_freq = unit_analysis.loc[unit_analysis["maintenance_freq"] > 0, "maintenance_freq"]
+if len(nonzero_freq) > 0:
+    freq_p75 = nonzero_freq.quantile(0.75)
+    unit_analysis["flag_maintenance_sering"] = unit_analysis["maintenance_freq"] >= freq_p75
+else:
+    unit_analysis["flag_maintenance_sering"] = False
+
+unit_analysis["flag_pendapatan"] = unit_analysis["capaian_pendapatan"].apply(lambda v: (v is not None) and v < 100)
+unit_analysis["flag_prestasi"] = unit_analysis["capaian_prestasi"].apply(lambda v: (v is not None) and v < 100)
+unit_analysis["flag_margin_negatif"] = unit_analysis["margin"] < 0
+unit_analysis["skor_masalah"] = (
+    unit_analysis["flag_pendapatan"].astype(int)
+    + unit_analysis["flag_prestasi"].astype(int)
+    + unit_analysis["flag_maintenance_sering"].astype(int)
+)
+unit_analysis["tidak_produktif"] = unit_analysis["flag_margin_negatif"] & (unit_analysis["skor_masalah"] >= 2)
+
+tp_df = unit_analysis[unit_analysis["tidak_produktif"]].sort_values("margin")
+
+if tp_df.empty:
+    st.success("Tidak ada unit yang teridentifikasi **Tidak Produktif** berdasarkan kriteria di atas pada filter saat ini.")
+else:
+    total_rugi = tp_df["margin"].sum()  # sudah negatif
+    avg_capaian_pdt = tp_df["capaian_pendapatan"].mean()
+    avg_freq_maint = tp_df["maintenance_freq"].mean()
+
+    u1, u2, u3, u4 = st.columns(4)
+    with u1:
+        st.markdown(kpi_card(
+            icon="⚠️", icon_bg=RED, accent=RED,
+            label="Jumlah Unit Tidak Produktif",
+            value=f"{len(tp_df):,} unit",
+            budget_text=f"dari {len(unit_analysis):,} unit teranalisa",
+            pill_text="Perlu Tindak Lanjut", pill_style="kpi-pill-red",
+        ), unsafe_allow_html=True)
+    with u2:
+        st.markdown(kpi_card(
+            icon="📉", icon_bg=RED, accent=RED,
+            label="Total Margin Negatif (Kerugian)",
+            value=fmt_rp(total_rugi),
+            budget_text="Pendapatan − Total Biaya (unit tidak produktif)",
+            pill_text="Rugi", pill_style="kpi-pill-red",
+        ), unsafe_allow_html=True)
+    with u3:
+        st.markdown(kpi_card(
+            icon="💰", icon_bg=GOLD, accent=GOLD,
+            label="Rata-rata Capaian Pendapatan",
+            value=(f"{avg_capaian_pdt:.1f}%" if pd.notna(avg_capaian_pdt) else "-"),
+            budget_text="Rata-rata unit tidak produktif",
+            pill_text="vs Budget", pill_style="kpi-pill-amber",
+        ), unsafe_allow_html=True)
+    with u4:
+        st.markdown(kpi_card(
+            icon="🔧", icon_bg=GOLD, accent=GOLD,
+            label="Rata-rata Frekuensi Maintenance",
+            value=f"{avg_freq_maint:.1f}x",
+            budget_text="Rata-rata unit tidak produktif",
+            pill_text="Sering", pill_style="kpi-pill-amber",
+        ), unsafe_allow_html=True)
+
+    st.markdown("##### Chart: Unit dengan Margin Ternegatif (Top 10)")
+    top10 = tp_df.head(10).copy()
+    top10["margin_jt"] = top10["margin"] / 1e6
+    top10["label_margin"] = top10["margin"].apply(fmt_rp)
+    top10["unit_chart_label"] = top10["id_unit"].astype(str) + " — " + top10["nama_unit"].astype(str)
+    fig_tp = px.bar(
+        top10.sort_values("margin_jt", ascending=False),
+        y="unit_chart_label", x="margin_jt", orientation="h",
+        text="label_margin",
+        labels={"unit_chart_label": "Unit", "margin_jt": "Margin (Juta Rupiah)"},
+    )
+    fig_tp.update_traces(marker_color=RED, textposition="outside", textfont=dict(size=10, color=TEXT_LIGHT))
+    fig_tp.update_layout(title="Top 10 Unit dengan Margin (Pendapatan − Biaya) Ternegatif", height=450, margin=dict(t=60, b=10, l=10))
+    st.plotly_chart(style_fig(fig_tp), use_container_width=True)
+
+    st.markdown("##### Rincian Unit Tidak Produktif")
+    disp = tp_df.copy()
+    disp["Status"] = disp["skor_masalah"].apply(
+        lambda s: "🔴 Sangat Tidak Produktif (3 indikator)" if s == 3 else "🟠 Tidak Produktif (2 indikator)"
+    )
+    show_tp = pd.DataFrame({
+        "ID Unit": disp["id_unit"],
+        "Nama Unit": disp["nama_unit"],
+        "Site": disp["lokasi"],
+        "Kategori": disp["kategori"].map(lambda k: KATEGORI_LABEL.get(k, k)),
+        "Pendapatan Realisasi": disp["pendapatan_r"].apply(fmt_rp),
+        "Capaian Pendapatan": disp["capaian_pendapatan"].apply(lambda v: f"{v:.1f}%" if pd.notna(v) else "-"),
+        "Capaian Prestasi": disp["capaian_prestasi"].apply(lambda v: f"{v:.1f}%" if pd.notna(v) else "-"),
+        "Total Biaya": disp["total_biaya_r"].apply(fmt_rp),
+        "Margin (Pendapatan − Biaya)": disp["margin"].apply(fmt_rp),
+        "Frekuensi Maintenance": disp["maintenance_freq"],
+        "Biaya Maintenance": disp["maintenance_biaya"].apply(fmt_rp),
+        "Status": disp["Status"],
+    })
+    st.dataframe(show_tp, use_container_width=True, hide_index=True, height=420)
+    csv_tp = show_tp.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇️ Unduh Daftar Unit Tidak Produktif (CSV)", csv_tp, file_name="unit_tidak_produktif_bkms.csv", mime="text/csv")
+
+    worst3 = tp_df.head(3)
+    poin = []
+    for _, r in worst3.iterrows():
+        cap_pdt = f"{r['capaian_pendapatan']:.1f}%" if pd.notna(r["capaian_pendapatan"]) else "tanpa budget"
+        cap_prs = f"{r['capaian_prestasi']:.1f}%" if pd.notna(r["capaian_prestasi"]) else "tanpa budget"
+        poin.append(
+            f"<b>{r['id_unit']} — {r['nama_unit']}</b> (site {r['lokasi']}): margin <b>{fmt_rp(r['margin'])}</b>, "
+            f"capaian Pendapatan {cap_pdt}, capaian Prestasi {cap_prs}, maintenance {int(r['maintenance_freq'])} kali "
+            f"({fmt_rp(r['maintenance_biaya'])})."
+        )
+    bullets_tp_html = "".join([f"<li>{p}</li>" for p in poin])
+    st.markdown(f'<div class="insight-box"><b>3 unit paling bermasalah:</b><ul>{bullets_tp_html}</ul></div>', unsafe_allow_html=True)
+    st.caption("Catatan: analisa ini bersifat indikatif berdasarkan pola data historis, bukan kesimpulan pasti atas kondisi unit di lapangan — perlu verifikasi lapangan sebelum diambil tindakan.")
+
+st.markdown("---")
 st.caption("Dashboard Biaya & Pendapatan • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat dengan Streamlit")
