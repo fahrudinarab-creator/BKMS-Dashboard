@@ -1366,25 +1366,39 @@ else:
         st.warning("Tidak ada data pemakaian sparepart untuk kombinasi filter yang dipilih.")
     else:
         total_sp = sparepart_df["biaya"].sum()
+        total_qty_trx = len(sparepart_df)
+        n_jenis_barang = sparepart_df["nama_barang"].nunique()
 
-        st.markdown(f"""
-        <div style="display:inline-block; background:{CARD_BG}; border:1px solid {BORDER};
-                    border-radius:10px; padding:10px 18px; margin-bottom:6px;">
-            <div style="font-size:12px; color:{TEXT_MUTED}; font-weight:600;">Total Biaya Pemakaian Sparepart</div>
-            <div style="font-size:22px; color:{TEXT_LIGHT}; font-weight:800;">{fmt_rp(total_sp)}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        s1, s2, s3 = st.columns(3)
+        s1.metric("Total Biaya Pemakaian Sparepart", fmt_rp(total_sp))
+        s2.metric("Jumlah Transaksi Pengambilan", f"{total_qty_trx:,}")
+        s3.metric("Jenis Barang Berbeda", f"{n_jenis_barang:,}")
 
-        top_barang = sparepart_df.groupby("nama_barang", as_index=False).agg(
-            total_qty=("qty", "sum"), total_biaya=("biaya", "sum"),
-        ).sort_values("total_biaya", ascending=False)
-        top_barang["Total Biaya"] = top_barang["total_biaya"].apply(fmt_rp)
-        show_top_barang = top_barang.rename(columns={
-            "nama_barang": "Nama Barang", "total_qty": "Total Qty",
-        })[["Nama Barang", "Total Qty", "Total Biaya"]]
+        colS1, colS2 = st.columns([3, 2])
+        with colS1:
+            top_barang = sparepart_df.groupby("nama_barang", as_index=False).agg(
+                total_qty=("qty", "sum"), total_biaya=("biaya", "sum"),
+            ).sort_values("total_biaya", ascending=False).head(15)
+            top_barang["total_biaya_jt"] = top_barang["total_biaya"] / 1e6
+            top_barang["label_biaya"] = top_barang["total_biaya"].apply(fmt_rp)
+            fig_sp1 = go.Figure()
+            fig_sp1.add_bar(
+                y=top_barang["nama_barang"], x=top_barang["total_biaya_jt"], orientation="h",
+                marker_color=CHART_GREEN, text=top_barang["label_biaya"], textposition="outside",
+                textfont=dict(size=10, color=TEXT_LIGHT),
+            )
+            fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Juta Rupiah",
+                                   height=520, margin=dict(t=60, b=10, l=10, r=70))
+            fig_sp1.update_xaxes(ticksuffix=" Jt")
+            fig_sp1.update_yaxes(autorange="reversed")
+            st.plotly_chart(style_fig(fig_sp1), use_container_width=True)
 
-        st.markdown(f"##### Seluruh Barang berdasarkan Biaya ({len(show_top_barang):,} jenis)")
-        st.dataframe(show_top_barang, use_container_width=True, hide_index=True, height=500)
+        with colS2:
+            cat_sp = sparepart_df.groupby("kategori_sparepart", as_index=False)["biaya"].sum()
+            fig_sp2 = px.pie(cat_sp, names="kategori_sparepart", values="biaya", hole=0.5)
+            fig_sp2.update_layout(title="Komposisi per Kategori Sparepart", height=460, margin=dict(t=60, b=10),
+                                   showlegend=True, legend=dict(font=dict(size=9)))
+            st.plotly_chart(style_fig(fig_sp2), use_container_width=True)
 
         st.markdown("##### Rincian Pemakaian per Barang")
         search_sp = st.text_input("🔍 Cari nama barang / part number...", "", key="search_sparepart")
