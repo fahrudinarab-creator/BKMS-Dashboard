@@ -1260,7 +1260,7 @@ else:
             total_biaya=("biaya", "sum"),
         )
         rekap["total_biaya_jt"] = rekap["total_biaya"] / 1e6
-        rekap["label_biaya"] = rekap["total_biaya_jt"].apply(lambda v: f"{v:,.1f} Jt")
+        rekap["label_biaya"] = rekap["total_biaya"].apply(fmt_rp)
 
         fig_rekap = px.bar(
             rekap, x="kategori_sparepart", y="total_biaya_jt", color="jenis_pemeliharaan",
@@ -1338,10 +1338,15 @@ else:
                 total_qty=("qty", "sum"), total_biaya=("biaya", "sum"),
             ).sort_values("total_biaya", ascending=False).head(15)
             top_barang["total_biaya_jt"] = top_barang["total_biaya"] / 1e6
+            top_barang["label_biaya"] = top_barang["total_biaya"].apply(fmt_rp)
             fig_sp1 = go.Figure()
-            fig_sp1.add_bar(y=top_barang["nama_barang"], x=top_barang["total_biaya_jt"], orientation="h", marker_color=CHART_GREEN)
+            fig_sp1.add_bar(
+                y=top_barang["nama_barang"], x=top_barang["total_biaya_jt"], orientation="h",
+                marker_color=CHART_GREEN, text=top_barang["label_biaya"], textposition="outside",
+                textfont=dict(size=10, color=TEXT_LIGHT),
+            )
             fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Juta Rupiah",
-                                   height=460, margin=dict(t=60, b=10, l=10))
+                                   height=520, margin=dict(t=60, b=10, l=10, r=70))
             fig_sp1.update_xaxes(ticksuffix=" Jt")
             fig_sp1.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_sp1), use_container_width=True)
