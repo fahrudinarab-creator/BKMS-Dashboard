@@ -134,27 +134,6 @@ st.markdown(f"""
     .kpi-pill-red {{ background: rgba(228,87,76,0.18); color: #FF9A91 !important; }}
     .kpi-pill-amber {{ background: rgba(201,162,39,0.18); color: {GOLD} !important; }}
 
-    .ringkasan-table {{
-        width: 100%; border-collapse: collapse; border-radius: 10px; overflow: hidden;
-        border: 1px solid {BORDER};
-    }}
-    .ringkasan-table th {{
-        background: {PRIMARY}; color: white !important; text-align: left;
-        padding: 10px 14px; font-size: 13px;
-    }}
-    .ringkasan-table td {{
-        padding: 10px 14px; font-size: 13.5px; color: {TEXT_LIGHT} !important;
-        border-top: 1px solid {BORDER}; background: {CARD_BG};
-    }}
-    .ringkasan-table tr:nth-child(even) td {{ background: #1B212B; }}
-    .rk-badge {{
-        display: inline-block; padding: 4px 10px; border-radius: 14px;
-        font-size: 12.5px; font-weight: 700; text-align: center; min-width: 55px;
-    }}
-    .rk-green {{ background: rgba(63,167,114,0.20); color: #6EE7A8 !important; }}
-    .rk-red {{ background: rgba(228,87,76,0.20); color: #FF9A91 !important; }}
-    .rk-grey {{ background: rgba(156,163,175,0.20); color: {TEXT_MUTED} !important; }}
-
     [data-testid="stDataFrame"] {{ background-color: {CARD_BG} !important; }}
     .stTextInput input {{ background-color: {CARD_BG} !important; color: {TEXT_LIGHT} !important; }}
 </style>
@@ -211,12 +190,7 @@ def load_sparepart_data(file) -> pd.DataFrame:
     return pd.read_csv(file)
 
 def load_from_upload(uploaded_file) -> pd.DataFrame:
-    """Parse an uploaded 'Gabungan.xlsx' file with the same fixed layout used to build data_bkms.csv.
-    Layout (1-indexed columns): A=ID Unit, B=Kode Unit, C=Nama Unit, D=Nilai Asset,
-    E=Kriteria Unit, F=Jenis Unit, G-H=Prestasi (R/B), I-J=Pendapatan (R/B), K-L=Upah (R/B),
-    M-N=Qty BBM (R/B), O-P=Harga BBM (R/B), Q-R=Biaya BBM (R/B), S-T=Maintenance (R/B),
-    U-V=Penyusutan (R/B), W-X=Lainnya (R/B), Y-Z=Biaya Langsung (R/B), AA-AB=Biaya Tdk Langsung (R/B),
-    AC-AD=Total Biaya (R/B), AE=Lokasi, AF=Status, AG=Kategori."""
+    """Parse an uploaded 'Gabungan.xlsx' file with the same fixed layout used to build data_bkms.csv."""
     import openpyxl
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     ws = wb[wb.sheetnames[0]]
@@ -227,28 +201,27 @@ def load_from_upload(uploaded_file) -> pd.DataFrame:
         id_unit = ws.cell(row=r, column=1).value
         if not id_unit:
             continue
-        lokasi = ws.cell(row=r, column=31).value
-        bulan_nama = ws.cell(row=r, column=32).value
-        kategori = ws.cell(row=r, column=33).value
+        lokasi = ws.cell(row=r, column=29).value
+        bulan_nama = ws.cell(row=r, column=30).value
+        kategori = ws.cell(row=r, column=31).value
         if not lokasi or not bulan_nama:
             continue
         rows.append(dict(
             id_unit=id_unit, kode_unit=ws.cell(row=r, column=2).value,
             nama_unit=ws.cell(row=r, column=3).value, nilai_asset=ws.cell(row=r, column=4).value or 0,
-            kriteria_unit=ws.cell(row=r, column=5).value, jenis_unit=ws.cell(row=r, column=6).value,
             lokasi=lokasi, bulan=bulan_nama, bulan_no=month_map.get(bulan_nama, 0), kategori=kategori,
-            prestasi_realisasi=ws.cell(row=r, column=7).value or 0, prestasi_budget=ws.cell(row=r, column=8).value or 0,
-            pendapatan_realisasi=ws.cell(row=r, column=9).value or 0, pendapatan_budget=ws.cell(row=r, column=10).value or 0,
-            upah_realisasi=ws.cell(row=r, column=11).value or 0, upah_budget=ws.cell(row=r, column=12).value or 0,
-            qty_bbm_realisasi=ws.cell(row=r, column=13).value or 0, qty_bbm_budget=ws.cell(row=r, column=14).value or 0,
-            harga_bbm_realisasi=ws.cell(row=r, column=15).value or 0, harga_bbm_budget=ws.cell(row=r, column=16).value or 0,
-            biaya_bbm_realisasi=ws.cell(row=r, column=17).value or 0, biaya_bbm_budget=ws.cell(row=r, column=18).value or 0,
-            maintenance_realisasi=ws.cell(row=r, column=19).value or 0, maintenance_budget=ws.cell(row=r, column=20).value or 0,
-            penyusutan_realisasi=ws.cell(row=r, column=21).value or 0, penyusutan_budget=ws.cell(row=r, column=22).value or 0,
-            lainnya_realisasi=ws.cell(row=r, column=23).value or 0, lainnya_budget=ws.cell(row=r, column=24).value or 0,
-            biaya_langsung_realisasi=ws.cell(row=r, column=25).value or 0, biaya_langsung_budget=ws.cell(row=r, column=26).value or 0,
-            biaya_tidak_langsung_realisasi=ws.cell(row=r, column=27).value or 0, biaya_tidak_langsung_budget=ws.cell(row=r, column=28).value or 0,
-            total_biaya_realisasi=ws.cell(row=r, column=29).value or 0, total_biaya_budget=ws.cell(row=r, column=30).value or 0,
+            prestasi_realisasi=ws.cell(row=r, column=5).value or 0, prestasi_budget=ws.cell(row=r, column=6).value or 0,
+            pendapatan_realisasi=ws.cell(row=r, column=7).value or 0, pendapatan_budget=ws.cell(row=r, column=8).value or 0,
+            upah_realisasi=ws.cell(row=r, column=9).value or 0, upah_budget=ws.cell(row=r, column=10).value or 0,
+            qty_bbm_realisasi=ws.cell(row=r, column=11).value or 0, qty_bbm_budget=ws.cell(row=r, column=12).value or 0,
+            harga_bbm_realisasi=ws.cell(row=r, column=13).value or 0, harga_bbm_budget=ws.cell(row=r, column=14).value or 0,
+            biaya_bbm_realisasi=ws.cell(row=r, column=15).value or 0, biaya_bbm_budget=ws.cell(row=r, column=16).value or 0,
+            maintenance_realisasi=ws.cell(row=r, column=17).value or 0, maintenance_budget=ws.cell(row=r, column=18).value or 0,
+            penyusutan_realisasi=ws.cell(row=r, column=19).value or 0, penyusutan_budget=ws.cell(row=r, column=20).value or 0,
+            lainnya_realisasi=ws.cell(row=r, column=21).value or 0, lainnya_budget=ws.cell(row=r, column=22).value or 0,
+            biaya_langsung_realisasi=ws.cell(row=r, column=23).value or 0, biaya_langsung_budget=ws.cell(row=r, column=24).value or 0,
+            biaya_tidak_langsung_realisasi=ws.cell(row=r, column=25).value or 0, biaya_tidak_langsung_budget=ws.cell(row=r, column=26).value or 0,
+            total_biaya_realisasi=ws.cell(row=r, column=27).value or 0, total_biaya_budget=ws.cell(row=r, column=28).value or 0,
         ))
     return pd.DataFrame(rows)
 
@@ -366,13 +339,38 @@ with st.sidebar:
     sel_kat_labels = st.multiselect("Kategori Unit", kat_labels, default=kat_labels)
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
 
-    kriteria_opts_raw = sorted(df_raw["kriteria_unit"].dropna().unique().tolist()) if "kriteria_unit" in df_raw.columns else []
-    has_null_kriteria = ("kriteria_unit" in df_raw.columns) and df_raw["kriteria_unit"].isna().any()
-    kriteria_opts = kriteria_opts_raw + (["Tidak Diketahui"] if has_null_kriteria else [])
-    if kriteria_opts:
-        sel_kriteria = st.multiselect("Kriteria Unit (Tarif)", kriteria_opts, default=kriteria_opts)
-    else:
-        sel_kriteria = []
+# ---------------------------------------------------------------
+# KLASIFIKASI SATUAN PRESTASI: Rp/KM, Rp/HM, Rp/Tonase per site
+# ---------------------------------------------------------------
+# Aturan (sesuai arahan):
+# 1. Rp/KM     -> Transportasi (kategori TR) di site Sungai Danau & Kumai
+# 2. Rp/HM     -> Alat Berat (kategori AB) di site Sungai Danau & Kumai
+# 3. Rp/Tonase -> site LHL
+# 4. Khusus (override) -> site Tanjung & Buhut selalu masuk Rp/HM
+SATUAN_LABEL = {"KM": "Rp / KM (Transportasi)", "HM": "Rp / HM (Alat Berat)", "TONASE": "Rp / Tonase"}
+SATUAN_ICON = {"KM": "🚚", "HM": "🚜", "TONASE": "⚖️"}
+SATUAN_COLOR = {"KM": CHART_GREEN, "HM": GOLD, "TONASE": "#2E7D9A"}
+
+def classify_satuan(lokasi, kategori):
+    """Tentukan tipe satuan (KM/HM/TONASE) berdasarkan site & kategori unit."""
+    if not isinstance(lokasi, str):
+        return None
+    loc = lokasi.strip().lower()
+    kat = str(kategori).strip().upper() if kategori is not None else ""
+
+    # Rule 4 (khusus/override): Tanjung & Buhut -> Rp/HM
+    if loc in ("tanjung", "buhut"):
+        return "HM"
+    # Rule 3: LHL -> Rp/Tonase
+    if loc in ("lhl", "buhut lhl"):
+        return "TONASE"
+    # Rule 1 & 2: Sungai Danau & Kumai -> Rp/KM (TR) atau Rp/HM (AB)
+    if loc in ("sungai danau", "kumai"):
+        if kat == "TR":
+            return "KM"
+        if kat == "AB":
+            return "HM"
+    return None
 
 # ---------------------------------------------------------------
 # APPLY FILTERS (data utama)
@@ -382,14 +380,7 @@ df = df_raw[
     df_raw["bulan"].isin(sel_month) &
     df_raw["kategori"].isin(sel_kat)
 ].copy()
-
-if "kriteria_unit" in df.columns and kriteria_opts:
-    sel_kriteria_actual = [k for k in sel_kriteria if k != "Tidak Diketahui"]
-    include_null = "Tidak Diketahui" in sel_kriteria
-    mask = df["kriteria_unit"].isin(sel_kriteria_actual)
-    if include_null:
-        mask = mask | df["kriteria_unit"].isna()
-    df = df[mask]
+df["satuan_tipe"] = df.apply(lambda r: classify_satuan(r["lokasi"], r["kategori"]), axis=1)
 
 maint_df_site_bulan = pd.DataFrame()
 if not maint_raw.empty:
@@ -1005,144 +996,85 @@ with c4:
 st.markdown("---")
 
 # ---------------------------------------------------------------
-# CAPAIAN PRESTASI PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase)
+# CAPAIAN PRESTASI PER SATUAN: Rp/KM, Rp/HM, Rp/Tonase
 # ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Capaian Prestasi per Satuan</h3>', unsafe_allow_html=True)
+st.markdown('<h3 class="section-title">Capaian Prestasi per Satuan (Rp/KM · Rp/HM · Rp/Tonase)</h3>', unsafe_allow_html=True)
 st.caption(
-    "**Rp/HM**: kategori Alat Berat (AB) di Sungai Danau & Kumai, serta seluruh unit di Tanjung, Buhut, dan Ampah.  "
-    "**Rp/KM**: kategori Truck (TR) di Sungai Danau & Kumai.  "
-    "**Rp/Tonase**: seluruh unit di Buhut LHL."
+    "Rp/Satuan = Pendapatan ÷ Prestasi.  •  Rp/KM: Transportasi di site Sungai Danau & Kumai.  •  "
+    "Rp/HM: Alat Berat di site Sungai Danau & Kumai, serta khusus site Tanjung & Buhut.  •  Rp/Tonase: site Buhut LHL.  •  "
+    "Site Ampah tidak termasuk breakdown ini."
 )
 
-def klasifikasi_satuan_prestasi(row):
-    lok = row["lokasi"]
-    kat = row["kategori"]
-    if lok == "BUHUT LHL":
-        return "Rp/Tonase"
-    if lok in ("SUNGAI DANAU", "KUMAI"):
-        if kat == "AB":
-            return "Rp/HM"
-        if kat == "TR":
-            return "Rp/KM"
-        return "Rp/HM"
-    # TANJUNG, BUHUT, AMPAH, dan site lain di luar aturan eksplisit -> default Rp/HM
-    return "Rp/HM"
-
-df["satuan_prestasi"] = df.apply(klasifikasi_satuan_prestasi, axis=1)
-
-satuan_order = ["Rp/HM", "Rp/KM", "Rp/Tonase"]
-satuan_icon = {"Rp/HM": ("⏱️", CHART_GREEN), "Rp/KM": ("🚚", GOLD), "Rp/Tonase": ("⚖️", RED)}
-satuan_suffix = {"Rp/HM": "/HM", "Rp/KM": "/KM", "Rp/Tonase": "/Ton"}
-cols_satuan = st.columns(3)
-for i, sat in enumerate(satuan_order):
-    sub = df[df["satuan_prestasi"] == sat]
-    pendapatan_r = sub["pendapatan_realisasi"].sum()
-    pendapatan_b = sub["pendapatan_budget"].sum()
-    prestasi_r = sub["prestasi_realisasi"].sum()
-    prestasi_b = sub["prestasi_budget"].sum()
-    rate_r = (pendapatan_r / prestasi_r) if prestasi_r else None
-    rate_b = (pendapatan_b / prestasi_b) if prestasi_b else None
-    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    pill_txt, pill_style = achievement_pill(ach, higher_is_better=True)
-    icon, icon_color = satuan_icon[sat]
-    suf = satuan_suffix[sat]
-    with cols_satuan[i]:
-        st.markdown(kpi_card(
-            icon=icon, icon_bg=icon_color, accent=icon_color,
-            label=f"Capaian {sat} (Pendapatan ÷ Prestasi)",
-            value=(f"{fmt_rp(rate_r)}{suf}" if rate_r is not None else "-"),
-            budget_text=(f"Target: {fmt_rp(rate_b)}{suf} • {sub['nama_unit'].nunique():,} unit" if rate_b is not None else f"{sub['nama_unit'].nunique():,} unit"),
-            pill_text=pill_txt, pill_style=pill_style,
-        ), unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# CAPAIAN BIAYA PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase) — pembagian sama dengan Prestasi
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Capaian Biaya per Satuan</h3>', unsafe_allow_html=True)
-st.caption(
-    "Pembagian sama seperti Capaian Prestasi per Satuan di atas — hanya di sini yang dibagi adalah **Total Biaya** (Langsung + Tidak Langsung), bukan Pendapatan. "
-    "Nilai lebih rendah dari target = lebih efisien (Under Budget)."
+satuan_group = df[df["satuan_tipe"].notna()].groupby("satuan_tipe", as_index=False).agg(
+    pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
+    prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
 )
 
-cols_satuan_biaya = st.columns(3)
-for i, sat in enumerate(satuan_order):
-    sub = df[df["satuan_prestasi"] == sat]
-    biaya_r = sub["total_biaya_realisasi"].sum()
-    biaya_b = sub["total_biaya_budget"].sum()
-    prestasi_r = sub["prestasi_realisasi"].sum()
-    prestasi_b = sub["prestasi_budget"].sum()
-    rate_r = (biaya_r / prestasi_r) if prestasi_r else None
-    rate_b = (biaya_b / prestasi_b) if prestasi_b else None
-    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    pill_txt, pill_style = achievement_pill(ach, higher_is_better=False)
-    icon, icon_color = satuan_icon[sat]
-    suf = satuan_suffix[sat]
-    with cols_satuan_biaya[i]:
+sat_cols = st.columns(3)
+for i, tipe in enumerate(["KM", "HM", "TONASE"]):
+    row = satuan_group[satuan_group["satuan_tipe"] == tipe]
+    with sat_cols[i]:
+        if row.empty:
+            st.markdown(kpi_card(
+                icon=SATUAN_ICON[tipe], icon_bg=GREY, accent=GREY,
+                label=SATUAN_LABEL[tipe],
+                value="Tidak ada data",
+                budget_text="Site terkait tidak ditemukan pada filter saat ini",
+                pill_text="—", pill_style="kpi-pill-amber",
+            ), unsafe_allow_html=True)
+            continue
+        pr_ = row["pendapatan_r"].iloc[0]; pb_ = row["pendapatan_b"].iloc[0]
+        prr_ = row["prestasi_r"].iloc[0]; prb_ = row["prestasi_b"].iloc[0]
+        rate_r = (pr_ / prr_) if prr_ else None
+        rate_b = (pb_ / prb_) if prb_ else None
+        ach_rate = achievement(rate_r, rate_b) if (rate_r is not None and rate_b) else None
+        pill_txt, pill_sty = achievement_pill(ach_rate, higher_is_better=True)
+        val_txt = fmt_rp(rate_r) if rate_r is not None else "-"
+        budget_txt = f"Target: {fmt_rp(rate_b)}" if rate_b is not None else "Target belum tersedia (Prestasi Budget = 0)"
         st.markdown(kpi_card(
-            icon=icon, icon_bg=icon_color, accent=icon_color,
-            label=f"Capaian Biaya {sat} (Biaya ÷ Prestasi)",
-            value=(f"{fmt_rp(rate_r)}{suf}" if rate_r is not None else "-"),
-            budget_text=(f"Target: {fmt_rp(rate_b)}{suf} • {sub['nama_unit'].nunique():,} unit" if rate_b is not None else f"{sub['nama_unit'].nunique():,} unit"),
-            pill_text=pill_txt, pill_style=pill_style,
+            icon=SATUAN_ICON[tipe], icon_bg=SATUAN_COLOR[tipe], accent=SATUAN_COLOR[tipe],
+            label=SATUAN_LABEL[tipe],
+            value=val_txt,
+            budget_text=budget_txt,
+            pill_text=pill_txt, pill_style=pill_sty,
         ), unsafe_allow_html=True)
 
-st.markdown("---")
+with st.expander("📋 Rincian Rp/Satuan per Site & Kategori"):
+    detail = df[df["satuan_tipe"].notna()].groupby(["satuan_tipe", "lokasi", "kategori"], as_index=False).agg(
+        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
+        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
+    )
+    detail["rate_r"] = detail.apply(lambda r: (r["pendapatan_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
+    detail["rate_b"] = detail.apply(lambda r: (r["pendapatan_b"] / r["prestasi_b"]) if r["prestasi_b"] else None, axis=1)
+    detail["capaian"] = detail.apply(
+        lambda r: (r["rate_r"] / r["rate_b"] * 100) if (r["rate_r"] is not None and r["rate_b"]) else None, axis=1
+    )
+    show = pd.DataFrame({
+        "Satuan": detail["satuan_tipe"].map(SATUAN_LABEL),
+        "Site": detail["lokasi"],
+        "Kategori": detail["kategori"].map(lambda k: KATEGORI_LABEL.get(k, k)),
+        "Pendapatan Realisasi": detail["pendapatan_r"].apply(fmt_rp),
+        "Prestasi Realisasi": detail["prestasi_r"].apply(lambda v: f"{v:,.0f}"),
+        "Rp/Satuan (Realisasi)": detail["rate_r"].apply(lambda v: fmt_rp(v) if pd.notna(v) else "-"),
+        "Rp/Satuan (Target)": detail["rate_b"].apply(lambda v: fmt_rp(v) if pd.notna(v) else "-"),
+        "Capaian (%)": detail["capaian"].apply(lambda v: f"{v:.1f}%" if pd.notna(v) else "-"),
+    })
+    st.dataframe(show, use_container_width=True, hide_index=True)
 
-# ---------------------------------------------------------------
-# RINGKASAN BIAYA (tabel Budget vs Aktual vs Capaian)
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=True)
-st.caption("Nilai = Total Biaya komponen ÷ Total Prestasi (semua satuan digabung) — menunjukkan tarif Rp per satuan Prestasi untuk masing-masing komponen biaya.")
+unmapped_sites = sorted(df.loc[df["satuan_tipe"].isna(), "lokasi"].dropna().unique().tolist())
+EXCLUDED_SITES_KNOWN = {"ampah"}  # sengaja tidak dimasukkan ke breakdown Rp/Satuan
+truly_unmapped = [s for s in unmapped_sites if s.strip().lower() not in EXCLUDED_SITES_KNOWN]
+known_excluded = [s for s in unmapped_sites if s.strip().lower() in EXCLUDED_SITES_KNOWN]
 
-def rk_badge(pct, higher_is_better, na=False):
-    if na or pct is None:
-        return '<span class="rk-badge rk-grey">N/A</span>'
-    good = (pct >= 100) if higher_is_better else (pct <= 100)
-    cls = "rk-green" if good else "rk-red"
-    return f'<span class="rk-badge {cls}">{pct:.1f}%</span>'
+if known_excluded:
+    st.caption(f"ℹ️ Site {', '.join(known_excluded)} tidak dimasukkan ke breakdown Rp/Satuan ini (di luar cakupan Rp/KM, Rp/HM, Rp/Tonase).")
 
-tot_prestasi_r_all = df["prestasi_realisasi"].sum()
-tot_prestasi_b_all = df["prestasi_budget"].sum()
-
-def rate_row(label, real_col, budget_col):
-    comp_r = df[real_col].sum()
-    comp_b = df[budget_col].sum()
-    rate_r = (comp_r / tot_prestasi_r_all) if tot_prestasi_r_all else None
-    rate_b = (comp_b / tot_prestasi_b_all) if tot_prestasi_b_all else None
-    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    return (label, rate_b, rate_r, ach, rate_r is None)
-
-ringkasan_rows = []
-ringkasan_rows.append(rate_row("Upah Operator", "upah_realisasi", "upah_budget"))
-ringkasan_rows.append(rate_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"))
-ringkasan_rows.append(rate_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"))
-ringkasan_rows.append(rate_row("Penyusutan", "penyusutan_realisasi", "penyusutan_budget"))
-ringkasan_rows.append(rate_row("Lainnya", "lainnya_realisasi", "lainnya_budget"))
-ringkasan_rows.append(rate_row("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"))
-
-table_rows_html = ""
-for label, budget_val, aktual_val, ach, na in ringkasan_rows:
-    budget_disp = fmt_rp(budget_val) if budget_val is not None else "-"
-    aktual_disp = fmt_rp(aktual_val) if aktual_val is not None else "-"
-    table_rows_html += f"""
-    <tr>
-        <td>{label}</td>
-        <td>{budget_disp}</td>
-        <td>{aktual_disp}</td>
-        <td>{rk_badge(ach, higher_is_better=False, na=na)}</td>
-    </tr>"""
-
-st.markdown(f"""
-<table class="ringkasan-table">
-    <thead>
-        <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th></tr>
-    </thead>
-    <tbody>{table_rows_html}
-    </tbody>
-</table>
-""", unsafe_allow_html=True)
+if truly_unmapped:
+    st.warning(
+        "Site berikut belum termasuk kategori Rp/KM, Rp/HM, atau Rp/Tonase (nama site tidak cocok dengan aturan "
+        "Sungai Danau / Kumai / Buhut LHL / Tanjung / Buhut): **" + ", ".join(truly_unmapped) + "**. "
+        "Jika nama site di data Anda berbeda ejaannya, beri tahu nama persisnya agar pemetaan bisa disesuaikan."
+    )
 
 st.markdown("---")
 
@@ -1150,8 +1082,6 @@ st.markdown("---")
 # 4. REKAP BIAYA MAINTENANCE (filter ID Unit + Rutin/Non Rutin + frekuensi)
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Rekap Biaya Maintenance</h3>', unsafe_allow_html=True)
-
-sel_unit_maint = []
 
 if maint_raw.empty:
     st.info("Data maintenance belum tersedia. Upload file Pemeliharaan (.xls/.xlsx) di sidebar untuk menampilkan bagian ini.")
@@ -1191,6 +1121,20 @@ else:
             pill_text=f"{pct_service_luar:.1f}% dari total", pill_style="kpi-pill-amber",
         ), unsafe_allow_html=True)
 
+    fig_rekon = go.Figure()
+    fig_rekon.add_bar(
+        y=["Total Maintenance"], x=[total_persediaan_all], name="Pemakaian Persediaan",
+        orientation="h", marker_color=CHART_GREEN,
+    )
+    fig_rekon.add_bar(
+        y=["Total Maintenance"], x=[service_luar_all], name="Service Luar",
+        orientation="h", marker_color=GOLD,
+    )
+    fig_rekon.update_layout(
+        barmode="stack", height=160, margin=dict(t=10, b=10, l=10, r=10),
+        xaxis_title="Rupiah", legend=dict(orientation="h", y=1.3),
+    )
+    st.plotly_chart(style_fig(fig_rekon), use_container_width=True)
     if not sparepart_raw.empty:
         st.caption("Pemakaian Persediaan dihitung dari data Rincian Pemakaian Sparepart. Service Luar adalah selisih Total Maintenance dikurangi Pemakaian Persediaan.")
     else:
@@ -1210,53 +1154,31 @@ else:
     if maint_df.empty:
         st.warning("Tidak ada data maintenance untuk kombinasi filter yang dipilih.")
     else:
+        total_maint = maint_df["biaya"].sum()
         n_transaksi = len(maint_df)
         rutin_biaya = maint_df.loc[maint_df["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum()
         nonrutin_biaya = maint_df.loc[maint_df["jenis_pemeliharaan"] == "NON RUTIN", "biaya"].sum()
         rutin_n = int((maint_df["jenis_pemeliharaan"] == "RUTIN").sum())
         nonrutin_n = int((maint_df["jenis_pemeliharaan"] == "NON RUTIN").sum())
 
-        # Total Biaya Maintenance = total biaya di data_maintenance.csv (maint_df, sudah difilter ID Unit)
-        total_maint = maint_df["biaya"].sum()
-
-        # Workshop Sendiri = total biaya di data_sparepart.csv (pemakaian persediaan), scope ID Unit yang sama
-        if not sparepart_raw.empty:
-            sparepart_scope = sparepart_df_site_bulan.copy()
-            sparepart_scope["unit_label"] = sparepart_scope["nama_unit"].apply(_unit_label)
-            if sel_unit_maint:
-                sparepart_scope = sparepart_scope[sparepart_scope["unit_label"].isin(sel_unit_maint)]
-        else:
-            sparepart_scope = pd.DataFrame(columns=["biaya"])
-        workshop_biaya = sparepart_scope["biaya"].sum() if not sparepart_scope.empty else 0
-        workshop_n = len(sparepart_scope)
-
-        # Service Luar = selisih Total Biaya Maintenance (data_maintenance.csv) - Workshop Sendiri (data_sparepart.csv)
-        service_luar_biaya = total_maint - workshop_biaya
-
-        k1, k2, k3, k4, k5 = st.columns(5)
+        k1, k2, k3, k4 = st.columns(4)
         k1.metric("Total Biaya Maintenance", fmt_rp(total_maint), f"{n_transaksi:,} transaksi")
-        k2.metric("Workshop Sendiri", fmt_rp(workshop_biaya), f"{workshop_n:,} item (dari data_sparepart.csv)")
-        k3.metric("Service Luar", fmt_rp(service_luar_biaya), "selisih Total − Workshop Sendiri")
-        k4.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
-        k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
+        k2.metric("Unit Ter-maintenance", f"{maint_df['nama_unit'].nunique():,}")
+        k3.metric("Biaya Rutin", fmt_rp(rutin_biaya), f"{rutin_n:,} kali")
+        k4.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya), f"{nonrutin_n:,} kali")
 
         rekap = maint_df.groupby(["kategori_sparepart", "jenis_pemeliharaan"], as_index=False).agg(
             jumlah_transaksi=("biaya", "count"),
             total_biaya=("biaya", "sum"),
         )
-        rekap["total_biaya_jt"] = rekap["total_biaya"] / 1e6
-        rekap["label_biaya"] = rekap["total_biaya"].apply(fmt_rp)
 
         fig_rekap = px.bar(
-            rekap, x="kategori_sparepart", y="total_biaya_jt", color="jenis_pemeliharaan",
+            rekap, x="kategori_sparepart", y="total_biaya", color="jenis_pemeliharaan",
             barmode="group", color_discrete_map={"RUTIN": CHART_GREEN, "NON RUTIN": GOLD},
-            labels={"kategori_sparepart": "Kategori Sparepart / Sistem", "total_biaya_jt": "Total Biaya (Juta Rupiah)", "jenis_pemeliharaan": "Jenis"},
-            text="label_biaya",
+            labels={"kategori_sparepart": "Kategori Sparepart / Sistem", "total_biaya": "Total Biaya (Rp)", "jenis_pemeliharaan": "Jenis"},
         )
-        fig_rekap.update_traces(textposition="outside", textfont=dict(size=10, color=TEXT_LIGHT))
-        fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=500,
+        fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=460,
                                  legend=dict(orientation="h", y=1.15), margin=dict(t=60, b=10), xaxis_tickangle=-30)
-        fig_rekap.update_yaxes(ticksuffix=" Jt")
         st.plotly_chart(style_fig(fig_rekap), use_container_width=True)
 
         st.markdown("##### Rincian: Kategori, Jenis, Frekuensi (Berapa Kali), Total Biaya")
@@ -1266,18 +1188,11 @@ else:
             "jumlah_transaksi": "Berapa Kali (Jumlah Transaksi)",
             "total_biaya": "Total Biaya",
         })
-        total_row = pd.DataFrame([{
-            "Kategori (Maintenance atas Apa Saja)": "TOTAL",
-            "Jenis (Rutin / Non Rutin)": "",
-            "Berapa Kali (Jumlah Transaksi)": rekap_tbl["Berapa Kali (Jumlah Transaksi)"].sum(),
-            "Total Biaya": rekap_tbl["Total Biaya"].sum(),
-        }])
-        rekap_tbl_display = pd.concat([rekap_tbl, total_row], ignore_index=True)
         st.dataframe(
-            rekap_tbl_display, use_container_width=True, hide_index=True, height=420,
+            rekap_tbl, use_container_width=True, hide_index=True, height=380,
             column_config={"Total Biaya": st.column_config.NumberColumn(format="Rp %,.0f")},
         )
-        csv_rekap = rekap_tbl_display.to_csv(index=False).encode("utf-8")
+        csv_rekap = rekap_tbl.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Unduh Rekap Maintenance (CSV)", csv_rekap, file_name="rekap_maintenance_bkms.csv", mime="text/csv")
 
 st.markdown("---")
@@ -1288,8 +1203,7 @@ st.markdown("---")
 st.markdown('<h3 class="section-title">Rekap Pemakaian Sparepart (Persediaan)</h3>', unsafe_allow_html=True)
 st.caption(
     "Data ini hanya mencakup **pemakaian sparepart dari persediaan/gudang** (item, part number, dan quantity per transaksi maintenance). "
-    "Biaya maintenance di luar pemakaian persediaan ini (alokasi workshop, dan lainnya) dianggap sebagai **service luar** — lihat bagian Rekap Biaya Maintenance di atas untuk totalnya. "
-    "Filter ID Unit mengikuti otomatis dari filter ID Unit di bagian Rekap Biaya Maintenance."
+    "Biaya maintenance di luar pemakaian persediaan ini (alokasi workshop, dan lainnya) dianggap sebagai **service luar** — lihat bagian Rekap Biaya Maintenance di atas untuk totalnya."
 )
 
 if sparepart_raw.empty:
@@ -1297,13 +1211,16 @@ if sparepart_raw.empty:
 else:
     sparepart_df_site_bulan = sparepart_df_site_bulan.copy()
     sparepart_df_site_bulan["unit_label"] = sparepart_df_site_bulan["nama_unit"].apply(_unit_label)
+    unit_sparepart_opts = sorted(sparepart_df_site_bulan["unit_label"].dropna().unique().tolist())
+
+    sel_unit_sparepart = st.multiselect(
+        "Filter berdasarkan ID Unit (opsional, kosongkan = semua unit) — ketik ID Unit atau nama unit",
+        unit_sparepart_opts, default=[], key="sel_unit_sparepart",
+    )
 
     sparepart_df = sparepart_df_site_bulan
-    if sel_unit_maint:
-        sparepart_df = sparepart_df[sparepart_df["unit_label"].isin(sel_unit_maint)]
-
-    if sel_unit_maint:
-        st.caption(f"🔗 Sedang difilter mengikuti ID Unit: {', '.join(sel_unit_maint)}")
+    if sel_unit_sparepart:
+        sparepart_df = sparepart_df[sparepart_df["unit_label"].isin(sel_unit_sparepart)]
 
     if sparepart_df.empty:
         st.warning("Tidak ada data pemakaian sparepart untuk kombinasi filter yang dipilih.")
@@ -1322,17 +1239,10 @@ else:
             top_barang = sparepart_df.groupby("nama_barang", as_index=False).agg(
                 total_qty=("qty", "sum"), total_biaya=("biaya", "sum"),
             ).sort_values("total_biaya", ascending=False).head(15)
-            top_barang["total_biaya_jt"] = top_barang["total_biaya"] / 1e6
-            top_barang["label_biaya"] = top_barang["total_biaya"].apply(fmt_rp)
             fig_sp1 = go.Figure()
-            fig_sp1.add_bar(
-                y=top_barang["nama_barang"], x=top_barang["total_biaya_jt"], orientation="h",
-                marker_color=CHART_GREEN, text=top_barang["label_biaya"], textposition="outside",
-                textfont=dict(size=10, color=TEXT_LIGHT),
-            )
-            fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Juta Rupiah",
-                                   height=520, margin=dict(t=60, b=10, l=10, r=70))
-            fig_sp1.update_xaxes(ticksuffix=" Jt")
+            fig_sp1.add_bar(y=top_barang["nama_barang"], x=top_barang["total_biaya"], orientation="h", marker_color=CHART_GREEN)
+            fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Rupiah",
+                                   height=460, margin=dict(t=60, b=10, l=10))
             fig_sp1.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_sp1), use_container_width=True)
 
