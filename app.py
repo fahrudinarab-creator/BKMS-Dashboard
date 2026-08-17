@@ -149,7 +149,7 @@ st.markdown(f"""
     .ringkasan-table tr:nth-child(even) td {{ background: #1B212B; }}
 
     .ringkasan-table-sm {{
-        width: auto; max-width: 520px; border-collapse: collapse; border-radius: 8px; overflow: hidden;
+        width: 100%; border-collapse: collapse; border-radius: 8px; overflow: hidden;
         border: 1px solid {BORDER};
     }}
     .ringkasan-table-sm th {{
@@ -1152,11 +1152,10 @@ for label, budget_val, aktual_val, ach, na, _comp_r in ringkasan_rows:
         <td>{rk_badge(ach, higher_is_better=False, na=na, small=True)}</td>
     </tr>"""
 
-col_tbl, col_pie = st.columns([0.9, 1.1])
+col_tbl, col_pie = st.columns([1, 1])
 with col_tbl:
     st.markdown("##### Ringkasan Biaya (Budget vs Aktual)")
     st.markdown(f"""
-    <div style="display:flex; justify-content:flex-start; margin-top:8px;">
     <table class="ringkasan-table-sm">
         <thead>
             <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th></tr>
@@ -1164,7 +1163,6 @@ with col_tbl:
         <tbody>{table_rows_html}
         </tbody>
     </table>
-    </div>
     """, unsafe_allow_html=True)
 with col_pie:
     st.markdown("##### Komposisi Biaya Aktual terhadap Total Biaya")
