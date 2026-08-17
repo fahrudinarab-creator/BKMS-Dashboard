@@ -1247,20 +1247,28 @@ else:
         rekap["total_biaya_jt"] = rekap["total_biaya"] / 1e6
         rekap["label_biaya"] = rekap["total_biaya"].apply(fmt_rp)
 
+        # Urutkan kategori berdasarkan total biaya (terbesar di atas) supaya chart menyamping rapi
+        kategori_order = (
+            rekap.groupby("kategori_sparepart")["total_biaya"].sum().sort_values(ascending=True).index.tolist()
+        )
+
         fig_rekap = px.bar(
-            rekap, x="kategori_sparepart", y="total_biaya_jt", color="jenis_pemeliharaan",
-            barmode="group", color_discrete_map={"RUTIN": CHART_GREEN, "NON RUTIN": GOLD},
+            rekap, y="kategori_sparepart", x="total_biaya_jt", color="jenis_pemeliharaan",
+            orientation="h", barmode="group", color_discrete_map={"RUTIN": CHART_GREEN, "NON RUTIN": GOLD},
             labels={"kategori_sparepart": "Kategori Sparepart / Sistem", "total_biaya_jt": "Total Biaya (Juta Rupiah)", "jenis_pemeliharaan": "Jenis"},
             text="label_biaya",
+            category_orders={"kategori_sparepart": kategori_order},
         )
         fig_rekap.update_traces(textposition="outside", textfont=dict(size=10, color=TEXT_LIGHT))
-        fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=500,
-                                 legend=dict(orientation="h", y=1.15), margin=dict(t=60, b=10), xaxis_tickangle=-30)
-        fig_rekap.update_yaxes(ticksuffix=" Jt")
+        fig_rekap.update_layout(title="Maintenance atas Apa Saja — Rutin vs Non Rutin", height=550,
+                                 legend=dict(orientation="h", y=1.08), margin=dict(t=60, b=10, l=10))
+        fig_rekap.update_xaxes(ticksuffix=" Jt")
         st.plotly_chart(style_fig(fig_rekap), use_container_width=True)
 
         st.markdown("##### Rincian: Kategori, Jenis, Frekuensi (Berapa Kali), Total Biaya")
-        rekap_tbl = rekap.sort_values("total_biaya", ascending=False).rename(columns={
+        rekap_tbl = rekap.sort_values("total_biaya", ascending=False)[
+            ["kategori_sparepart", "jenis_pemeliharaan", "jumlah_transaksi", "total_biaya"]
+        ].rename(columns={
             "kategori_sparepart": "Kategori (Maintenance atas Apa Saja)",
             "jenis_pemeliharaan": "Jenis (Rutin / Non Rutin)",
             "jumlah_transaksi": "Berapa Kali (Jumlah Transaksi)",
