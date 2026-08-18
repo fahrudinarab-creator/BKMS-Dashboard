@@ -1397,27 +1397,42 @@ else:
         s3.metric("Jenis Barang Berbeda", f"{n_jenis_barang:,}")
 
         colS1, colS2 = st.columns([3, 2])
+
+        # Peta warna konsisten per kategori sparepart, dipakai bersama oleh chart Top 15 Barang & pie chart
+        all_cats_sp = sorted(sparepart_df["kategori_sparepart"].dropna().unique().tolist())
+        _palette_sp = px.colors.qualitative.Plotly
+        color_map_sp = {cat: _palette_sp[i % len(_palette_sp)] for i, cat in enumerate(all_cats_sp)}
+
         with colS1:
             top_barang = sparepart_df.groupby("nama_barang", as_index=False).agg(
                 total_qty=("qty", "sum"), total_biaya=("biaya", "sum"),
             ).sort_values("total_biaya", ascending=False).head(15)
+
+            # Tentukan kategori sparepart dominan (berdasarkan biaya terbesar) untuk tiap barang
+            item_cat = sparepart_df.groupby(["nama_barang", "kategori_sparepart"], as_index=False)["biaya"].sum()
+            item_cat = item_cat.sort_values("biaya", ascending=False).drop_duplicates("nama_barang")
+            top_barang = top_barang.merge(item_cat[["nama_barang", "kategori_sparepart"]], on="nama_barang", how="left")
+
             top_barang["total_biaya_jt"] = top_barang["total_biaya"] / 1e6
             top_barang["label_biaya"] = top_barang["total_biaya"].apply(fmt_rp)
-            fig_sp1 = go.Figure()
-            fig_sp1.add_bar(
-                y=top_barang["nama_barang"], x=top_barang["total_biaya_jt"], orientation="h",
-                marker_color=CHART_GREEN, text=top_barang["label_biaya"], textposition="outside",
-                textfont=dict(size=10, color=TEXT_LIGHT),
+
+            fig_sp1 = px.bar(
+                top_barang, y="nama_barang", x="total_biaya_jt", color="kategori_sparepart",
+                orientation="h", color_discrete_map=color_map_sp, text="label_biaya",
+                labels={"nama_barang": "Barang", "total_biaya_jt": "Juta Rupiah", "kategori_sparepart": "Kategori"},
             )
+            fig_sp1.update_traces(textposition="outside", textfont=dict(size=10, color=TEXT_LIGHT))
             fig_sp1.update_layout(title="Top 15 Barang berdasarkan Biaya", xaxis_title="Juta Rupiah",
-                                   height=520, margin=dict(t=60, b=10, l=10, r=70))
+                                   height=560, margin=dict(t=60, b=10, l=10, r=70),
+                                   legend=dict(font=dict(size=9), title="Kategori"))
             fig_sp1.update_xaxes(ticksuffix=" Jt")
             fig_sp1.update_yaxes(autorange="reversed")
             st.plotly_chart(style_fig(fig_sp1), use_container_width=True)
 
         with colS2:
             cat_sp = sparepart_df.groupby("kategori_sparepart", as_index=False)["biaya"].sum()
-            fig_sp2 = px.pie(cat_sp, names="kategori_sparepart", values="biaya", hole=0.5)
+            fig_sp2 = px.pie(cat_sp, names="kategori_sparepart", values="biaya", hole=0.5,
+                              color="kategori_sparepart", color_discrete_map=color_map_sp)
             fig_sp2.update_layout(title="Komposisi per Kategori Sparepart", height=460, margin=dict(t=60, b=10),
                                    showlegend=True, legend=dict(font=dict(size=9)))
             st.plotly_chart(style_fig(fig_sp2), use_container_width=True)
