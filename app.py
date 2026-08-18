@@ -1160,61 +1160,8 @@ with colY:
 st.markdown("---")
 
 # ---------------------------------------------------------------
-# 1-3. CAPAIAN: PENDAPATAN, PRESTASI, BIAYA LANGSUNG & TIDAK LANGSUNG
+# Klasifikasi satuan Rp/HM, Rp/KM, Rp/Tonase per baris data (dipakai di beberapa section)
 # ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Capaian Utama</h3>', unsafe_allow_html=True)
-
-pendapatan_pill, pendapatan_style = achievement_pill(ach_pendapatan, higher_is_better=True)
-prestasi_pill, prestasi_style = achievement_pill(ach_prestasi, higher_is_better=True)
-biaya_langsung_pill, biaya_langsung_style = achievement_pill(ach_biaya_langsung, higher_is_better=False)
-biaya_tdklangsung_pill, biaya_tdklangsung_style = achievement_pill(ach_biaya_tdklangsung, higher_is_better=False)
-
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.markdown(kpi_card(
-        icon="💰", icon_bg=RED, accent=RED,
-        label="Pendapatan: Realisasi vs Target",
-        value=fmt_rp(tot_pendapatan_r),
-        budget_text=f"Target: {fmt_rp(tot_pendapatan_b)}",
-        pill_text=pendapatan_pill, pill_style=pendapatan_style,
-    ), unsafe_allow_html=True)
-with c2:
-    st.markdown(kpi_card(
-        icon="📈", icon_bg=CHART_GREEN, accent=CHART_GREEN,
-        label="Prestasi: Realisasi vs Target",
-        value=f"{tot_prestasi_r:,.0f}",
-        budget_text=f"Target: {tot_prestasi_b:,.0f}",
-        pill_text=prestasi_pill, pill_style=prestasi_style,
-    ), unsafe_allow_html=True)
-with c3:
-    st.markdown(kpi_card(
-        icon="⚙️", icon_bg=GOLD, accent=GOLD,
-        label="Biaya Langsung: Realisasi vs Target",
-        value=fmt_rp(tot_biaya_langsung_r),
-        budget_text=f"Target: {fmt_rp(tot_biaya_langsung_b)}",
-        pill_text=biaya_langsung_pill, pill_style=biaya_langsung_style,
-    ), unsafe_allow_html=True)
-with c4:
-    st.markdown(kpi_card(
-        icon="🧾", icon_bg=GREY, accent=GREY,
-        label="Biaya Tdk Langsung: Realisasi vs Target",
-        value=fmt_rp(tot_biaya_tdklangsung_r),
-        budget_text=f"Target: {fmt_rp(tot_biaya_tdklangsung_b)}",
-        pill_text=biaya_tdklangsung_pill, pill_style=biaya_tdklangsung_style,
-    ), unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# CAPAIAN PRESTASI PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase)
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Capaian Prestasi per Satuan</h3>', unsafe_allow_html=True)
-st.caption(
-    "**Rp/HM**: kategori Alat Berat (AB) di Sungai Danau & Kumai, serta seluruh unit di Tanjung, Buhut, dan Ampah.  "
-    "**Rp/KM**: kategori Truck (TR) di Sungai Danau & Kumai.  "
-    "**Rp/Tonase**: seluruh unit di Buhut LHL."
-)
-
 def klasifikasi_satuan_prestasi(row):
     lok = row["lokasi"]
     kat = row["kategori"]
@@ -1230,6 +1177,100 @@ def klasifikasi_satuan_prestasi(row):
     return "Rp/HM"
 
 df["satuan_prestasi"] = df.apply(klasifikasi_satuan_prestasi, axis=1)
+satuan_suffix_map = {"Rp/HM": "/HM", "Rp/KM": "/KM", "Rp/Tonase": "/Ton"}
+
+# ---------------------------------------------------------------
+# 1. CAPAIAN PENDAPATAN  +  RINGKASAN PER JENIS UNIT (di sampingnya)
+# ---------------------------------------------------------------
+col_capaian, col_jenis = st.columns([1.3, 1.7])
+
+with col_capaian:
+    st.markdown('<h3 class="section-title">Capaian Pendapatan</h3>', unsafe_allow_html=True)
+
+    pendapatan_pill, pendapatan_style = achievement_pill(ach_pendapatan, higher_is_better=True)
+    prestasi_pill, prestasi_style = achievement_pill(ach_prestasi, higher_is_better=True)
+    biaya_langsung_pill, biaya_langsung_style = achievement_pill(ach_biaya_langsung, higher_is_better=False)
+    biaya_tdklangsung_pill, biaya_tdklangsung_style = achievement_pill(ach_biaya_tdklangsung, higher_is_better=False)
+
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        st.markdown(kpi_card(
+            icon="💰", icon_bg=RED, accent=RED,
+            label="Pendapatan: Realisasi vs Target",
+            value=fmt_rp(tot_pendapatan_r),
+            budget_text=f"Target: {fmt_rp(tot_pendapatan_b)}",
+            pill_text=pendapatan_pill, pill_style=pendapatan_style,
+        ), unsafe_allow_html=True)
+    with cc2:
+        st.markdown(kpi_card(
+            icon="📈", icon_bg=CHART_GREEN, accent=CHART_GREEN,
+            label="Prestasi: Realisasi vs Target",
+            value=f"{tot_prestasi_r:,.0f}",
+            budget_text=f"Target: {tot_prestasi_b:,.0f}",
+            pill_text=prestasi_pill, pill_style=prestasi_style,
+        ), unsafe_allow_html=True)
+    cc3, cc4 = st.columns(2)
+    with cc3:
+        st.markdown(kpi_card(
+            icon="⚙️", icon_bg=GOLD, accent=GOLD,
+            label="Biaya Langsung: Realisasi vs Target",
+            value=fmt_rp(tot_biaya_langsung_r),
+            budget_text=f"Target: {fmt_rp(tot_biaya_langsung_b)}",
+            pill_text=biaya_langsung_pill, pill_style=biaya_langsung_style,
+        ), unsafe_allow_html=True)
+    with cc4:
+        st.markdown(kpi_card(
+            icon="🧾", icon_bg=GREY, accent=GREY,
+            label="Biaya Tdk Langsung: Realisasi vs Target",
+            value=fmt_rp(tot_biaya_tdklangsung_r),
+            budget_text=f"Target: {fmt_rp(tot_biaya_tdklangsung_b)}",
+            pill_text=biaya_tdklangsung_pill, pill_style=biaya_tdklangsung_style,
+        ), unsafe_allow_html=True)
+
+with col_jenis:
+    st.markdown('<h3 class="section-title">Ringkasan per Jenis Unit</h3>', unsafe_allow_html=True)
+
+    ju_target_pop = df[df["pendapatan_budget"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
+    ju_real_pop = df[df["pendapatan_realisasi"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
+    ju_sat_mode = df.groupby("jenis_unit")["satuan_prestasi"].agg(lambda s: s.mode().iat[0] if not s.mode().empty else "Rp/HM")
+
+    ju = df.groupby("jenis_unit", as_index=False).agg(
+        target_pendapatan=("pendapatan_budget", "sum"),
+        realisasi_pendapatan=("pendapatan_realisasi", "sum"),
+        target_prestasi=("prestasi_budget", "sum"),
+        realisasi_prestasi=("prestasi_realisasi", "sum"),
+    )
+    ju["target_populasi"] = ju["jenis_unit"].map(ju_target_pop).fillna(0).astype(int)
+    ju["realisasi_populasi"] = ju["jenis_unit"].map(ju_real_pop).fillna(0).astype(int)
+    ju["satuan"] = ju["jenis_unit"].map(ju_sat_mode).fillna("Rp/HM")
+    ju["suffix"] = ju["satuan"].map(satuan_suffix_map)
+    ju["rate_target"] = ju.apply(lambda r: (r["target_pendapatan"] / r["target_prestasi"]) if r["target_prestasi"] else None, axis=1)
+    ju["rate_realisasi"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["realisasi_prestasi"]) if r["realisasi_prestasi"] else None, axis=1)
+    ju = ju.sort_values("realisasi_pendapatan", ascending=False)
+
+    show_ju = pd.DataFrame({
+        "Jenis Unit": ju["jenis_unit"],
+        "Target Populasi": ju["target_populasi"],
+        "Realisasi Populasi": ju["realisasi_populasi"],
+        "Target Pendapatan": ju["target_pendapatan"].apply(fmt_rp),
+        "Realisasi Pendapatan": ju["realisasi_pendapatan"].apply(fmt_rp),
+        "Target (Rp/Satuan)": ju.apply(lambda r: f"{fmt_rp(r['rate_target'])}{r['suffix']}" if pd.notna(r["rate_target"]) else "-", axis=1),
+        "Realisasi (Rp/Satuan)": ju.apply(lambda r: f"{fmt_rp(r['rate_realisasi'])}{r['suffix']}" if pd.notna(r["rate_realisasi"]) else "-", axis=1),
+    })
+    st.dataframe(show_ju, use_container_width=True, hide_index=True, height=460)
+    st.caption("Rp/Satuan mengikuti jenis satuan yang berlaku (Rp/HM, Rp/KM, atau Rp/Tonase) sesuai site & kategori unit yang dominan pada tiap Jenis Unit.")
+
+st.markdown("---")
+
+# ---------------------------------------------------------------
+# CAPAIAN PRESTASI PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase)
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Capaian Prestasi per Satuan</h3>', unsafe_allow_html=True)
+st.caption(
+    "**Rp/HM**: kategori Alat Berat (AB) di Sungai Danau & Kumai, serta seluruh unit di Tanjung, Buhut, dan Ampah.  "
+    "**Rp/KM**: kategori Truck (TR) di Sungai Danau & Kumai.  "
+    "**Rp/Tonase**: seluruh unit di Buhut LHL."
+)
 
 satuan_order = ["Rp/HM", "Rp/KM", "Rp/Tonase"]
 satuan_icon = {"Rp/HM": ("⏱️", CHART_GREEN), "Rp/KM": ("🚚", GOLD), "Rp/Tonase": ("⚖️", RED)}
