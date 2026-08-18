@@ -102,8 +102,7 @@ st.markdown(f"""
         width: auto;
     }}
     .section-title {{
-        border-left: 5px solid {GOLD};
-        padding-left: 10px;
+        padding-left: 4px;
         margin-top: 6px;
         color: {TEXT_LIGHT} !important;
     }}
