@@ -717,29 +717,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             return None
         return real / budget * 100
 
-    # ================= SLIDE 1: TITLE =================
-    s = prs.slides.add_slide(blank)
-    add_bg(s, NAVY_DARK)
-    accent = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(3.3), Inches(6.2), Inches(0.06))
-    accent.fill.solid(); accent.fill.fore_color.rgb = TEAL
-    accent.line.fill.background(); accent.shadow.inherit = False
-    add_textbox(s, 0.8, 1.35, 11, 0.5, "PT BUANA KARYA MANDIRI SEJAHTERA (BKMS)", size=13, bold=True,
-                color=RGBColor(0xB9, 0xC2, 0xDE))
-    add_textbox(s, 0.8, 1.9, 11.5, 1.3, "DASHBOARD BIAYA", size=44, bold=True, color=WHITE)
-    add_textbox(s, 0.8, 2.65, 11.5, 1.0, "& PENDAPATAN", size=44, bold=True, color=TEAL)
+    import datetime as _dt
+
     period = ", ".join(month_list) if month_list else "-"
     site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
     kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
-    add_textbox(s, 0.8, 3.6, 11, 0.4, f"PERIODE {period.upper()} — TAHUN 2026", size=15, color=RGBColor(0xD8, 0xDC, 0xEC))
-    add_textbox(s, 0.8, 4.9, 11, 1.0, f"Site: {site_txt}\nKategori: {kat_txt}", size=12, color=RGBColor(0x9A, 0xA3, 0xC4))
-    footer = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(6.95), prs.slide_width, Inches(0.55))
-    footer.fill.solid(); footer.fill.fore_color.rgb = NAVY
-    footer.line.fill.background(); footer.shadow.inherit = False
-    add_textbox(s, 0, 7.06, 13.333, 0.4, "Integritas  •  Kemandirian  •  Kebersamaan  •  Tanggung Jawab  •  Inovatif  •  Komitmen",
-                size=10.5, color=RGBColor(0xC9, 0xCF, 0xE0), align=PP_ALIGN.CENTER)
+    _bulan_id = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
+    _now = _dt.datetime.now()
+    tgl_laporan = f"{_bulan_id[_now.month-1]} {_now.year}"
 
-    # ================= SLIDE 2: CAPAIAN UTAMA (KPI CARDS) =================
-    s = add_content_slide("KPI DASHBOARD — Capaian Utama", "Capaian Utama · 01")
     r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
     pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
     bl_r = data["biaya_langsung_realisasi"].sum(); bl_b = data["biaya_langsung_budget"].sum()
@@ -747,45 +733,220 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     ach_r = ach_txt_pct(r_, b_); ach_p = ach_txt_pct(pr_, pb_)
     ach_bl = ach_txt_pct(bl_r, bl_b); ach_btl = ach_txt_pct(btl_r, btl_b)
 
+    # ================= SLIDE 1: COVER =================
+    s = prs.slides.add_slide(blank)
+    add_bg(s, NAVY_DARK)
+    accent = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(3.3), Inches(6.2), Inches(0.06))
+    accent.fill.solid(); accent.fill.fore_color.rgb = TEAL
+    accent.line.fill.background(); accent.shadow.inherit = False
+    add_textbox(s, 0.8, 0.6, 11, 0.5, "PT. BUANA KARYA MANDIRI SEJAHTERA", size=13, bold=True,
+                color=RGBColor(0xB9, 0xC2, 0xDE))
+    add_textbox(s, 0.8, 1.9, 11.5, 1.3, "TINJAUAN", size=44, bold=True, color=WHITE)
+    add_textbox(s, 0.8, 2.65, 11.5, 1.0, "MANAJEMEN", size=44, bold=True, color=TEAL)
+    add_textbox(s, 0.8, 3.6, 11, 0.4, f"PERIODE {period.upper()} — TAHUN {_now.year}", size=15, color=RGBColor(0xD8, 0xDC, 0xEC))
+    add_textbox(s, 0.8, 4.15, 11, 0.4, f"Banjarmasin, {tgl_laporan}", size=13, color=RGBColor(0xB9, 0xC2, 0xDE))
+    add_textbox(s, 0.8, 4.9, 11, 1.0, f"Site: {site_txt}\nKategori: {kat_txt}", size=12, color=RGBColor(0x9A, 0xA3, 0xC4))
+    add_textbox(s, 0.8, 6.05, 11, 0.4, "Prepared by : Dept. SM & Sustainability", size=12, italic=True,
+                color=RGBColor(0x9A, 0xA3, 0xC4))
+    footer = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(6.95), prs.slide_width, Inches(0.55))
+    footer.fill.solid(); footer.fill.fore_color.rgb = NAVY
+    footer.line.fill.background(); footer.shadow.inherit = False
+    add_textbox(s, 0, 7.06, 13.333, 0.4, "Integritas  •  Kemandirian  •  Kebersamaan  •  Tanggung Jawab  •  Inovatif  •  Komitmen",
+                size=10.5, color=RGBColor(0xC9, 0xCF, 0xE0), align=PP_ALIGN.CENTER)
+
+    # ================= SLIDE 2: AGENDA =================
+    s = add_content_slide(f"AGENDA TINJAUAN MANAJEMEN — {period.upper()} {_now.year}", f"Banjarmasin · {tgl_laporan}")
+    add_textbox(s, 0.55, 1.05, 12.2, 0.4,
+                "Struktur: Performance Keseluruhan → Key Insights → Dampak Bisnis → Prioritas Aksi",
+                size=12, italic=True, color=TEXT_MUTED)
+
+    agenda_items = [
+        ("01", "Performance Keseluruhan", "Pendapatan · Prestasi · Biaya Langsung · Biaya Tidak Langsung", TEAL, "Slide 3–6"),
+        ("02", "Key Insights", "Analisa mendalam per komponen biaya & site", RGBColor(0x8E, 0x7C, 0xC3), "Segera"),
+        ("03", "Dampak Bisnis", "Revenue Leakage · Margin Analysis", GREEN, "Segera"),
+        ("04", "Prioritas Aksi", "Action Plan · Status Tindak Lanjut", RED, "Segera"),
+    ]
+    qw, qh, gx, gy = 5.85, 2.5, 0.35, 0.3
+    ox, oy = 0.55, 1.65
+    for i, (num, title_, sub, accent_c, rng) in enumerate(agenda_items):
+        col, row = i % 2, i // 2
+        left = ox + col * (qw + gx)
+        top = oy + row * (qh + gy)
+        card = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(qw), Inches(qh))
+        card.fill.solid(); card.fill.fore_color.rgb = WHITE
+        card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
+        card.shadow.inherit = False
+        strip = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(0.09), Inches(qh))
+        strip.fill.solid(); strip.fill.fore_color.rgb = accent_c
+        strip.line.fill.background(); strip.shadow.inherit = False
+        add_textbox(s, left + 0.3, top + 0.15, 4.6, 0.3, rng, size=10.5, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
+        add_textbox(s, left + 0.3, top + 0.12, 1.8, 0.85, num, size=34, bold=True, color=accent_c)
+        circ = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + qw - 0.95), Inches(top + 0.22), Inches(0.6), Inches(0.6))
+        circ.fill.solid(); circ.fill.fore_color.rgb = accent_c
+        circ.line.fill.background(); circ.shadow.inherit = False
+        add_textbox(s, left + 0.3, top + 0.95, qw - 0.6, 0.45, title_, size=17, bold=True, color=TEXT_DARK)
+        add_textbox(s, left + 0.3, top + 1.4, qw - 0.6, 0.7, sub, size=11.5, color=TEXT_MUTED)
+
+    footer_bar = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.55), Inches(6.75), Inches(12.23), Inches(0.42))
+    footer_bar.fill.solid(); footer_bar.fill.fore_color.rgb = NAVY
+    footer_bar.line.fill.background(); footer_bar.shadow.inherit = False
+    ftf = footer_bar.text_frame; ftf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    fp = ftf.paragraphs[0]; fp.alignment = PP_ALIGN.CENTER
+    fr = fp.add_run(); fr.text = "+ Status Tindak Lanjut periode sebelumnya dibahas di akhir sesi"
+    fr.font.size = Pt(11); fr.font.bold = True; fr.font.color.rgb = WHITE
+
+    # ================= SLIDE 3: SECTION DIVIDER — PERFORMANCE KESELURUHAN =================
+    s = prs.slides.add_slide(blank)
+    add_bg(s, NAVY_DARK)
+    strip3 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(0.16), prs.slide_height)
+    strip3.fill.solid(); strip3.fill.fore_color.rgb = TEAL
+    strip3.line.fill.background(); strip3.shadow.inherit = False
+    badge = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.75), Inches(2.35), Inches(1.0), Inches(1.0))
+    badge.fill.solid(); badge.fill.fore_color.rgb = TEAL
+    badge.line.fill.background(); badge.shadow.inherit = False
+    btf = badge.text_frame; btf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    bp = btf.paragraphs[0]; bp.alignment = PP_ALIGN.CENTER
+    br = bp.add_run(); br.text = "01"; br.font.size = Pt(26); br.font.bold = True; br.font.color.rgb = WHITE
+    add_textbox(s, 0.7, 3.55, 10.5, 0.9, "PERFORMANCE", size=34, bold=True, color=WHITE)
+    add_textbox(s, 0.7, 4.3, 10.5, 0.9, "KESELURUHAN", size=34, bold=True, color=TEAL)
+    add_textbox(s, 0.75, 5.25, 10.5, 0.5, "Pendapatan · Prestasi · Biaya Langsung · Biaya Tidak Langsung",
+                size=14, color=RGBColor(0xC9, 0xCF, 0xE0))
+
+    # ================= SLIDE 4: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
+    s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", "Performance Keseluruhan · 01")
+
     card_w4, card_h4, gap4, cy4 = 2.85, 2.3, 0.25, 1.15
     add_kpi_card(s, 0.55, cy4, card_w4, card_h4, "Rp", RED, RED if (ach_r is not None and ach_r < 100) else GREEN,
-                 "Pendapatan (Realisasi)", fmt_rp(r_), f"Target: {fmt_rp(b_)}",
+                 "Pendapatan (dibandingkan Budget)", fmt_rp(r_), f"Budget: {fmt_rp(b_)}",
                  (f"✓ {ach_r:.1f}% — Tercapai" if ach_r is not None and ach_r >= 100 else (f"✗ {ach_r:.1f}% vs Target" if ach_r is not None else "Target = 0")),
                  ach_r is not None and ach_r >= 100)
     add_kpi_card(s, 0.55 + (card_w4 + gap4), cy4, card_w4, card_h4, "▲", TEAL, TEAL if (ach_p is not None and ach_p < 100) else GREEN,
-                 "Prestasi (Realisasi)", f"{pr_:,.0f}", f"Target: {pb_:,.0f}",
+                 "Prestasi (dibandingkan Budget)", f"{pr_:,.0f}", f"Budget: {pb_:,.0f}",
                  (f"✓ {ach_p:.1f}% — Tercapai" if ach_p is not None and ach_p >= 100 else (f"✗ {ach_p:.1f}% vs Target" if ach_p is not None else "Target = 0")),
                  ach_p is not None and ach_p >= 100)
-    add_kpi_card(s, 0.55 + 2 * (card_w4 + gap4), cy4, card_w4, card_h4, "◆", GOLD, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
-                 "Biaya Langsung (Realisasi)", fmt_rp(bl_r), f"Target: {fmt_rp(bl_b)}",
+    add_kpi_card(s, 0.55 + 2 * (card_w4 + gap4), cy4, card_w4, card_h4, "◆", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
+                 "Biaya Langsung", fmt_rp(bl_r), f"Budget: {fmt_rp(bl_b)}",
                  (f"✓ {ach_bl:.1f}% — Under Budget" if ach_bl is not None and ach_bl <= 100 else (f"✗ {ach_bl:.1f}% — Over Budget" if ach_bl is not None else "Target = 0")),
                  ach_bl is not None and ach_bl <= 100)
-    add_kpi_card(s, 0.55 + 3 * (card_w4 + gap4), cy4, card_w4, card_h4, "🧾", RGBColor(0xB8, 0xBE, 0xCC), GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
-                 "Biaya Tdk Langsung (Realisasi)", fmt_rp(btl_r), f"Target: {fmt_rp(btl_b)}",
+    add_kpi_card(s, 0.55 + 3 * (card_w4 + gap4), cy4, card_w4, card_h4, "◇", TEAL, GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
+                 "Biaya Tidak Langsung", fmt_rp(btl_r), f"Budget: {fmt_rp(btl_b)}",
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                  ach_btl is not None and ach_btl <= 100)
 
-    add_textbox(s, 0.55, 3.85, 6, 0.4, "Pendapatan: Realisasi vs Target", size=13, bold=True, color=TEXT_DARK)
-    cd = CategoryChartData()
-    cd.categories = ["Pendapatan"]
-    cd.add_series("Target", (b_,))
-    cd.add_series("Realisasi", (r_,))
-    gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(4.25), Inches(6.0), Inches(3.0), cd)
-    chart = gframe.chart
-    chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
-    chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = TEAL
-    style_chart_light(chart)
+    site_pdt = data.groupby("lokasi", as_index=False).agg(
+        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
+    )
+    site_pdt = site_pdt[site_pdt["pendapatan_b"] > 0].copy()
+    add_textbox(s, 0.55, 3.85, 11.5, 0.4, "% Capaian Pendapatan Aktual (Realisasi vs Budget) — per Site", size=13, bold=True, color=TEXT_DARK)
+    if not site_pdt.empty:
+        site_pdt["capaian"] = site_pdt["pendapatan_r"] / site_pdt["pendapatan_b"] * 100
+        site_pdt = site_pdt.sort_values("capaian", ascending=False)
+        cd = CategoryChartData()
+        cd.categories = list(site_pdt["lokasi"])
+        cd.add_series("% Capaian", tuple(round(v, 1) for v in site_pdt["capaian"]))
+        gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(4.3), Inches(12.2), Inches(2.85), cd)
+        chart = gframe.chart
+        chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = TEAL
+        for i, pt in enumerate(chart.series[0].points):
+            if site_pdt["capaian"].iloc[i] < 95:
+                pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
+        chart.has_title = False
+        style_chart_light(chart, legend=False)
 
-    add_textbox(s, 6.9, 3.85, 6, 0.4, "Biaya Langsung vs Tidak Langsung: Realisasi vs Target", size=13, bold=True, color=TEXT_DARK)
-    cd2 = CategoryChartData()
-    cd2.categories = ["Biaya Langsung", "Biaya Tdk Langsung"]
-    cd2.add_series("Target", (bl_b, btl_b))
-    cd2.add_series("Realisasi", (bl_r, btl_r))
-    gframe2 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(6.9), Inches(4.25), Inches(5.9), Inches(3.0), cd2)
-    chart2 = gframe2.chart
-    chart2.series[0].format.fill.solid(); chart2.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
-    chart2.series[1].format.fill.solid(); chart2.series[1].format.fill.fore_color.rgb = GOLD
-    style_chart_light(chart2)
+    # ================= SLIDE 5: TREN BULANAN & PENDAPATAN PER SITE =================
+    s = add_content_slide(f"PENDAPATAN — Tren Bulanan {_now.year}", "Performance Keseluruhan · 01")
+
+    bln_agg = data.groupby("bulan", as_index=False).agg(
+        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
+    )
+    bln_agg["order"] = bln_agg["bulan"].apply(lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99)
+    bln_agg = bln_agg.sort_values("order")
+    add_textbox(s, 0.55, 1.05, 6, 0.35, "Tren Bulanan: Pendapatan (Realisasi vs Budget)", size=13, bold=True, color=TEXT_DARK)
+    cd4 = CategoryChartData()
+    cd4.categories = list(bln_agg["bulan"])
+    cd4.add_series("Pendapatan Budget (Rp)", tuple(bln_agg["pendapatan_b"]))
+    cd4.add_series("Pendapatan Realisasi (Rp)", tuple(bln_agg["pendapatan_r"]))
+    gframe4 = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.55), Inches(1.45), Inches(6.1), Inches(5.5), cd4)
+    chart4 = gframe4.chart
+    chart4.series[0].format.line.color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
+    chart4.series[0].format.line.width = Pt(2)
+    chart4.series[1].format.line.color.rgb = TEAL
+    chart4.series[1].format.line.width = Pt(2.5)
+    chart4.has_title = False
+    style_chart_light(chart4)
+
+    site_pdt2 = data.groupby("lokasi", as_index=False).agg(
+        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
+    ).sort_values("pendapatan_b", ascending=True)
+    add_textbox(s, 6.85, 1.05, 6, 0.35, "Pendapatan Aktual vs Budget — per Site", size=13, bold=True, color=TEXT_DARK)
+    cd5 = CategoryChartData()
+    cd5.categories = list(site_pdt2["lokasi"])
+    cd5.add_series("Budget", tuple(site_pdt2["pendapatan_b"]))
+    cd5.add_series("Aktual", tuple(site_pdt2["pendapatan_r"]))
+    gframe5 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(6.85), Inches(1.45), Inches(5.9), Inches(5.5), cd5)
+    chart5 = gframe5.chart
+    chart5.series[0].format.fill.solid(); chart5.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
+    chart5.series[1].format.fill.solid(); chart5.series[1].format.fill.fore_color.rgb = TEAL
+    chart5.has_title = False
+    style_chart_light(chart5)
+
+    # ================= SLIDE 6: BIAYA OPERASIONAL =================
+    s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", "Performance Keseluruhan · 01")
+
+    ringkasan_rows_pptx = [
+        ("Total Biaya", "total_biaya_realisasi", "total_biaya_budget"),
+        ("Biaya Upah", "upah_realisasi", "upah_budget"),
+        ("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"),
+        ("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
+        ("Biaya Penyusutan", "penyusutan_realisasi", "penyusutan_budget"),
+        ("Biaya Lainnya", "lainnya_realisasi", "lainnya_budget"),
+        ("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"),
+    ]
+    tbl_rows = []
+    for label, col_r, col_b in ringkasan_rows_pptx:
+        rv = data[col_r].sum(); bv = data[col_b].sum()
+        ach_row = ach_txt_pct(rv, bv)
+        ach_disp = f"{ach_row:.1f}%" if ach_row is not None else "-"
+        tbl_rows.append([label, fmt_rp(bv), fmt_rp(rv), ach_disp])
+    add_textbox(s, 0.55, 1.05, 6, 0.35, "Ringkasan Biaya", size=13, bold=True, color=TEXT_DARK)
+    add_table(s, 0.55, 1.45, 6.1, 3.85, ["Metrik", "Budget", "Aktual", "Capaian"], tbl_rows,
+              status_col=None, col_widths=[2.1, 1.3, 1.3, 1.0])
+
+    btl_site = data.groupby("lokasi", as_index=False).agg(
+        btl_r=("biaya_tidak_langsung_realisasi", "sum"), btl_b=("biaya_tidak_langsung_budget", "sum"),
+    )
+    total_btl_r = btl_site["btl_r"].sum()
+    btl_rows = []
+    for _, rw in btl_site.sort_values("btl_r", ascending=False).iterrows():
+        pct_target = (rw["btl_r"] / rw["btl_b"] * 100) if rw["btl_b"] else None
+        pct_share = (rw["btl_r"] / total_btl_r * 100) if total_btl_r else 0
+        btl_rows.append([
+            rw["lokasi"], fmt_rp(rw["btl_b"]), fmt_rp(rw["btl_r"]),
+            (f"{pct_target:.0f}%" if pct_target is not None else "-"), f"{pct_share:.1f}%",
+        ])
+    add_textbox(s, 6.85, 1.05, 6, 0.35, "Biaya Tidak Langsung (BTL) — per Site", size=13, bold=True, color=TEXT_DARK)
+    add_table(s, 6.85, 1.45, 5.9, 2.3, ["Site", "Budget", "Aktual", "% Target", "% BTL"], btl_rows,
+              col_widths=[1.7, 1.3, 1.3, 0.9, 0.9])
+
+    maint_site = data.groupby("lokasi", as_index=False).agg(
+        maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
+    )
+    maint_site = maint_site[maint_site["maint_b"] > 0].copy()
+    add_textbox(s, 6.85, 4.0, 6, 0.35, "Biaya Maintenance % — Aktual vs Plan per Site", size=12.5, bold=True, color=TEXT_DARK)
+    if not maint_site.empty:
+        maint_site["pct"] = maint_site["maint_r"] / maint_site["maint_b"] * 100
+        maint_site = maint_site.sort_values("pct", ascending=False)
+        cd6 = CategoryChartData()
+        cd6.categories = list(maint_site["lokasi"])
+        cd6.add_series("% Aktual vs Plan", tuple(round(v, 1) for v in maint_site["pct"]))
+        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(6.85), Inches(4.4), Inches(5.9), Inches(2.55), cd6)
+        chart6 = gframe6.chart
+        chart6.series[0].format.fill.solid(); chart6.series[0].format.fill.fore_color.rgb = TEAL
+        for i, pt in enumerate(chart6.series[0].points):
+            if maint_site["pct"].iloc[i] > 105:
+                pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
+        chart6.has_title = False
+        style_chart_light(chart6, legend=False)
 
     # ================= SLIDE 3: POPULASI UNIT =================
     card_w, card_h, gap, cy = 3.75, 2.4, 0.35, 1.25
