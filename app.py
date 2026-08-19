@@ -400,7 +400,9 @@ with st.sidebar:
     else:
         sel_kriteria = []
 
-    unit_opts_df = df_raw[["nama_unit"]].dropna().drop_duplicates().copy()
+    unit_opts_df = df_raw[
+        df_raw["lokasi"].isin(sel_site) & df_raw["kategori"].isin(sel_kat)
+    ][["nama_unit"]].dropna().drop_duplicates().copy()
     unit_opts_df["unit_label"] = unit_opts_df["nama_unit"].apply(_unit_label)
     unit_opts = sorted(unit_opts_df["unit_label"].unique().tolist())
     sel_id_unit = st.multiselect(
