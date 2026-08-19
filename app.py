@@ -1452,11 +1452,15 @@ ach_prestasi_all = (tot_prestasi_r_all / tot_prestasi_b_all * 100) if tot_presta
 tot_qty_bbm_b_all = df["qty_bbm_budget"].sum()
 tot_qty_bbm_r_all = df["qty_bbm_realisasi"].sum()
 
-def biaya_row(label, real_col, budget_col, is_bbm=False):
+def biaya_row(label, real_col, budget_col, is_bbm=False, raw=False):
     comp_r_raw = df[real_col].sum()
     comp_b_raw = df[budget_col].sum()
 
-    if is_bbm:
+    if raw:
+        rate_b = comp_b_raw
+        rate_r = comp_r_raw
+        suffix = ""
+    elif is_bbm:
         rate_b = (comp_b_raw / tot_qty_bbm_b_all) if tot_qty_bbm_b_all else None
         rate_r = (comp_r_raw / tot_qty_bbm_r_all) if tot_qty_bbm_r_all else None
         suffix = "/Ltr"
@@ -1470,7 +1474,7 @@ def biaya_row(label, real_col, budget_col, is_bbm=False):
                 capaian_prestasi=ach_prestasi_all, aktual_raw=comp_r_raw)
 
 ringkasan_rows = [
-    biaya_row("Total Biaya", "total_biaya_realisasi", "total_biaya_budget"),
+    biaya_row("Total Biaya", "total_biaya_realisasi", "total_biaya_budget", raw=True),
     biaya_row("Upah Operator", "upah_realisasi", "upah_budget"),
     biaya_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget", is_bbm=True),
     biaya_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
