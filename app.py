@@ -34,7 +34,7 @@ def style_fig(fig):
 # PAGE CONFIG
 # ---------------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Operasional Review | PT BKMS",
+    page_title="Dashboard Biaya & Pendapatan | PT BKMS",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -481,7 +481,7 @@ logo_html = f'<img class="header-logo" src="data:image/png;base64,{logo_b64}">' 
 st.markdown(f"""
 <div class="header-banner">
     {logo_html}
-    <h1>📊 Dashboard Operational Review</h1>
+    <h1>📊 Dashboard Biaya & Pendapatan</h1>
     <p>PT BUANA KARYA MANDIRI SEJAHTERA (BKMS) &nbsp;•&nbsp; Target vs Realisasi</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1105,7 +1105,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     s = prs.slides.add_slide(blank)
     add_bg(s, NAVY_DARK)
     add_textbox(s, 0.8, 0.7, 10, 1.0, "TERIMA KASIH", size=40, bold=True, color=WHITE)
-    add_textbox(s, 0.8, 1.55, 10, 0.5, "Ringkasan Dashboard Operational Review — PT BKMS", size=15, color=TEAL)
+    add_textbox(s, 0.8, 1.55, 10, 0.5, "Ringkasan Dashboard Biaya & Pendapatan — PT BKMS", size=15, color=TEAL)
 
     summary_rows = [
         ["Pendapatan (Realisasi vs Target)", fmt_rp(tot_pendapatan_r), (f"{ach_pendapatan:.1f}%" if ach_pendapatan is not None else "-")],
@@ -1268,6 +1268,36 @@ with col_analisa:
                 poin.append(f"<b>Tarif/Rate</b> Rp per satuan prestasi realisasi ({fmt_rp(rate_realisasi_all)}) juga lebih rendah dari target ({fmt_rp(rate_target_all)}), yaitu <b>{rate_ach:.1f}%</b>.")
             else:
                 poin.append(f"<b>Tarif/Rate</b> Rp per satuan prestasi sudah sesuai/di atas target (<b>{rate_ach:.1f}%</b>) — bukan penyebab utama gap.")
+
+        # Jenis Unit mana yang paling bermasalah (kontribusi gap pendapatan terbesar)
+        ju_problem = df.groupby("jenis_unit", as_index=False).agg(
+            target_pendapatan=("pendapatan_budget", "sum"),
+            realisasi_pendapatan=("pendapatan_realisasi", "sum"),
+            target_prestasi=("prestasi_budget", "sum"),
+            realisasi_prestasi=("prestasi_realisasi", "sum"),
+        )
+        ju_problem["gap"] = ju_problem["target_pendapatan"] - ju_problem["realisasi_pendapatan"]
+        ju_problem["capaian"] = ju_problem.apply(
+            lambda r: (r["realisasi_pendapatan"] / r["target_pendapatan"] * 100) if r["target_pendapatan"] else None, axis=1
+        )
+        ju_problem["capaian_prestasi"] = ju_problem.apply(
+            lambda r: (r["realisasi_prestasi"] / r["target_prestasi"] * 100) if r["target_prestasi"] else None, axis=1
+        )
+        ju_bermasalah = ju_problem[(ju_problem["gap"] > 0) & (ju_problem["capaian"].notna()) & (ju_problem["capaian"] < 100)]
+        ju_bermasalah = ju_bermasalah.sort_values("gap", ascending=False).head(5)
+
+        if not ju_bermasalah.empty:
+            list_items = ""
+            for _, jr in ju_bermasalah.iterrows():
+                cap_prestasi_txt = f", prestasi {jr['capaian_prestasi']:.1f}%" if pd.notna(jr["capaian_prestasi"]) else ""
+                list_items += (
+                    f"<li style='margin-bottom:3px;'><b>{jr['jenis_unit']}</b> — capaian pendapatan {jr['capaian']:.1f}%"
+                    f"{cap_prestasi_txt}, gap {fmt_rp(jr['gap'])}</li>"
+                )
+            poin.append(
+                f"<b>🚩 Jenis Unit paling bermasalah</b> (kontribusi gap pendapatan terbesar):"
+                f"<ul style='padding-left:16px; margin:4px 0 0 0;'>{list_items}</ul>"
+            )
 
         if penyebab_utama:
             poin.append(f"➡️ <b>Penyebab paling dominan:</b> {penyebab_utama[0]} (capaian terendah, {penyebab_utama[1]:.1f}%).")
@@ -1990,4 +2020,4 @@ else:
     st.caption("Catatan: analisa ini bersifat indikatif berdasarkan pola data historis, bukan kesimpulan pasti atas kondisi unit di lapangan — perlu verifikasi lapangan sebelum diambil tindakan.")
 
 st.markdown("---")
-st.caption("Dashboard Operational Review • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat oleh ALIP BA TA")
+st.caption("Dashboard Biaya & Pendapatan • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat dengan Streamlit")
