@@ -34,7 +34,7 @@ def style_fig(fig):
 # PAGE CONFIG
 # ---------------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Biaya & Pendapatan | PT BKMS",
+    page_title="Dashboard Operational Review | PT BKMS",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -482,8 +482,9 @@ logo_html = f'<img class="header-logo" src="data:image/png;base64,{logo_b64}">' 
 st.markdown(f"""
 <div class="header-banner">
     {logo_html}
-    <h1>📊 Dashboard Biaya & Pendapatan</h1>
+    <h1>📊 Dashboard Operational Review</h1>
     <p>PT BUANA KARYA MANDIRI SEJAHTERA (BKMS) &nbsp;•&nbsp; Target vs Realisasi</p>
+    <p style="font-size:12px; opacity:0.8; margin-top:2px;">Dibuat oleh ALIP BA TA</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1106,7 +1107,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     s = prs.slides.add_slide(blank)
     add_bg(s, NAVY_DARK)
     add_textbox(s, 0.8, 0.7, 10, 1.0, "TERIMA KASIH", size=40, bold=True, color=WHITE)
-    add_textbox(s, 0.8, 1.55, 10, 0.5, "Ringkasan Dashboard Biaya & Pendapatan — PT BKMS", size=15, color=TEAL)
+    add_textbox(s, 0.8, 1.55, 10, 0.5, "Ringkasan Dashboard Operational Review — PT BKMS", size=15, color=TEAL)
 
     summary_rows = [
         ["Pendapatan (Realisasi vs Target)", fmt_rp(tot_pendapatan_r), (f"{ach_pendapatan:.1f}%" if ach_pendapatan is not None else "-")],
@@ -2031,4 +2032,4 @@ else:
     st.caption("Catatan: analisa ini bersifat indikatif berdasarkan pola data historis, bukan kesimpulan pasti atas kondisi unit di lapangan — perlu verifikasi lapangan sebelum diambil tindakan.")
 
 st.markdown("---")
-st.caption("Dashboard Biaya & Pendapatan • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat dengan Streamlit")
+st.caption("Dashboard Operational Review • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat oleh ALIP BA TA")
