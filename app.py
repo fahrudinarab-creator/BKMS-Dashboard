@@ -1448,33 +1448,45 @@ st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=
 
 tot_prestasi_r_all = df["prestasi_realisasi"].sum()
 tot_prestasi_b_all = df["prestasi_budget"].sum()
+tot_qty_bbm_r_all = df["qty_bbm_realisasi"].sum()
+tot_qty_bbm_b_all = df["qty_bbm_budget"].sum()
 
-def rate_row(label, real_col, budget_col):
+def biaya_row(label, real_col, budget_col, rate_mode=None):
     comp_r = df[real_col].sum()
     comp_b = df[budget_col].sum()
-    rate_r = (comp_r / tot_prestasi_r_all) if tot_prestasi_r_all else None
-    rate_b = (comp_b / tot_prestasi_b_all) if tot_prestasi_b_all else None
-    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    return (label, rate_b, rate_r, ach, rate_r is None, comp_r)
+    ach = (comp_r / comp_b * 100) if comp_b else None
 
-ringkasan_rows = []
-ringkasan_rows.append(rate_row("Upah Operator", "upah_realisasi", "upah_budget"))
-ringkasan_rows.append(rate_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"))
-ringkasan_rows.append(rate_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"))
-ringkasan_rows.append(rate_row("Penyusutan", "penyusutan_realisasi", "penyusutan_budget"))
-ringkasan_rows.append(rate_row("Lainnya", "lainnya_realisasi", "lainnya_budget"))
-ringkasan_rows.append(rate_row("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"))
+    rate_ach = None
+    if rate_mode == "prestasi":
+        rate_b = (comp_b / tot_prestasi_b_all) if tot_prestasi_b_all else None
+        rate_r = (comp_r / tot_prestasi_r_all) if tot_prestasi_r_all else None
+        rate_ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
+    elif rate_mode == "harga_bbm":
+        harga_b = (comp_b / tot_qty_bbm_b_all) if tot_qty_bbm_b_all else None
+        harga_r = (comp_r / tot_qty_bbm_r_all) if tot_qty_bbm_r_all else None
+        rate_ach = (harga_r / harga_b * 100) if (harga_r is not None and harga_b) else None
+
+    return dict(label=label, budget=comp_b, aktual=comp_r, ach=ach, rate_ach=rate_ach)
+
+ringkasan_rows = [
+    biaya_row("Total Biaya", "total_biaya_realisasi", "total_biaya_budget"),
+    biaya_row("Upah Operator", "upah_realisasi", "upah_budget", rate_mode="prestasi"),
+    biaya_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget", rate_mode="harga_bbm"),
+    biaya_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget", rate_mode="prestasi"),
+    biaya_row("Penyusutan", "penyusutan_realisasi", "penyusutan_budget", rate_mode="prestasi"),
+    biaya_row("Lainnya", "lainnya_realisasi", "lainnya_budget", rate_mode="prestasi"),
+    biaya_row("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"),
+]
 
 table_rows_html = ""
-for label, budget_val, aktual_val, ach, na, _comp_r in ringkasan_rows:
-    budget_disp = fmt_rp(budget_val) if budget_val is not None else "-"
-    aktual_disp = fmt_rp(aktual_val) if aktual_val is not None else "-"
+for row in ringkasan_rows:
     table_rows_html += f"""
     <tr>
-        <td>{label}</td>
-        <td>{budget_disp}</td>
-        <td>{aktual_disp}</td>
-        <td>{rk_badge(ach, higher_is_better=False, na=na, small=True)}</td>
+        <td>{row['label']}</td>
+        <td>{fmt_rp(row['budget'])}</td>
+        <td>{fmt_rp(row['aktual'])}</td>
+        <td>{rk_badge(row['ach'], higher_is_better=False, na=(row['ach'] is None), small=True)}</td>
+        <td>{rk_badge(row['rate_ach'], higher_is_better=False, na=(row['rate_ach'] is None), small=True)}</td>
     </tr>"""
 
 col_tbl, col_pie = st.columns([1, 1])
@@ -1483,7 +1495,7 @@ with col_tbl:
     st.markdown(f"""
     <table class="ringkasan-table-sm">
         <thead>
-            <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th></tr>
+            <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th><th>Capaian Rp/Satuan</th></tr>
         </thead>
         <tbody>{table_rows_html}
         </tbody>
@@ -1492,8 +1504,8 @@ with col_tbl:
 with col_pie:
     st.markdown("##### Komposisi Biaya Aktual terhadap Total Biaya")
     comp_pie_df = pd.DataFrame({
-        "Komponen": [r[0] for r in ringkasan_rows],
-        "Biaya": [r[5] for r in ringkasan_rows],
+        "Komponen": [r["label"] for r in ringkasan_rows if r["label"] != "Total Biaya"],
+        "Biaya": [r["aktual"] for r in ringkasan_rows if r["label"] != "Total Biaya"],
     })
     comp_pie_df = comp_pie_df[comp_pie_df["Biaya"] > 0]
     if not comp_pie_df.empty:
