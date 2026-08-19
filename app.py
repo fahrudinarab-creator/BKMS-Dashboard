@@ -484,7 +484,6 @@ st.markdown(f"""
     {logo_html}
     <h1>📊 Dashboard Operational Review</h1>
     <p>PT BUANA KARYA MANDIRI SEJAHTERA (BKMS) &nbsp;•&nbsp; Target vs Realisasi</p>
-    <p style="font-size:12px; opacity:0.8; margin-top:2px;">Dibuat oleh ALIP BA TA</p>
 </div>
 """, unsafe_allow_html=True)
 
