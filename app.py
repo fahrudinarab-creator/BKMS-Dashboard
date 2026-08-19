@@ -1332,7 +1332,8 @@ ju["suffix"] = ju["satuan"].map(satuan_suffix_map)
 ju["rate_target"] = ju.apply(lambda r: (r["target_pendapatan"] / r["target_prestasi"]) if r["target_prestasi"] else None, axis=1)
 ju["rate_realisasi"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["realisasi_prestasi"]) if r["realisasi_prestasi"] else None, axis=1)
 ju["capaian"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["target_pendapatan"] * 100) if r["target_pendapatan"] else None, axis=1)
-ju = ju.sort_values("realisasi_pendapatan", ascending=False)
+ju["selisih_pendapatan"] = ju["realisasi_pendapatan"] - ju["target_pendapatan"]
+ju = ju.sort_values("selisih_pendapatan", ascending=False)
 
 ju_rows_html = ""
 for _, r in ju.iterrows():
