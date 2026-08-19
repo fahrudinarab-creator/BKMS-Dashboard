@@ -512,8 +512,14 @@ ach_biaya = achievement(tot_biaya_r, tot_biaya_b)
 ach_biaya_langsung = achievement(tot_biaya_langsung_r, tot_biaya_langsung_b)
 ach_biaya_tdklangsung = achievement(tot_biaya_tdklangsung_r, tot_biaya_tdklangsung_b)
 
-target_populasi = df.loc[df["pendapatan_budget"] > 0, "nama_unit"].nunique()
-realisasi_populasi = df.loc[df["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
+if "bulan_no" in df.columns and not df.empty:
+    _bulan_terakhir_no_global = df["bulan_no"].max()
+    df_bulan_terakhir_global = df[df["bulan_no"] == _bulan_terakhir_no_global]
+else:
+    df_bulan_terakhir_global = df
+
+target_populasi = df_bulan_terakhir_global.loc[df_bulan_terakhir_global["pendapatan_budget"] > 0, "nama_unit"].nunique()
+realisasi_populasi = df_bulan_terakhir_global.loc[df_bulan_terakhir_global["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
 pct_populasi = (realisasi_populasi / target_populasi * 100) if target_populasi else None
 
 # ---------------------------------------------------------------
@@ -1207,8 +1213,18 @@ with col_capaian:
 with col_jenis:
     st.markdown('<h3 class="section-title">Ringkasan per Jenis Unit</h3>', unsafe_allow_html=True)
 
-    ju_target_pop = df[df["pendapatan_budget"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
-    ju_real_pop = df[df["pendapatan_realisasi"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
+    if "bulan_no" in df.columns and not df.empty:
+        bulan_terakhir_no = df["bulan_no"].max()
+        bulan_terakhir_label = df.loc[df["bulan_no"] == bulan_terakhir_no, "bulan"].iloc[0]
+        df_bulan_terakhir = df[df["bulan_no"] == bulan_terakhir_no]
+    else:
+        bulan_terakhir_label = "-"
+        df_bulan_terakhir = df
+
+    st.caption(f"Populasi dihitung berdasarkan bulan terakhir pada filter: **{bulan_terakhir_label}**")
+
+    ju_target_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_budget"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
+    ju_real_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_realisasi"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
     ju_sat_mode = df.groupby("jenis_unit")["satuan_prestasi"].agg(lambda s: s.mode().iat[0] if not s.mode().empty else "Rp/HM")
 
     ju = df.groupby("jenis_unit", as_index=False).agg(
