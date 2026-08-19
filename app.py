@@ -1031,7 +1031,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 worst_row = (label, ach_row)
 
     add_card_panel(s, 0.4, 0.98, 6.3, 6.2)
-    add_textbox(s, 0.65, 1.14, 5.9, 0.4, "Ringkasan Biaya", size=16, bold=True, color=TEXT_DARK)
+    add_textbox(s, 0.65, 1.14, 5.9, 0.4, "Ringkasan Biaya PT. BKMS", size=16, bold=True, color=TEXT_DARK)
     add_table(s, 0.65, 1.65, 5.85, 4.15, ["Metrik", "Budget", "Aktual", "Capaian", "Capaian Prestasi"], tbl_rows,
               status_col=[3, 4], col_widths=[1.95, 1.2, 1.2, 0.85, 1.05], fill_badge=True,
               font_size=11.5, header_size=12)
