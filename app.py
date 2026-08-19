@@ -653,12 +653,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             strip.line.fill.background(); strip.shadow.inherit = False
         return card
 
-    def add_note_callout(slide, left, top, width, height, icon, text, text_color=RED):
+    def add_note_callout(slide, left, top, width, height, icon, text, text_color=RED, size=11):
         tb = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
         tf = tb.text_frame; tf.word_wrap = True
         p = tf.paragraphs[0]
         r = p.add_run(); r.text = f"{icon} {text}"
-        r.font.size = Pt(11); r.font.bold = True; r.font.italic = True
+        r.font.size = Pt(size); r.font.bold = True; r.font.italic = True
         r.font.color.rgb = text_color; r.font.name = "Calibri"
         return tb
 
@@ -691,7 +691,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         r.font.size = Pt(12.5); r.font.bold = True; r.font.color.rgb = text_color; r.font.name = "Calibri"
         return box
 
-    def add_table(slide, left, top, width, height, headers, rows, status_col=None, col_widths=None, fill_badge=False):
+    def add_table(slide, left, top, width, height, headers, rows, status_col=None, col_widths=None,
+                  fill_badge=False, font_size=11.5, header_size=12):
         n_rows = len(rows) + 1
         n_cols = len(headers)
         gframe = slide.shapes.add_table(n_rows, n_cols, Inches(left), Inches(top), Inches(width), Inches(height))
@@ -706,7 +707,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             cell.text = h
             cell.fill.solid(); cell.fill.fore_color.rgb = NAVY
             p = cell.text_frame.paragraphs[0]
-            p.runs[0].font.bold = True; p.runs[0].font.size = Pt(11); p.runs[0].font.color.rgb = WHITE
+            p.runs[0].font.bold = True; p.runs[0].font.size = Pt(header_size); p.runs[0].font.color.rgb = WHITE
+            p.runs[0].font.name = "Calibri"
             cell.vertical_anchor = MSO_ANCHOR.MIDDLE
         for i, row in enumerate(rows, start=1):
             for j, val in enumerate(row):
@@ -736,10 +738,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 cell.text_frame.paragraphs[0].text = ""
                 p = cell.text_frame.paragraphs[0]
                 r = p.add_run(); r.text = display_text
-                r.font.size = Pt(10.5)
+                r.font.size = Pt(font_size)
                 r.font.color.rgb = txt_color
                 r.font.bold = is_status
+                r.font.name = "Calibri"
                 cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+                cell.margin_left = Inches(0.08); cell.margin_right = Inches(0.08)
         return table
 
     def add_insight_box(slide, left, top, width, height, title, bullets, border_color=TEAL, title_color=None):
@@ -1026,17 +1030,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             if worst_row is None or ach_row > worst_row[1]:
                 worst_row = (label, ach_row)
 
-    add_card_panel(s, 0.5, 1.05, 6.15, 5.6)
-    add_textbox(s, 0.75, 1.25, 5.7, 0.4, "Ringkasan Biaya", size=14, bold=True, color=TEXT_DARK)
-    add_table(s, 0.75, 1.7, 5.65, 3.7, ["Metrik", "Budget", "Aktual", "Capaian", "Capaian Prestasi"], tbl_rows,
-              status_col=[3, 4], col_widths=[1.9, 1.15, 1.15, 0.95, 1.1], fill_badge=True)
+    add_card_panel(s, 0.4, 0.98, 6.3, 6.2)
+    add_textbox(s, 0.65, 1.14, 5.9, 0.4, "Ringkasan Biaya", size=16, bold=True, color=TEXT_DARK)
+    add_table(s, 0.65, 1.65, 5.85, 4.15, ["Metrik", "Budget", "Aktual", "Capaian", "Capaian Prestasi"], tbl_rows,
+              status_col=[3, 4], col_widths=[1.95, 1.2, 1.2, 0.85, 1.05], fill_badge=True,
+              font_size=11.5, header_size=12)
     if worst_row:
-        add_note_callout(s, 0.75, 5.55, 5.65, 0.9, "📌",
+        add_note_callout(s, 0.65, 6.0, 5.85, 1.1, "📌",
                           f"{worst_row[0]} OVER BUDGET ({worst_row[1]:.1f}%) — perlu efisiensi biaya s/d {period}.",
-                          text_color=RED)
+                          text_color=RED, size=12.5)
     else:
-        add_note_callout(s, 0.75, 5.55, 5.65, 0.9, "✅",
-                          "Seluruh komponen biaya berada dalam/di bawah budget.", text_color=GREEN)
+        add_note_callout(s, 0.65, 6.0, 5.85, 1.1, "✅",
+                          "Seluruh komponen biaya berada dalam/di bawah budget.", text_color=GREEN, size=12.5)
 
     btl_site = data.groupby("lokasi", as_index=False).agg(
         btl_r=("biaya_tidak_langsung_realisasi", "sum"), btl_b=("biaya_tidak_langsung_budget", "sum"),
@@ -1053,30 +1058,30 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if pct_target is not None and pct_target > 100:
             over_sites.append(rw["lokasi"])
 
-    add_card_panel(s, 6.85, 1.05, 5.95, 5.6)
+    add_card_panel(s, 6.85, 0.98, 6.05, 6.2)
     if not over_sites:
-        add_status_banner(s, 7.1, 1.25, 5.45, 0.5, "✅",
+        add_status_banner(s, 7.1, 1.15, 5.55, 0.55, "✅",
                            "BTL — UNDER BUDGET secara keseluruhan", GREEN_BG, GREEN, GREEN)
     else:
         over_txt = " & ".join(over_sites[:3]) + (", dll" if len(over_sites) > 3 else "")
-        add_status_banner(s, 7.1, 1.25, 5.45, 0.5, "⚠️",
+        add_status_banner(s, 7.1, 1.15, 5.55, 0.55, "⚠️",
                            f"BTL — UNDER BUDGET, kecuali {over_txt}", RED_BG, RED, RED)
-    add_textbox(s, 7.1, 1.85, 5.45, 0.35, "BTL per Site (Rp) — Merah = Over Budget", size=10.5, italic=True, color=TEXT_MUTED)
-    add_table(s, 7.1, 2.2, 5.45, 2.1, ["Site", "Budget", "Aktual", "% Target", "% BTL"], btl_rows,
-              status_col=3, col_widths=[1.6, 1.2, 1.2, 0.8, 0.8])
+    add_textbox(s, 7.1, 1.82, 5.55, 0.35, "BTL per Site (Rp) — Merah = Over Budget", size=11.5, italic=True, color=TEXT_MUTED)
+    add_table(s, 7.1, 2.2, 5.55, 2.3, ["Site", "Budget", "Aktual", "% Target", "% BTL"], btl_rows,
+              status_col=3, col_widths=[1.6, 1.2, 1.2, 0.8, 0.8], font_size=11.5, header_size=12)
 
     maint_site = data.groupby("lokasi", as_index=False).agg(
         maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
     )
     maint_site = maint_site[maint_site["maint_b"] > 0].copy()
-    add_textbox(s, 7.1, 4.4, 5.45, 0.35, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site", size=11.5, bold=True, color=TEXT_DARK)
+    add_textbox(s, 7.1, 4.68, 5.55, 0.35, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site", size=12.5, bold=True, color=TEXT_DARK)
     if not maint_site.empty:
         maint_site["pct"] = maint_site["maint_r"] / maint_site["maint_b"] * 100
         maint_site = maint_site.sort_values("pct", ascending=False)
         cd6 = CategoryChartData()
         cd6.categories = list(maint_site["lokasi"])
         cd6.add_series("% Aktual vs Plan", tuple(round(v, 1) for v in maint_site["pct"]))
-        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(4.8), Inches(5.45), Inches(1.75), cd6)
+        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(5.1), Inches(5.55), Inches(2.0), cd6)
         chart6 = gframe6.chart
         chart6.series[0].format.fill.solid(); chart6.series[0].format.fill.fore_color.rgb = TEAL
         plot6 = chart6.plots[0]
