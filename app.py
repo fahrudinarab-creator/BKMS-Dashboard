@@ -156,12 +156,13 @@ st.markdown(f"""
     .ringkasan-table tr:nth-child(even) td {{ background: #1B212B; }}
 
     .ringkasan-table-sm {{
-        width: 100%; border-collapse: collapse; border-radius: 8px; overflow: hidden;
+        width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 8px;
         border: 1px solid {BORDER};
     }}
     .ringkasan-table-sm th {{
         background: {PRIMARY}; color: white !important; text-align: left;
         padding: 8px 12px; font-size: 12.5px; white-space: nowrap;
+        position: sticky; top: 0; z-index: 2;
     }}
     .ringkasan-table-sm td {{
         padding: 8px 12px; font-size: 13px; color: {TEXT_LIGHT} !important;
@@ -1335,41 +1336,30 @@ ju["capaian"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["target_pendap
 ju["selisih_pendapatan"] = ju["realisasi_pendapatan"] - ju["target_pendapatan"]
 ju = ju.sort_values("selisih_pendapatan", ascending=False)
 
-ju_rows_html = ""
-for _, r in ju.iterrows():
-    rt = f"{fmt_rp(r['rate_target'])}{r['suffix']}" if pd.notna(r["rate_target"]) else "-"
-    rr = f"{fmt_rp(r['rate_realisasi'])}{r['suffix']}" if pd.notna(r["rate_realisasi"]) else "-"
-    na_capaian = r["target_pendapatan"] == 0
-    ju_rows_html += f"""
-    <tr>
-        <td>{r['jenis_unit']}</td>
-        <td>{r['target_populasi']:,}</td>
-        <td>{r['realisasi_populasi']:,}</td>
-        <td>{fmt_rp(r['target_pendapatan'])}</td>
-        <td>{fmt_rp(r['realisasi_pendapatan'])}</td>
-        <td>{r['target_prestasi']:,.0f}</td>
-        <td>{r['realisasi_prestasi']:,.0f}</td>
-        <td>{rt}</td>
-        <td>{rr}</td>
-        <td>{rk_badge(r['capaian'], higher_is_better=True, na=na_capaian, small=True)}</td>
-    </tr>"""
+show_ju = pd.DataFrame({
+    "Jenis Unit": ju["jenis_unit"],
+    "Target Populasi": ju["target_populasi"],
+    "Realisasi Populasi": ju["realisasi_populasi"],
+    "Target Pendapatan": ju["target_pendapatan"].apply(fmt_rp),
+    "Realisasi Pendapatan": ju["realisasi_pendapatan"].apply(fmt_rp),
+    "Target Prestasi": ju["target_prestasi"].apply(lambda v: f"{v:,.0f}"),
+    "Realisasi Prestasi": ju["realisasi_prestasi"].apply(lambda v: f"{v:,.0f}"),
+    "Target (Rp/Satuan)": ju.apply(lambda r: f"{fmt_rp(r['rate_target'])}{r['suffix']}" if pd.notna(r["rate_target"]) else "-", axis=1),
+    "Realisasi (Rp/Satuan)": ju.apply(lambda r: f"{fmt_rp(r['rate_realisasi'])}{r['suffix']}" if pd.notna(r["rate_realisasi"]) else "-", axis=1),
+    "Capaian (%)": ju["capaian"],
+})
 
-st.markdown(f"""
-<div style="max-height:480px; overflow-y:auto;">
-<table class="ringkasan-table-sm">
-    <thead>
-        <tr>
-            <th>Jenis Unit</th><th>Target Populasi</th><th>Realisasi Populasi</th>
-            <th>Target Pendapatan</th><th>Realisasi Pendapatan</th>
-            <th>Target Prestasi</th><th>Realisasi Prestasi</th>
-            <th>Target (Rp/Satuan)</th><th>Realisasi (Rp/Satuan)</th><th>Capaian</th>
-        </tr>
-    </thead>
-    <tbody>{ju_rows_html}
-    </tbody>
-</table>
-</div>
-""", unsafe_allow_html=True)
+st.dataframe(
+    show_ju,
+    use_container_width=True,
+    hide_index=True,
+    height=480,
+    column_config={
+        "Capaian (%)": st.column_config.ProgressColumn(
+            "Capaian (%)", format="%.1f%%", min_value=0, max_value=150,
+        ),
+    },
+)
 st.caption("Rp/Satuan mengikuti jenis satuan yang berlaku (Rp/HM, Rp/KM, atau Rp/Tonase) sesuai site & kategori unit yang dominan pada tiap Jenis Unit.")
 
 st.markdown("---")
