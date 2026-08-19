@@ -1495,7 +1495,7 @@ with col_tbl:
     st.markdown(f"""
     <table class="ringkasan-table-sm">
         <thead>
-            <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th><th>Capaian Rp/Satuan</th></tr>
+            <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th><th>Capaian Rp/Prestasi</th></tr>
         </thead>
         <tbody>{table_rows_html}
         </tbody>
