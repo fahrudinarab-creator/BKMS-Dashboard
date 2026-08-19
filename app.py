@@ -1356,8 +1356,21 @@ show_ju = pd.DataFrame({
     "Capaian (%)": ju["capaian"],
 })
 
+def _color_selisih(val):
+    if isinstance(val, str):
+        if val.startswith("▲"):
+            return f"color: {CHART_GREEN}; font-weight: 700;"
+        if val.startswith("▼"):
+            return f"color: {RED}; font-weight: 700;"
+    return ""
+
+try:
+    styled_ju = show_ju.style.map(_color_selisih, subset=["Selisih (Realisasi − Target)"])
+except AttributeError:
+    styled_ju = show_ju.style.applymap(_color_selisih, subset=["Selisih (Realisasi − Target)"])
+
 st.dataframe(
-    show_ju,
+    styled_ju,
     use_container_width=True,
     hide_index=True,
     height=480,
