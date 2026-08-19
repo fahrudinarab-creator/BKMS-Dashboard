@@ -1116,47 +1116,43 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     add_card_panel(s, 6.85, 1.05, 5.95, 5.6)
     add_textbox(s, 7.1, 1.2, 5.45, 0.35,
-                "Biaya Maintenance: Rutin vs Non Rutin — per Kategori", size=12.5, bold=True, color=NAVY)
+                "Biaya Maintenance: Realisasi vs Budget — per Site", size=12.5, bold=True, color=NAVY)
 
-    if maint_data is not None and not maint_data.empty:
-        rekap7 = maint_data.groupby(["kategori_sparepart", "jenis_pemeliharaan"], as_index=False).agg(biaya=("biaya", "sum"))
-        top_kat = rekap7.groupby("kategori_sparepart")["biaya"].sum().sort_values(ascending=False).head(6).index.tolist()
-        rekap7 = rekap7[rekap7["kategori_sparepart"].isin(top_kat)]
-        piv7 = rekap7.pivot(index="kategori_sparepart", columns="jenis_pemeliharaan", values="biaya").reindex(top_kat).fillna(0)
+    maint_site7 = data.groupby("lokasi", as_index=False).agg(
+        maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
+    )
+    maint_site7 = maint_site7[(maint_site7["maint_r"] > 0) | (maint_site7["maint_b"] > 0)].copy()
+    maint_site7 = maint_site7.sort_values("maint_b", ascending=False)
 
+    if not maint_site7.empty:
         cd8 = CategoryChartData()
-        cd8.categories = list(piv7.index)
-        if "RUTIN" in piv7.columns:
-            cd8.add_series("Rutin", tuple(piv7["RUTIN"] / 1e6))
-        if "NON RUTIN" in piv7.columns:
-            cd8.add_series("Non Rutin", tuple(piv7["NON RUTIN"] / 1e6))
+        cd8.categories = list(maint_site7["lokasi"])
+        cd8.add_series("Budget", tuple(maint_site7["maint_b"] / 1e6))
+        cd8.add_series("Realisasi", tuple(maint_site7["maint_r"] / 1e6))
         gframe8 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(1.6), Inches(5.45), Inches(3.55), cd8)
         chart8 = gframe8.chart
-        if len(chart8.series) > 0:
-            chart8.series[0].format.fill.solid(); chart8.series[0].format.fill.fore_color.rgb = TEAL
-        if len(chart8.series) > 1:
-            chart8.series[1].format.fill.solid(); chart8.series[1].format.fill.fore_color.rgb = RED
+        chart8.series[0].format.fill.solid(); chart8.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
+        chart8.series[1].format.fill.solid(); chart8.series[1].format.fill.fore_color.rgb = TEAL
         chart8.has_title = False
         style_chart_light(chart8, legend=True)
 
-        total_rutin = rekap7.loc[rekap7["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum()
-        total_nonrutin = rekap7.loc[rekap7["jenis_pemeliharaan"] == "NON RUTIN", "biaya"].sum()
-        if not piv7.empty and "NON RUTIN" in piv7.columns:
-            top_nonrutin_kat = piv7["NON RUTIN"].idxmax()
-            top_nonrutin_val = piv7["NON RUTIN"].max()
-        else:
-            top_nonrutin_kat, top_nonrutin_val = None, 0
+        total_maint_b7 = maint_site7["maint_b"].sum()
+        total_maint_r7 = maint_site7["maint_r"].sum()
+        maint_site7["pct"] = maint_site7.apply(lambda r: (r["maint_r"] / r["maint_b"] * 100) if r["maint_b"] else None, axis=1)
+        over_sites7 = maint_site7[maint_site7["pct"] > 100].sort_values("pct", ascending=False)
 
-        if total_nonrutin > total_rutin:
-            finding_txt = (f"Biaya Non Rutin ({fmt_rp(total_nonrutin)}) LEBIH BESAR dari Biaya Rutin ({fmt_rp(total_rutin)}). "
-                            f"Kategori tertinggi: {top_nonrutin_kat} ({fmt_rp(top_nonrutin_val)}) — indikasi perbaikan reaktif dominan, perlu perkuat preventive maintenance!")
+        if total_maint_r7 > total_maint_b7:
+            worst7 = over_sites7.iloc[0] if not over_sites7.empty else None
+            worst_txt = f" Site paling over: {worst7['lokasi']} ({worst7['pct']:.0f}%)." if worst7 is not None else ""
+            finding_txt = (f"Realisasi Maintenance keseluruhan ({fmt_rp(total_maint_r7)}) melebihi Budget ({fmt_rp(total_maint_b7)}).{worst_txt} "
+                           f"Perlu efisiensi biaya maintenance.")
             add_finding_box(s, 7.1, 5.3, 5.45, 1.15, "🔴", finding_txt, RED_BG, RED, RED)
         else:
-            finding_txt = (f"Biaya Rutin ({fmt_rp(total_rutin)}) mendominasi dibanding Non Rutin ({fmt_rp(total_nonrutin)}) — "
-                            f"pola maintenance preventif sudah cukup baik.")
+            finding_txt = (f"Realisasi Maintenance ({fmt_rp(total_maint_r7)}) masih di bawah Budget ({fmt_rp(total_maint_b7)}) "
+                           f"secara keseluruhan — biaya maintenance terkendali.")
             add_finding_box(s, 7.1, 5.3, 5.45, 1.15, "✅", finding_txt, GREEN_BG, GREEN, GREEN)
     else:
-        add_textbox(s, 7.1, 2.8, 5.45, 0.8, "Data Maintenance belum diupload untuk periode/filter ini.",
+        add_textbox(s, 7.1, 2.8, 5.45, 0.8, "Data Budget/Realisasi Maintenance belum tersedia untuk periode/filter ini.",
                     size=12, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 3: POPULASI UNIT =================
