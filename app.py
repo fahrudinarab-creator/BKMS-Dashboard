@@ -1487,13 +1487,14 @@ table_rows_html = ""
 for row in ringkasan_rows:
     budget_disp = f"{fmt_rp(row['budget'])}{row['suffix']}" if row["budget"] is not None else "-"
     aktual_disp = f"{fmt_rp(row['aktual'])}{row['suffix']}" if row["aktual"] is not None else "-"
+    hide_cp = row["label"] in ("Total Biaya", "Biaya Tidak Langsung")
     table_rows_html += f"""
     <tr>
         <td>{row['label']}</td>
         <td>{budget_disp}</td>
         <td>{aktual_disp}</td>
         <td>{rk_badge(row['ach'], higher_is_better=False, na=(row['ach'] is None), small=True)}</td>
-        <td>{rk_badge(row['capaian_prestasi'], higher_is_better=False, na=(row['capaian_prestasi'] is None), small=True)}</td>
+        <td>{rk_badge(row['capaian_prestasi'], higher_is_better=False, na=(hide_cp or row['capaian_prestasi'] is None), small=True)}</td>
     </tr>"""
 
 col_tbl, col_pie = st.columns([1, 1])
