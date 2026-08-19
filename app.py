@@ -1449,17 +1449,30 @@ st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=
 tot_prestasi_r_all = df["prestasi_realisasi"].sum()
 tot_prestasi_b_all = df["prestasi_budget"].sum()
 ach_prestasi_all = (tot_prestasi_r_all / tot_prestasi_b_all * 100) if tot_prestasi_b_all else None
+tot_qty_bbm_b_all = df["qty_bbm_budget"].sum()
+tot_qty_bbm_r_all = df["qty_bbm_realisasi"].sum()
 
-def biaya_row(label, real_col, budget_col):
-    comp_r = df[real_col].sum()
-    comp_b = df[budget_col].sum()
-    ach = (comp_r / comp_b * 100) if comp_b else None
-    return dict(label=label, budget=comp_b, aktual=comp_r, ach=ach, rate_ach=ach_prestasi_all)
+def biaya_row(label, real_col, budget_col, is_bbm=False):
+    comp_r_raw = df[real_col].sum()
+    comp_b_raw = df[budget_col].sum()
+
+    if is_bbm:
+        rate_b = (comp_b_raw / tot_qty_bbm_b_all) if tot_qty_bbm_b_all else None
+        rate_r = (comp_r_raw / tot_qty_bbm_r_all) if tot_qty_bbm_r_all else None
+        suffix = "/Ltr"
+    else:
+        rate_b = (comp_b_raw / tot_prestasi_b_all) if tot_prestasi_b_all else None
+        rate_r = (comp_r_raw / tot_prestasi_r_all) if tot_prestasi_r_all else None
+        suffix = ""
+
+    ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
+    return dict(label=label, budget=rate_b, aktual=rate_r, suffix=suffix, ach=ach,
+                capaian_prestasi=ach_prestasi_all, aktual_raw=comp_r_raw)
 
 ringkasan_rows = [
     biaya_row("Total Biaya", "total_biaya_realisasi", "total_biaya_budget"),
     biaya_row("Upah Operator", "upah_realisasi", "upah_budget"),
-    biaya_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"),
+    biaya_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget", is_bbm=True),
     biaya_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
     biaya_row("Penyusutan", "penyusutan_realisasi", "penyusutan_budget"),
     biaya_row("Lainnya", "lainnya_realisasi", "lainnya_budget"),
@@ -1468,13 +1481,15 @@ ringkasan_rows = [
 
 table_rows_html = ""
 for row in ringkasan_rows:
+    budget_disp = f"{fmt_rp(row['budget'])}{row['suffix']}" if row["budget"] is not None else "-"
+    aktual_disp = f"{fmt_rp(row['aktual'])}{row['suffix']}" if row["aktual"] is not None else "-"
     table_rows_html += f"""
     <tr>
         <td>{row['label']}</td>
-        <td>{fmt_rp(row['budget'])}</td>
-        <td>{fmt_rp(row['aktual'])}</td>
+        <td>{budget_disp}</td>
+        <td>{aktual_disp}</td>
         <td>{rk_badge(row['ach'], higher_is_better=False, na=(row['ach'] is None), small=True)}</td>
-        <td>{rk_badge(row['rate_ach'], higher_is_better=False, na=(row['rate_ach'] is None), small=True)}</td>
+        <td>{rk_badge(row['capaian_prestasi'], higher_is_better=False, na=(row['capaian_prestasi'] is None), small=True)}</td>
     </tr>"""
 
 col_tbl, col_pie = st.columns([1, 1])
@@ -1483,7 +1498,7 @@ with col_tbl:
     st.markdown(f"""
     <table class="ringkasan-table-sm">
         <thead>
-            <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th><th>Capaian Rp/Prestasi</th></tr>
+            <tr><th>Metrik</th><th>Budget</th><th>Aktual</th><th>Capaian</th><th>Capaian Prestasi</th></tr>
         </thead>
         <tbody>{table_rows_html}
         </tbody>
@@ -1493,7 +1508,7 @@ with col_pie:
     st.markdown("##### Komposisi Biaya Aktual terhadap Total Biaya")
     comp_pie_df = pd.DataFrame({
         "Komponen": [r["label"] for r in ringkasan_rows if r["label"] != "Total Biaya"],
-        "Biaya": [r["aktual"] for r in ringkasan_rows if r["label"] != "Total Biaya"],
+        "Biaya": [r["aktual_raw"] for r in ringkasan_rows if r["label"] != "Total Biaya"],
     })
     comp_pie_df = comp_pie_df[comp_pie_df["Biaya"] > 0]
     if not comp_pie_df.empty:
