@@ -1306,8 +1306,6 @@ with col_analisa:
         bullets_html = "".join([f"<li style='margin-bottom:6px;'>{p}</li>" for p in poin])
         st.markdown(f'<div class="insight-box"><ul style="padding-left:18px; margin:0;">{bullets_html}</ul></div>', unsafe_allow_html=True)
 
-    st.caption(f"Populasi & Prestasi dihitung berdasarkan bulan terakhir pada filter: **{bulan_terakhir_label}**. Pendapatan & Prestasi total mengikuti seluruh bulan pada filter.")
-
 st.markdown("---")
 
 # ---------------------------------------------------------------
