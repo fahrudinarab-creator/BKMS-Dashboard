@@ -662,6 +662,19 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         r.font.color.rgb = text_color; r.font.name = "Calibri"
         return tb
 
+    def add_finding_box(slide, left, top, width, height, icon, text, bg_color, border_color, text_color):
+        box = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+        box.fill.solid(); box.fill.fore_color.rgb = bg_color
+        box.line.color.rgb = border_color; box.line.width = Pt(1)
+        box.shadow.inherit = False
+        tf = box.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = Inches(0.15); tf.margin_right = Inches(0.15)
+        p = tf.paragraphs[0]
+        r = p.add_run(); r.text = f"{icon} {text}"
+        r.font.size = Pt(10.5); r.font.bold = True; r.font.color.rgb = text_color; r.font.name = "Calibri"
+        return box
+
+
     def add_status_banner(slide, left, top, width, height, icon, text, bg_color, border_color, text_color):
         box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
         box.adjustments[0] = 0.15
@@ -1061,6 +1074,90 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
         chart6.has_title = False
         style_chart_light(chart6, legend=False)
+
+    # ================= SLIDE 7: ANALISIS BIAYA vs CAPAIAN PRESTASI & MAINTENANCE =================
+    s = add_content_slide(f"ANALISIS: Biaya vs Capaian Prestasi & Maintenance — s/d {period}", "Performance Keseluruhan · 01")
+
+    add_card_panel(s, 0.5, 1.05, 6.15, 5.6)
+    add_textbox(s, 0.75, 1.2, 5.65, 0.35,
+                "Biaya vs Budget  vs  Capaian Prestasi — Total Keseluruhan", size=12.5, bold=True, color=NAVY)
+
+    komponen_labels = ["Lainnya", "Penyusutan", "Biaya Maintenance", "Biaya BBM", "Upah Operator"]
+    komponen_ach = {row[0]: row[4] for row in ringkasan_rows_pptx}
+    cats7 = [lbl for lbl in komponen_labels if komponen_ach.get(lbl) is not None]
+    biaya_vals = [round(komponen_ach[lbl], 1) for lbl in cats7]
+    prestasi_vals = [round(ach_prestasi_pptx, 1) if ach_prestasi_pptx is not None else 0 for _ in cats7]
+
+    cd7 = CategoryChartData()
+    cd7.categories = cats7
+    cd7.add_series("% Capaian Prestasi", tuple(prestasi_vals))
+    cd7.add_series("% Biaya vs Budget", tuple(biaya_vals))
+    gframe7 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.75), Inches(1.6), Inches(5.65), Inches(3.55), cd7)
+    chart7 = gframe7.chart
+    chart7.series[0].format.fill.solid(); chart7.series[0].format.fill.fore_color.rgb = TEAL
+    chart7.series[1].format.fill.solid(); chart7.series[1].format.fill.fore_color.rgb = NAVY
+    plot7 = chart7.plots[0]
+    plot7.has_data_labels = True
+    dls7 = plot7.data_labels
+    dls7.number_format = '0.0"%"'; dls7.number_format_is_linked = False
+    dls7.font.size = Pt(9); dls7.font.color.rgb = TEXT_DARK
+    chart7.has_title = False
+    style_chart_light(chart7, legend=True)
+
+    if worst_row:
+        add_finding_box(s, 0.75, 5.3, 5.65, 1.15, "📌",
+                         f"{worst_row[0]}: OVER BUDGET, karena penggunaan biaya {worst_row[1]:.1f}% "
+                         f"tapi Capaian Prestasi hanya {ach_prestasi_pptx:.1f}% — Inefisiensi kritis!",
+                         GOLD_BG, GOLD, RGBColor(0x8A, 0x5D, 0x00))
+    else:
+        add_finding_box(s, 0.75, 5.3, 5.65, 1.15, "✅",
+                         "Seluruh komponen biaya sejalan dengan capaian Prestasi — tidak ada inefisiensi kritis.",
+                         GREEN_BG, GREEN, GREEN)
+
+    add_card_panel(s, 6.85, 1.05, 5.95, 5.6)
+    add_textbox(s, 7.1, 1.2, 5.45, 0.35,
+                "Biaya Maintenance: Rutin vs Non Rutin — per Kategori", size=12.5, bold=True, color=NAVY)
+
+    if maint_data is not None and not maint_data.empty:
+        rekap7 = maint_data.groupby(["kategori_sparepart", "jenis_pemeliharaan"], as_index=False).agg(biaya=("biaya", "sum"))
+        top_kat = rekap7.groupby("kategori_sparepart")["biaya"].sum().sort_values(ascending=False).head(6).index.tolist()
+        rekap7 = rekap7[rekap7["kategori_sparepart"].isin(top_kat)]
+        piv7 = rekap7.pivot(index="kategori_sparepart", columns="jenis_pemeliharaan", values="biaya").reindex(top_kat).fillna(0)
+
+        cd8 = CategoryChartData()
+        cd8.categories = list(piv7.index)
+        if "RUTIN" in piv7.columns:
+            cd8.add_series("Rutin", tuple(piv7["RUTIN"] / 1e6))
+        if "NON RUTIN" in piv7.columns:
+            cd8.add_series("Non Rutin", tuple(piv7["NON RUTIN"] / 1e6))
+        gframe8 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(1.6), Inches(5.45), Inches(3.55), cd8)
+        chart8 = gframe8.chart
+        if len(chart8.series) > 0:
+            chart8.series[0].format.fill.solid(); chart8.series[0].format.fill.fore_color.rgb = TEAL
+        if len(chart8.series) > 1:
+            chart8.series[1].format.fill.solid(); chart8.series[1].format.fill.fore_color.rgb = RED
+        chart8.has_title = False
+        style_chart_light(chart8, legend=True)
+
+        total_rutin = rekap7.loc[rekap7["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum()
+        total_nonrutin = rekap7.loc[rekap7["jenis_pemeliharaan"] == "NON RUTIN", "biaya"].sum()
+        if not piv7.empty and "NON RUTIN" in piv7.columns:
+            top_nonrutin_kat = piv7["NON RUTIN"].idxmax()
+            top_nonrutin_val = piv7["NON RUTIN"].max()
+        else:
+            top_nonrutin_kat, top_nonrutin_val = None, 0
+
+        if total_nonrutin > total_rutin:
+            finding_txt = (f"Biaya Non Rutin ({fmt_rp(total_nonrutin)}) LEBIH BESAR dari Biaya Rutin ({fmt_rp(total_rutin)}). "
+                            f"Kategori tertinggi: {top_nonrutin_kat} ({fmt_rp(top_nonrutin_val)}) — indikasi perbaikan reaktif dominan, perlu perkuat preventive maintenance!")
+            add_finding_box(s, 7.1, 5.3, 5.45, 1.15, "🔴", finding_txt, RED_BG, RED, RED)
+        else:
+            finding_txt = (f"Biaya Rutin ({fmt_rp(total_rutin)}) mendominasi dibanding Non Rutin ({fmt_rp(total_nonrutin)}) — "
+                            f"pola maintenance preventif sudah cukup baik.")
+            add_finding_box(s, 7.1, 5.3, 5.45, 1.15, "✅", finding_txt, GREEN_BG, GREEN, GREEN)
+    else:
+        add_textbox(s, 7.1, 2.8, 5.45, 0.8, "Data Maintenance belum diupload untuk periode/filter ini.",
+                    size=12, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 3: POPULASI UNIT =================
     card_w, card_h, gap, cy = 3.75, 2.4, 0.35, 1.25
