@@ -1193,7 +1193,7 @@ def rk_badge(pct, higher_is_better, na=False, small=False):
     return f'<span class="{cls_base} {cls}">{pct:.1f}%</span>'
 
 # ---------------------------------------------------------------
-# 1. CAPAIAN PENDAPATAN  +  RINGKASAN PER JENIS UNIT (di sampingnya)
+# 1. CAPAIAN PENDAPATAN  +  ANALISA PENYEBAB (di sampingnya)
 # ---------------------------------------------------------------
 if "bulan_no" in df.columns and not df.empty:
     bulan_terakhir_no = df["bulan_no"].max()
@@ -1203,7 +1203,7 @@ else:
     bulan_terakhir_label = "-"
     df_bulan_terakhir = df
 
-col_capaian, col_jenis = st.columns([1, 1.7])
+col_capaian, col_analisa = st.columns([1, 1.5])
 
 with col_capaian:
     st.markdown('<h3 class="section-title">Capaian Pendapatan</h3>', unsafe_allow_html=True)
@@ -1218,161 +1218,160 @@ with col_capaian:
         pill_text=pendapatan_pill, pill_style=pendapatan_style,
     ), unsafe_allow_html=True)
 
-with col_jenis:
-    st.markdown('<h3 class="section-title">Ringkasan per Jenis Unit</h3>', unsafe_allow_html=True)
-    st.caption(f"Target/Realisasi Populasi dihitung berdasarkan bulan terakhir pada filter: **{bulan_terakhir_label}**")
+with col_analisa:
+    st.markdown('<h3 class="section-title">Analisa: Penyebab Pendapatan Tidak Capai Budget</h3>', unsafe_allow_html=True)
 
-    ju_target_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_budget"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
-    ju_real_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_realisasi"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
-    ju_sat_mode = df.groupby("jenis_unit")["satuan_prestasi"].agg(lambda s: s.mode().iat[0] if not s.mode().empty else "Rp/HM")
+    gap_rp = tot_pendapatan_b - tot_pendapatan_r
+    rate_target_all = (tot_pendapatan_b / tot_prestasi_b) if tot_prestasi_b else None
+    rate_realisasi_all = (tot_pendapatan_r / tot_prestasi_r) if tot_prestasi_r else None
+    rate_ach = (rate_realisasi_all / rate_target_all * 100) if (rate_realisasi_all is not None and rate_target_all) else None
 
-    ju = df.groupby("jenis_unit", as_index=False).agg(
-        target_pendapatan=("pendapatan_budget", "sum"),
-        realisasi_pendapatan=("pendapatan_realisasi", "sum"),
-        target_prestasi=("prestasi_budget", "sum"),
-        realisasi_prestasi=("prestasi_realisasi", "sum"),
-    )
-    ju["target_populasi"] = ju["jenis_unit"].map(ju_target_pop).fillna(0).astype(int)
-    ju["realisasi_populasi"] = ju["jenis_unit"].map(ju_real_pop).fillna(0).astype(int)
-    ju["satuan"] = ju["jenis_unit"].map(ju_sat_mode).fillna("Rp/HM")
-    ju["suffix"] = ju["satuan"].map(satuan_suffix_map)
-    ju["rate_target"] = ju.apply(lambda r: (r["target_pendapatan"] / r["target_prestasi"]) if r["target_prestasi"] else None, axis=1)
-    ju["rate_realisasi"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["realisasi_prestasi"]) if r["realisasi_prestasi"] else None, axis=1)
-    ju["capaian"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["target_pendapatan"] * 100) if r["target_pendapatan"] else None, axis=1)
-    ju = ju.sort_values("realisasi_pendapatan", ascending=False)
-
-    ju_rows_html = ""
-    for _, r in ju.iterrows():
-        rt = f"{fmt_rp(r['rate_target'])}{r['suffix']}" if pd.notna(r["rate_target"]) else "-"
-        rr = f"{fmt_rp(r['rate_realisasi'])}{r['suffix']}" if pd.notna(r["rate_realisasi"]) else "-"
-        na_capaian = r["target_pendapatan"] == 0
-        ju_rows_html += f"""
-        <tr>
-            <td>{r['jenis_unit']}</td>
-            <td>{r['target_populasi']:,}</td>
-            <td>{r['realisasi_populasi']:,}</td>
-            <td>{fmt_rp(r['target_pendapatan'])}</td>
-            <td>{fmt_rp(r['realisasi_pendapatan'])}</td>
-            <td>{r['target_prestasi']:,.0f}</td>
-            <td>{r['realisasi_prestasi']:,.0f}</td>
-            <td>{rt}</td>
-            <td>{rr}</td>
-            <td>{rk_badge(r['capaian'], higher_is_better=True, na=na_capaian, small=True)}</td>
-        </tr>"""
-
-    st.markdown(f"""
-    <div style="max-height:480px; overflow-y:auto;">
-    <table class="ringkasan-table-sm">
-        <thead>
-            <tr>
-                <th>Jenis Unit</th><th>Target Populasi</th><th>Realisasi Populasi</th>
-                <th>Target Pendapatan</th><th>Realisasi Pendapatan</th>
-                <th>Target Prestasi</th><th>Realisasi Prestasi</th>
-                <th>Target (Rp/Satuan)</th><th>Realisasi (Rp/Satuan)</th><th>Capaian</th>
-            </tr>
-        </thead>
-        <tbody>{ju_rows_html}
-        </tbody>
-    </table>
-    </div>
-    """, unsafe_allow_html=True)
-    st.caption("Rp/Satuan mengikuti jenis satuan yang berlaku (Rp/HM, Rp/KM, atau Rp/Tonase) sesuai site & kategori unit yang dominan pada tiap Jenis Unit.")
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# ANALISA: PENYEBAB PENDAPATAN TIDAK CAPAI BUDGET (di bawah Capaian Pendapatan)
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Analisa: Penyebab Pendapatan Tidak Capai Budget</h3>', unsafe_allow_html=True)
-
-gap_rp = tot_pendapatan_b - tot_pendapatan_r
-rate_target_all = (tot_pendapatan_b / tot_prestasi_b) if tot_prestasi_b else None
-rate_realisasi_all = (tot_pendapatan_r / tot_prestasi_r) if tot_prestasi_r else None
-rate_ach = (rate_realisasi_all / rate_target_all * 100) if (rate_realisasi_all is not None and rate_target_all) else None
-
-if ach_pendapatan is not None and ach_pendapatan >= 100:
-    st.markdown(
-        f'<div class="insight-box">✅ Pendapatan sudah <b>mencapai/melampaui target</b> '
-        f'({ach_pendapatan:.1f}%). Tidak ada gap yang perlu dianalisa lebih lanjut untuk periode/filter saat ini.</div>',
-        unsafe_allow_html=True,
-    )
-else:
-    drivers = []
-    if pct_populasi is not None:
-        drivers.append(("Populasi (jumlah unit beroperasi)", pct_populasi))
-    if ach_prestasi is not None:
-        drivers.append(("Prestasi (volume pekerjaan)", ach_prestasi))
-    if rate_ach is not None:
-        drivers.append(("Tarif/Rate Rp per satuan", rate_ach))
-
-    penyebab_utama = min(drivers, key=lambda x: x[1]) if drivers else None
-
-    poin = []
-    poin.append(f"Pendapatan hanya mencapai <b>{ach_pendapatan:.1f}%</b> dari target (gap <b>{fmt_rp(gap_rp)}</b>).")
-
-    if target_populasi:
-        gap_pop = target_populasi - realisasi_populasi
-        if gap_pop > 0:
-            poin.append(
-                f"<b>Populasi:</b> dari <b>{target_populasi}</b> unit target pada bulan {bulan_terakhir_label}, "
-                f"hanya <b>{realisasi_populasi}</b> unit yang mencatatkan realisasi pendapatan — "
-                f"<b>{gap_pop} unit ({100 - pct_populasi:.1f}%) tidak beroperasi/tidak menghasilkan pendapatan sama sekali</b>."
-            )
-        else:
-            poin.append(f"<b>Populasi:</b> seluruh unit target ({target_populasi} unit) sudah beroperasi dan mencatatkan pendapatan.")
-
-    if ach_prestasi is not None:
-        if ach_prestasi < 100:
-            poin.append(f"<b>Prestasi</b> (volume pekerjaan unit yang beroperasi) juga di bawah target, hanya <b>{ach_prestasi:.1f}%</b>.")
-        else:
-            poin.append(f"<b>Prestasi</b> dari unit yang beroperasi sebenarnya sudah tercapai (<b>{ach_prestasi:.1f}%</b>) — bukan penyebab utama gap.")
-
-    if rate_ach is not None:
-        if rate_ach < 100:
-            poin.append(f"<b>Tarif/Rate</b> Rp per satuan prestasi realisasi ({fmt_rp(rate_realisasi_all)}) juga lebih rendah dari target ({fmt_rp(rate_target_all)}), yaitu <b>{rate_ach:.1f}%</b>.")
-        else:
-            poin.append(f"<b>Tarif/Rate</b> Rp per satuan prestasi sudah sesuai/di atas target (<b>{rate_ach:.1f}%</b>) — bukan penyebab utama gap.")
-
-    # Jenis Unit mana yang paling bermasalah (kontribusi gap pendapatan terbesar)
-    ju_problem = df.groupby("jenis_unit", as_index=False).agg(
-        target_pendapatan=("pendapatan_budget", "sum"),
-        realisasi_pendapatan=("pendapatan_realisasi", "sum"),
-        target_prestasi=("prestasi_budget", "sum"),
-        realisasi_prestasi=("prestasi_realisasi", "sum"),
-    )
-    ju_problem["gap"] = ju_problem["target_pendapatan"] - ju_problem["realisasi_pendapatan"]
-    ju_problem["capaian"] = ju_problem.apply(
-        lambda r: (r["realisasi_pendapatan"] / r["target_pendapatan"] * 100) if r["target_pendapatan"] else None, axis=1
-    )
-    ju_problem["capaian_prestasi"] = ju_problem.apply(
-        lambda r: (r["realisasi_prestasi"] / r["target_prestasi"] * 100) if r["target_prestasi"] else None, axis=1
-    )
-    ju_bermasalah = ju_problem[(ju_problem["gap"] > 0) & (ju_problem["capaian"].notna()) & (ju_problem["capaian"] < 100)]
-    ju_bermasalah = ju_bermasalah.sort_values("gap", ascending=False).head(5)
-
-    if not ju_bermasalah.empty:
-        list_items = ""
-        for _, jr in ju_bermasalah.iterrows():
-            cap_prestasi_txt = f", prestasi {jr['capaian_prestasi']:.1f}%" if pd.notna(jr["capaian_prestasi"]) else ""
-            list_items += (
-                f"<li style='margin-bottom:3px;'><b>{jr['jenis_unit']}</b> — capaian pendapatan {jr['capaian']:.1f}%"
-                f"{cap_prestasi_txt}, gap {fmt_rp(jr['gap'])}</li>"
-            )
-        poin.append(
-            f"<b>🚩 Jenis Unit paling bermasalah</b> (kontribusi gap pendapatan terbesar):"
-            f"<ul style='padding-left:16px; margin:4px 0 0 0;'>{list_items}</ul>"
+    if ach_pendapatan is not None and ach_pendapatan >= 100:
+        st.markdown(
+            f'<div class="insight-box">✅ Pendapatan sudah <b>mencapai/melampaui target</b> '
+            f'({ach_pendapatan:.1f}%). Tidak ada gap yang perlu dianalisa lebih lanjut untuk periode/filter saat ini.</div>',
+            unsafe_allow_html=True,
         )
+    else:
+        drivers = []
+        if pct_populasi is not None:
+            drivers.append(("Populasi (jumlah unit beroperasi)", pct_populasi))
+        if ach_prestasi is not None:
+            drivers.append(("Prestasi (volume pekerjaan)", ach_prestasi))
+        if rate_ach is not None:
+            drivers.append(("Tarif/Rate Rp per satuan", rate_ach))
 
-    if penyebab_utama:
-        poin.append(f"➡️ <b>Penyebab paling dominan:</b> {penyebab_utama[0]} (capaian terendah, {penyebab_utama[1]:.1f}%).")
+        penyebab_utama = min(drivers, key=lambda x: x[1]) if drivers else None
 
-    bullets_html = "".join([f"<li style='margin-bottom:6px;'>{p}</li>" for p in poin])
-    st.markdown(f'<div class="insight-box"><ul style="padding-left:18px; margin:0;">{bullets_html}</ul></div>', unsafe_allow_html=True)
+        poin = []
+        poin.append(f"Pendapatan hanya mencapai <b>{ach_pendapatan:.1f}%</b> dari target (gap <b>{fmt_rp(gap_rp)}</b>).")
 
-st.caption(f"Populasi & Prestasi dihitung berdasarkan bulan terakhir pada filter: **{bulan_terakhir_label}**. Pendapatan & Prestasi total mengikuti seluruh bulan pada filter.")
+        if target_populasi:
+            gap_pop = target_populasi - realisasi_populasi
+            if gap_pop > 0:
+                poin.append(
+                    f"<b>Populasi:</b> dari <b>{target_populasi}</b> unit target pada bulan {bulan_terakhir_label}, "
+                    f"hanya <b>{realisasi_populasi}</b> unit yang mencatatkan realisasi pendapatan — "
+                    f"<b>{gap_pop} unit ({100 - pct_populasi:.1f}%) tidak beroperasi/tidak menghasilkan pendapatan sama sekali</b>."
+                )
+            else:
+                poin.append(f"<b>Populasi:</b> seluruh unit target ({target_populasi} unit) sudah beroperasi dan mencatatkan pendapatan.")
+
+        if ach_prestasi is not None:
+            if ach_prestasi < 100:
+                poin.append(f"<b>Prestasi</b> (volume pekerjaan unit yang beroperasi) juga di bawah target, hanya <b>{ach_prestasi:.1f}%</b>.")
+            else:
+                poin.append(f"<b>Prestasi</b> dari unit yang beroperasi sebenarnya sudah tercapai (<b>{ach_prestasi:.1f}%</b>) — bukan penyebab utama gap.")
+
+        if rate_ach is not None:
+            if rate_ach < 100:
+                poin.append(f"<b>Tarif/Rate</b> Rp per satuan prestasi realisasi ({fmt_rp(rate_realisasi_all)}) juga lebih rendah dari target ({fmt_rp(rate_target_all)}), yaitu <b>{rate_ach:.1f}%</b>.")
+            else:
+                poin.append(f"<b>Tarif/Rate</b> Rp per satuan prestasi sudah sesuai/di atas target (<b>{rate_ach:.1f}%</b>) — bukan penyebab utama gap.")
+
+        # Jenis Unit mana yang paling bermasalah (kontribusi gap pendapatan terbesar)
+        ju_problem = df.groupby("jenis_unit", as_index=False).agg(
+            target_pendapatan=("pendapatan_budget", "sum"),
+            realisasi_pendapatan=("pendapatan_realisasi", "sum"),
+            target_prestasi=("prestasi_budget", "sum"),
+            realisasi_prestasi=("prestasi_realisasi", "sum"),
+        )
+        ju_problem["gap"] = ju_problem["target_pendapatan"] - ju_problem["realisasi_pendapatan"]
+        ju_problem["capaian"] = ju_problem.apply(
+            lambda r: (r["realisasi_pendapatan"] / r["target_pendapatan"] * 100) if r["target_pendapatan"] else None, axis=1
+        )
+        ju_problem["capaian_prestasi"] = ju_problem.apply(
+            lambda r: (r["realisasi_prestasi"] / r["target_prestasi"] * 100) if r["target_prestasi"] else None, axis=1
+        )
+        ju_bermasalah = ju_problem[(ju_problem["gap"] > 0) & (ju_problem["capaian"].notna()) & (ju_problem["capaian"] < 100)]
+        ju_bermasalah = ju_bermasalah.sort_values("gap", ascending=False).head(5)
+
+        if not ju_bermasalah.empty:
+            list_items = ""
+            for _, jr in ju_bermasalah.iterrows():
+                cap_prestasi_txt = f", prestasi {jr['capaian_prestasi']:.1f}%" if pd.notna(jr["capaian_prestasi"]) else ""
+                list_items += (
+                    f"<li style='margin-bottom:3px;'><b>{jr['jenis_unit']}</b> — capaian pendapatan {jr['capaian']:.1f}%"
+                    f"{cap_prestasi_txt}, gap {fmt_rp(jr['gap'])}</li>"
+                )
+            poin.append(
+                f"<b>🚩 Jenis Unit paling bermasalah</b> (kontribusi gap pendapatan terbesar):"
+                f"<ul style='padding-left:16px; margin:4px 0 0 0;'>{list_items}</ul>"
+            )
+
+        if penyebab_utama:
+            poin.append(f"➡️ <b>Penyebab paling dominan:</b> {penyebab_utama[0]} (capaian terendah, {penyebab_utama[1]:.1f}%).")
+
+        bullets_html = "".join([f"<li style='margin-bottom:6px;'>{p}</li>" for p in poin])
+        st.markdown(f'<div class="insight-box"><ul style="padding-left:18px; margin:0;">{bullets_html}</ul></div>', unsafe_allow_html=True)
+
+    st.caption(f"Populasi & Prestasi dihitung berdasarkan bulan terakhir pada filter: **{bulan_terakhir_label}**. Pendapatan & Prestasi total mengikuti seluruh bulan pada filter.")
 
 st.markdown("---")
 
+# ---------------------------------------------------------------
+# RINGKASAN PER JENIS UNIT
+# ---------------------------------------------------------------
+st.markdown('<h3 class="section-title">Ringkasan per Jenis Unit</h3>', unsafe_allow_html=True)
+st.caption(f"Target/Realisasi Populasi dihitung berdasarkan bulan terakhir pada filter: **{bulan_terakhir_label}**")
+
+ju_target_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_budget"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
+ju_real_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_realisasi"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
+ju_sat_mode = df.groupby("jenis_unit")["satuan_prestasi"].agg(lambda s: s.mode().iat[0] if not s.mode().empty else "Rp/HM")
+
+ju = df.groupby("jenis_unit", as_index=False).agg(
+    target_pendapatan=("pendapatan_budget", "sum"),
+    realisasi_pendapatan=("pendapatan_realisasi", "sum"),
+    target_prestasi=("prestasi_budget", "sum"),
+    realisasi_prestasi=("prestasi_realisasi", "sum"),
+)
+ju["target_populasi"] = ju["jenis_unit"].map(ju_target_pop).fillna(0).astype(int)
+ju["realisasi_populasi"] = ju["jenis_unit"].map(ju_real_pop).fillna(0).astype(int)
+ju["satuan"] = ju["jenis_unit"].map(ju_sat_mode).fillna("Rp/HM")
+ju["suffix"] = ju["satuan"].map(satuan_suffix_map)
+ju["rate_target"] = ju.apply(lambda r: (r["target_pendapatan"] / r["target_prestasi"]) if r["target_prestasi"] else None, axis=1)
+ju["rate_realisasi"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["realisasi_prestasi"]) if r["realisasi_prestasi"] else None, axis=1)
+ju["capaian"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["target_pendapatan"] * 100) if r["target_pendapatan"] else None, axis=1)
+ju = ju.sort_values("realisasi_pendapatan", ascending=False)
+
+ju_rows_html = ""
+for _, r in ju.iterrows():
+    rt = f"{fmt_rp(r['rate_target'])}{r['suffix']}" if pd.notna(r["rate_target"]) else "-"
+    rr = f"{fmt_rp(r['rate_realisasi'])}{r['suffix']}" if pd.notna(r["rate_realisasi"]) else "-"
+    na_capaian = r["target_pendapatan"] == 0
+    ju_rows_html += f"""
+    <tr>
+        <td>{r['jenis_unit']}</td>
+        <td>{r['target_populasi']:,}</td>
+        <td>{r['realisasi_populasi']:,}</td>
+        <td>{fmt_rp(r['target_pendapatan'])}</td>
+        <td>{fmt_rp(r['realisasi_pendapatan'])}</td>
+        <td>{r['target_prestasi']:,.0f}</td>
+        <td>{r['realisasi_prestasi']:,.0f}</td>
+        <td>{rt}</td>
+        <td>{rr}</td>
+        <td>{rk_badge(r['capaian'], higher_is_better=True, na=na_capaian, small=True)}</td>
+    </tr>"""
+
+st.markdown(f"""
+<div style="max-height:480px; overflow-y:auto;">
+<table class="ringkasan-table-sm">
+    <thead>
+        <tr>
+            <th>Jenis Unit</th><th>Target Populasi</th><th>Realisasi Populasi</th>
+            <th>Target Pendapatan</th><th>Realisasi Pendapatan</th>
+            <th>Target Prestasi</th><th>Realisasi Prestasi</th>
+            <th>Target (Rp/Satuan)</th><th>Realisasi (Rp/Satuan)</th><th>Capaian</th>
+        </tr>
+    </thead>
+    <tbody>{ju_rows_html}
+    </tbody>
+</table>
+</div>
+""", unsafe_allow_html=True)
+st.caption("Rp/Satuan mengikuti jenis satuan yang berlaku (Rp/HM, Rp/KM, atau Rp/Tonase) sesuai site & kategori unit yang dominan pada tiap Jenis Unit.")
+
+st.markdown("---")
 
 # ---------------------------------------------------------------
 # CAPAIAN PRESTASI PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase)
