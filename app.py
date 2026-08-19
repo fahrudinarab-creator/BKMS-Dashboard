@@ -1448,33 +1448,21 @@ st.markdown('<h3 class="section-title">Ringkasan Biaya</h3>', unsafe_allow_html=
 
 tot_prestasi_r_all = df["prestasi_realisasi"].sum()
 tot_prestasi_b_all = df["prestasi_budget"].sum()
-tot_qty_bbm_r_all = df["qty_bbm_realisasi"].sum()
-tot_qty_bbm_b_all = df["qty_bbm_budget"].sum()
+ach_prestasi_all = (tot_prestasi_r_all / tot_prestasi_b_all * 100) if tot_prestasi_b_all else None
 
-def biaya_row(label, real_col, budget_col, rate_mode=None):
+def biaya_row(label, real_col, budget_col):
     comp_r = df[real_col].sum()
     comp_b = df[budget_col].sum()
     ach = (comp_r / comp_b * 100) if comp_b else None
-
-    rate_ach = None
-    if rate_mode == "prestasi":
-        rate_b = (comp_b / tot_prestasi_b_all) if tot_prestasi_b_all else None
-        rate_r = (comp_r / tot_prestasi_r_all) if tot_prestasi_r_all else None
-        rate_ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    elif rate_mode == "harga_bbm":
-        harga_b = (comp_b / tot_qty_bbm_b_all) if tot_qty_bbm_b_all else None
-        harga_r = (comp_r / tot_qty_bbm_r_all) if tot_qty_bbm_r_all else None
-        rate_ach = (harga_r / harga_b * 100) if (harga_r is not None and harga_b) else None
-
-    return dict(label=label, budget=comp_b, aktual=comp_r, ach=ach, rate_ach=rate_ach)
+    return dict(label=label, budget=comp_b, aktual=comp_r, ach=ach, rate_ach=ach_prestasi_all)
 
 ringkasan_rows = [
     biaya_row("Total Biaya", "total_biaya_realisasi", "total_biaya_budget"),
-    biaya_row("Upah Operator", "upah_realisasi", "upah_budget", rate_mode="prestasi"),
-    biaya_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget", rate_mode="harga_bbm"),
-    biaya_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget", rate_mode="prestasi"),
-    biaya_row("Penyusutan", "penyusutan_realisasi", "penyusutan_budget", rate_mode="prestasi"),
-    biaya_row("Lainnya", "lainnya_realisasi", "lainnya_budget", rate_mode="prestasi"),
+    biaya_row("Upah Operator", "upah_realisasi", "upah_budget"),
+    biaya_row("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"),
+    biaya_row("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
+    biaya_row("Penyusutan", "penyusutan_realisasi", "penyusutan_budget"),
+    biaya_row("Lainnya", "lainnya_realisasi", "lainnya_budget"),
     biaya_row("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"),
 ]
 
