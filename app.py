@@ -1336,12 +1336,19 @@ ju["capaian"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["target_pendap
 ju["selisih_pendapatan"] = ju["realisasi_pendapatan"] - ju["target_pendapatan"]
 ju = ju.sort_values("selisih_pendapatan", ascending=False)
 
+def fmt_rp_signed(x):
+    if x is None or pd.isna(x):
+        return "-"
+    sign = "▲ +" if x > 0 else ("▼ -" if x < 0 else "")
+    return f"{sign}{fmt_rp(abs(x))}" if x != 0 else fmt_rp(0)
+
 show_ju = pd.DataFrame({
     "Jenis Unit": ju["jenis_unit"],
     "Target Populasi": ju["target_populasi"],
     "Realisasi Populasi": ju["realisasi_populasi"],
     "Target Pendapatan": ju["target_pendapatan"].apply(fmt_rp),
     "Realisasi Pendapatan": ju["realisasi_pendapatan"].apply(fmt_rp),
+    "Selisih (Realisasi − Target)": ju["selisih_pendapatan"].apply(fmt_rp_signed),
     "Target Prestasi": ju["target_prestasi"].apply(lambda v: f"{v:,.0f}"),
     "Realisasi Prestasi": ju["realisasi_prestasi"].apply(lambda v: f"{v:,.0f}"),
     "Target (Rp/Satuan)": ju.apply(lambda r: f"{fmt_rp(r['rate_target'])}{r['suffix']}" if pd.notna(r["rate_target"]) else "-", axis=1),
