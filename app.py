@@ -1312,7 +1312,6 @@ st.markdown("---")
 # RINGKASAN PER JENIS UNIT
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Ringkasan per Jenis Unit</h3>', unsafe_allow_html=True)
-st.caption(f"Target/Realisasi Populasi dihitung berdasarkan bulan terakhir pada filter: **{bulan_terakhir_label}**")
 
 ju_target_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_budget"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
 ju_real_pop = df_bulan_terakhir[df_bulan_terakhir["pendapatan_realisasi"] > 0].groupby("jenis_unit")["nama_unit"].nunique()
@@ -1378,7 +1377,6 @@ st.dataframe(
         ),
     },
 )
-st.caption("Rp/Satuan mengikuti jenis satuan yang berlaku (Rp/HM, Rp/KM, atau Rp/Tonase) sesuai site & kategori unit yang dominan pada tiap Jenis Unit.")
 
 st.markdown("---")
 
@@ -1386,11 +1384,6 @@ st.markdown("---")
 # CAPAIAN PRESTASI PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase)
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Capaian Prestasi per Satuan</h3>', unsafe_allow_html=True)
-st.caption(
-    "**Rp/HM**: kategori Alat Berat (AB) di Sungai Danau & Kumai, serta seluruh unit di Tanjung, Buhut, dan Ampah.  "
-    "**Rp/KM**: kategori Truck (TR) di Sungai Danau & Kumai.  "
-    "**Rp/Tonase**: seluruh unit di Buhut LHL."
-)
 
 satuan_order = ["Rp/HM", "Rp/KM", "Rp/Tonase"]
 satuan_icon = {"Rp/HM": ("⏱️", CHART_GREEN), "Rp/KM": ("🚚", GOLD), "Rp/Tonase": ("⚖️", RED)}
@@ -1423,10 +1416,6 @@ st.markdown("---")
 # CAPAIAN BIAYA PER SATUAN (Rp/HM, Rp/KM, Rp/Tonase) — pembagian sama dengan Prestasi
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Capaian Biaya per Satuan</h3>', unsafe_allow_html=True)
-st.caption(
-    "Pembagian sama seperti Capaian Prestasi per Satuan di atas — hanya di sini yang dibagi adalah **Total Biaya** (Langsung + Tidak Langsung), bukan Pendapatan. "
-    "Nilai lebih rendah dari target = lebih efisien (Under Budget)."
-)
 
 cols_satuan_biaya = st.columns(3)
 for i, sat in enumerate(satuan_order):
@@ -1565,11 +1554,6 @@ else:
             pill_text=f"{pct_service_luar:.1f}% dari total", pill_style="kpi-pill-amber",
         ), unsafe_allow_html=True)
 
-    if not sparepart_raw.empty:
-        st.caption("Pemakaian Persediaan dihitung dari data Rincian Pemakaian Sparepart. Service Luar adalah selisih Total Maintenance dikurangi Pemakaian Persediaan.")
-    else:
-        st.caption("Data Rincian Pemakaian Sparepart belum diupload, sehingga seluruh Total Biaya Maintenance sementara dihitung sebagai Service Luar.")
-
     st.markdown("---")
 
     sel_unit_maint = st.multiselect(
@@ -1627,8 +1611,6 @@ else:
         k3.metric("Service Luar", fmt_rp(service_luar_biaya))
         k4.metric("Biaya Rutin", fmt_rp(rutin_biaya))
         k5.metric("Biaya Non Rutin", fmt_rp(nonrutin_biaya))
-        if total_maint_budget:
-            st.caption(f"Budget Maintenance: {fmt_rp(total_maint_budget)} (dari data_bkms.csv, kolom maintenance_budget)")
 
         rekap = maint_df.groupby(["kategori_sparepart", "jenis_pemeliharaan"], as_index=False).agg(
             jumlah_transaksi=("biaya", "count"),
@@ -1777,7 +1759,6 @@ st.markdown("---")
 # 5. POPULASI: TARGET VS REALISASI
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Populasi Unit: Target vs Realisasi</h3>', unsafe_allow_html=True)
-st.caption("**Target Populasi** = jumlah unit yang memiliki target/budget Pendapatan (budget > 0). **Realisasi Populasi** = jumlah unit yang memiliki realisasi Pendapatan (realisasi > 0).")
 
 populasi_pill, populasi_style = achievement_pill(pct_populasi, higher_is_better=True)
 
@@ -1870,7 +1851,6 @@ else:
 
     bullets_html = "".join([f"<li>{ins}</li>" for ins in insights])
     st.markdown(f'<div class="insight-box"><ul>{bullets_html}</ul></div>', unsafe_allow_html=True)
-    st.caption("Catatan: analisa ini bersifat indikatif berdasarkan pola data (capaian Prestasi & Populasi unit), bukan kesimpulan pasti atas penyebab operasional di lapangan.")
 
 st.markdown("---")
 
@@ -1878,12 +1858,6 @@ st.markdown("---")
 # 7. ANALISA: UNIT TIDAK PRODUKTIF
 # ---------------------------------------------------------------
 st.markdown('<h3 class="section-title">Analisa: Unit Tidak Produktif</h3>', unsafe_allow_html=True)
-st.caption(
-    "Sebuah unit ditandai **Tidak Produktif** jika marginnya negatif (Pendapatan lebih kecil dari Total Biaya — "
-    "pendapatan sedikit, biaya banyak), DAN didukung minimal 2 dari 3 indikator berikut: "
-    "capaian Pendapatan di bawah budget, capaian Prestasi di bawah budget, dan frekuensi maintenance "
-    "termasuk 25% unit paling sering melakukan maintenance."
-)
 
 # --- Agregasi per unit dari data utama: Pendapatan, Prestasi, Total Biaya ---
 unit_fin = df.groupby(["id_unit", "nama_unit"], as_index=False).agg(
@@ -2026,7 +2000,6 @@ else:
         )
     bullets_tp_html = "".join([f"<li>{p}</li>" for p in poin])
     st.markdown(f'<div class="insight-box"><b>3 unit paling bermasalah:</b><ul>{bullets_tp_html}</ul></div>', unsafe_allow_html=True)
-    st.caption("Catatan: analisa ini bersifat indikatif berdasarkan pola data historis, bukan kesimpulan pasti atas kondisi unit di lapangan — perlu verifikasi lapangan sebelum diambil tindakan.")
 
 st.markdown("---")
 st.caption("Dashboard Operational Review • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat oleh ALIP BA TA")
