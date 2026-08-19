@@ -763,24 +763,40 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             r.font.size = Pt(11); r.font.color.rgb = TEXT_DARK
             p.space_after = Pt(6)
 
-    def style_chart_light(chart, legend=True):
+    def style_chart_light(chart, legend=True, legend_pos=None):
         chart.has_title = False
         chart.has_legend = legend
         if legend:
-            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+            chart.legend.position = legend_pos or XL_LEGEND_POSITION.BOTTOM
             chart.legend.include_in_layout = False
             chart.legend.font.color.rgb = TEXT_DARK
             chart.legend.font.size = Pt(10.5)
+            chart.legend.font.bold = True
+            chart.legend.font.name = "Calibri"
         cat_ax = chart.category_axis
         cat_ax.tick_labels.font.color.rgb = TEXT_DARK
-        cat_ax.tick_labels.font.size = Pt(9.5)
+        cat_ax.tick_labels.font.size = Pt(10)
+        cat_ax.tick_labels.font.bold = True
+        cat_ax.tick_labels.font.name = "Calibri"
         cat_ax.format.line.color.rgb = BORDER
         val_ax = chart.value_axis
         val_ax.tick_labels.font.color.rgb = TEXT_DARK
         val_ax.tick_labels.font.size = Pt(9.5)
+        val_ax.tick_labels.font.name = "Calibri"
         val_ax.format.line.color.rgb = BORDER
         val_ax.has_major_gridlines = True
         val_ax.major_gridlines.format.line.color.rgb = BORDER
+
+    def add_panel_header(slide, left, top, width, text, height=0.42):
+        bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+        bar.fill.solid(); bar.fill.fore_color.rgb = NAVY
+        bar.line.fill.background(); bar.shadow.inherit = False
+        tf = bar.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = Inches(0.15); tf.margin_right = Inches(0.1)
+        p = tf.paragraphs[0]
+        r = p.add_run(); r.text = text
+        r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = "Calibri"
+        return bar
 
     def ach_txt_pct(real, budget):
         if budget == 0:
@@ -1079,8 +1095,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     s = add_content_slide(f"ANALISIS: Biaya vs Capaian Prestasi & Maintenance — s/d {period}", "Performance Keseluruhan · 01")
 
     add_card_panel(s, 0.5, 1.05, 6.15, 5.6)
-    add_textbox(s, 0.75, 1.2, 5.65, 0.35,
-                "Biaya vs Budget  vs  Capaian Prestasi — Total Keseluruhan", size=12.5, bold=True, color=NAVY)
+    add_panel_header(s, 0.5, 1.05, 6.15, "Biaya vs Budget 🔷 vs Capaian Prestasi ⬛ — Total Keseluruhan")
 
     komponen_labels = ["Lainnya", "Penyusutan", "Biaya Maintenance", "Biaya BBM", "Upah Operator"]
     komponen_ach = {row[0]: row[4] for row in ringkasan_rows_pptx}
@@ -1092,7 +1107,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     cd7.categories = cats7
     cd7.add_series("% Capaian Prestasi", tuple(prestasi_vals))
     cd7.add_series("% Biaya vs Budget", tuple(biaya_vals))
-    gframe7 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.75), Inches(1.6), Inches(5.65), Inches(3.55), cd7)
+    gframe7 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.65), Inches(1.65), Inches(5.85), Inches(3.7), cd7)
     chart7 = gframe7.chart
     chart7.series[0].format.fill.solid(); chart7.series[0].format.fill.fore_color.rgb = TEAL
     chart7.series[1].format.fill.solid(); chart7.series[1].format.fill.fore_color.rgb = NAVY
@@ -1100,9 +1115,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     plot7.has_data_labels = True
     dls7 = plot7.data_labels
     dls7.number_format = '0.0"%"'; dls7.number_format_is_linked = False
-    dls7.font.size = Pt(9); dls7.font.color.rgb = TEXT_DARK
+    dls7.font.size = Pt(10.5); dls7.font.bold = True; dls7.font.color.rgb = TEXT_DARK; dls7.font.name = "Calibri"
     chart7.has_title = False
-    style_chart_light(chart7, legend=True)
+    style_chart_light(chart7, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
 
     if worst_row:
         add_finding_box(s, 0.75, 5.3, 5.65, 1.15, "📌",
@@ -1115,8 +1130,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                          GREEN_BG, GREEN, GREEN)
 
     add_card_panel(s, 6.85, 1.05, 5.95, 5.6)
-    add_textbox(s, 7.1, 1.2, 5.45, 0.35,
-                "Biaya Maintenance: Realisasi vs Budget — per Site", size=12.5, bold=True, color=NAVY)
+    add_panel_header(s, 6.85, 1.05, 5.95, "Biaya Maintenance ⬜ Realisasi vs Budget 🔷 — per Site")
 
     maint_site7 = data.groupby("lokasi", as_index=False).agg(
         maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
@@ -1129,12 +1143,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         cd8.categories = list(maint_site7["lokasi"])
         cd8.add_series("Budget", tuple(maint_site7["maint_b"] / 1e6))
         cd8.add_series("Realisasi", tuple(maint_site7["maint_r"] / 1e6))
-        gframe8 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(1.6), Inches(5.45), Inches(3.55), cd8)
+        gframe8 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.0), Inches(1.65), Inches(5.65), Inches(3.7), cd8)
         chart8 = gframe8.chart
         chart8.series[0].format.fill.solid(); chart8.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
         chart8.series[1].format.fill.solid(); chart8.series[1].format.fill.fore_color.rgb = TEAL
         chart8.has_title = False
-        style_chart_light(chart8, legend=True)
+        plot8 = chart8.plots[0]
+        plot8.has_data_labels = True
+        dls8 = plot8.data_labels
+        dls8.number_format = '#,##0" Jt"'; dls8.number_format_is_linked = False
+        dls8.font.size = Pt(8.5); dls8.font.bold = True; dls8.font.color.rgb = TEXT_DARK; dls8.font.name = "Calibri"
+        dls8.position = XL_LABEL_POSITION.OUTSIDE_END
+        style_chart_light(chart8, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
 
         total_maint_b7 = maint_site7["maint_b"].sum()
         total_maint_r7 = maint_site7["maint_r"].sum()
