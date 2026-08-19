@@ -651,6 +651,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             total = sum(col_widths)
             for i, w in enumerate(col_widths):
                 table.columns[i].width = Inches(width * w / total)
+        status_cols = [status_col] if isinstance(status_col, int) else (status_col or [])
         for j, h in enumerate(headers):
             cell = table.cell(0, j)
             cell.text = h
@@ -664,19 +665,20 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 text = str(val)
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = WHITE if i % 2 == 1 else RGBColor(0xF5, 0xF7, 0xFB)
-                good = None
-                if status_col is not None and j == status_col:
-                    good = text.startswith("✓")
-                    if good:
-                        _, col = pill_colors(True)
+                is_status = j in status_cols
+                col = TEXT_DARK
+                if is_status:
+                    if text.startswith("N/A") or text == "-":
+                        col = RGBColor(0x9C, 0xA3, 0xAF)
                     else:
-                        _, col = pill_colors(False)
+                        good = text.startswith("✓")
+                        _, col = pill_colors(good)
                 cell.text_frame.paragraphs[0].text = ""
                 p = cell.text_frame.paragraphs[0]
                 r = p.add_run(); r.text = text
                 r.font.size = Pt(10.5)
-                r.font.color.rgb = (col if status_col is not None and j == status_col else TEXT_DARK)
-                r.font.bold = (status_col is not None and j == status_col)
+                r.font.color.rgb = col
+                r.font.bold = is_status
                 cell.vertical_anchor = MSO_ANCHOR.MIDDLE
         return table
 
@@ -901,24 +903,51 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     # ================= SLIDE 6: BIAYA OPERASIONAL =================
     s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", "Performance Keseluruhan · 01")
 
+    tot_prestasi_r_pptx = data["prestasi_realisasi"].sum()
+    tot_prestasi_b_pptx = data["prestasi_budget"].sum()
+    ach_prestasi_pptx = ach_txt_pct(tot_prestasi_r_pptx, tot_prestasi_b_pptx)
+    tot_qty_bbm_b_pptx = data["qty_bbm_budget"].sum()
+    tot_qty_bbm_r_pptx = data["qty_bbm_realisasi"].sum()
+
+    def biaya_row_pptx(label, real_col, budget_col, is_bbm=False, raw=False):
+        comp_r = data[real_col].sum(); comp_b = data[budget_col].sum()
+        if raw:
+            rate_b, rate_r, suffix = comp_b, comp_r, ""
+        elif is_bbm:
+            rate_b = (comp_b / tot_qty_bbm_b_pptx) if tot_qty_bbm_b_pptx else None
+            rate_r = (comp_r / tot_qty_bbm_r_pptx) if tot_qty_bbm_r_pptx else None
+            suffix = "/Ltr"
+        else:
+            rate_b = (comp_b / tot_prestasi_b_pptx) if tot_prestasi_b_pptx else None
+            rate_r = (comp_r / tot_prestasi_r_pptx) if tot_prestasi_r_pptx else None
+            suffix = ""
+        ach = ach_txt_pct(rate_r, rate_b) if (rate_r is not None and rate_b) else None
+        return label, rate_b, rate_r, suffix, ach
+
     ringkasan_rows_pptx = [
-        ("Total Biaya", "total_biaya_realisasi", "total_biaya_budget"),
-        ("Biaya Upah", "upah_realisasi", "upah_budget"),
-        ("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"),
-        ("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
-        ("Biaya Penyusutan", "penyusutan_realisasi", "penyusutan_budget"),
-        ("Biaya Lainnya", "lainnya_realisasi", "lainnya_budget"),
-        ("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"),
+        biaya_row_pptx("Total Biaya", "total_biaya_realisasi", "total_biaya_budget", raw=True),
+        biaya_row_pptx("Upah Operator", "upah_realisasi", "upah_budget"),
+        biaya_row_pptx("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget", is_bbm=True),
+        biaya_row_pptx("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
+        biaya_row_pptx("Penyusutan", "penyusutan_realisasi", "penyusutan_budget"),
+        biaya_row_pptx("Lainnya", "lainnya_realisasi", "lainnya_budget"),
+        biaya_row_pptx("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"),
     ]
     tbl_rows = []
-    for label, col_r, col_b in ringkasan_rows_pptx:
-        rv = data[col_r].sum(); bv = data[col_b].sum()
-        ach_row = ach_txt_pct(rv, bv)
-        ach_disp = f"{ach_row:.1f}%" if ach_row is not None else "-"
-        tbl_rows.append([label, fmt_rp(bv), fmt_rp(rv), ach_disp])
+    for label, rb, rr, suffix, ach_row in ringkasan_rows_pptx:
+        budget_disp = f"{fmt_rp(rb)}{suffix}" if rb is not None else "-"
+        aktual_disp = f"{fmt_rp(rr)}{suffix}" if rr is not None else "-"
+        ach_disp = (f"✓ {ach_row:.1f}%" if ach_row is not None and ach_row <= 100
+                    else (f"✗ {ach_row:.1f}%" if ach_row is not None else "-"))
+        hide_cp = label in ("Total Biaya", "Biaya Tidak Langsung")
+        if hide_cp or ach_prestasi_pptx is None:
+            cp_disp = "N/A"
+        else:
+            cp_disp = f"✓ {ach_prestasi_pptx:.1f}%" if ach_prestasi_pptx <= 100 else f"✗ {ach_prestasi_pptx:.1f}%"
+        tbl_rows.append([label, budget_disp, aktual_disp, ach_disp, cp_disp])
     add_textbox(s, 0.55, 1.05, 6, 0.35, "Ringkasan Biaya", size=13, bold=True, color=TEXT_DARK)
-    add_table(s, 0.55, 1.45, 6.1, 3.85, ["Metrik", "Budget", "Aktual", "Capaian"], tbl_rows,
-              status_col=None, col_widths=[2.1, 1.3, 1.3, 1.0])
+    add_table(s, 0.55, 1.45, 6.1, 3.85, ["Metrik", "Budget", "Aktual", "Capaian", "Capaian Prestasi"], tbl_rows,
+              status_col=[3, 4], col_widths=[1.9, 1.15, 1.15, 0.95, 1.1])
 
     btl_site = data.groupby("lokasi", as_index=False).agg(
         btl_r=("biaya_tidak_langsung_realisasi", "sum"), btl_b=("biaya_tidak_langsung_budget", "sum"),
