@@ -1254,6 +1254,8 @@ with col_jenis:
             <td>{r['realisasi_populasi']:,}</td>
             <td>{fmt_rp(r['target_pendapatan'])}</td>
             <td>{fmt_rp(r['realisasi_pendapatan'])}</td>
+            <td>{r['target_prestasi']:,.0f}</td>
+            <td>{r['realisasi_prestasi']:,.0f}</td>
             <td>{rt}</td>
             <td>{rr}</td>
             <td>{rk_badge(r['capaian'], higher_is_better=True, na=na_capaian, small=True)}</td>
@@ -1266,6 +1268,7 @@ with col_jenis:
             <tr>
                 <th>Jenis Unit</th><th>Target Populasi</th><th>Realisasi Populasi</th>
                 <th>Target Pendapatan</th><th>Realisasi Pendapatan</th>
+                <th>Target Prestasi</th><th>Realisasi Prestasi</th>
                 <th>Target (Rp/Satuan)</th><th>Realisasi (Rp/Satuan)</th><th>Capaian</th>
             </tr>
         </thead>
