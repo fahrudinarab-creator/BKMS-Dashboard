@@ -1235,6 +1235,12 @@ with col_analisa:
             f'({ach_pendapatan:.1f}%). Tidak ada gap yang perlu dianalisa lebih lanjut untuk periode/filter saat ini.</div>',
             unsafe_allow_html=True,
         )
+    elif ach_pendapatan is None:
+        st.markdown(
+            '<div class="insight-box">⚠️ Target Pendapatan untuk kombinasi filter ini adalah <b>Rp 0</b>, '
+            'sehingga capaian tidak dapat dihitung. Analisa penyebab gap tidak berlaku untuk filter saat ini.</div>',
+            unsafe_allow_html=True,
+        )
     else:
         drivers = []
         if pct_populasi is not None:
