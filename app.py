@@ -991,7 +991,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if hide_cp or ach_prestasi_pptx is None:
             cp_disp = "N/A"
         else:
-            cp_disp = f"✓ {ach_prestasi_pptx:.1f}%" if ach_prestasi_pptx <= 100 else f"✗ {ach_prestasi_pptx:.1f}%"
+            cp_disp = f"✓ {ach_prestasi_pptx:.1f}%" if ach_prestasi_pptx >= 100 else f"✗ {ach_prestasi_pptx:.1f}%"
         tbl_rows.append([label, budget_disp, aktual_disp, ach_disp, cp_disp])
         if label != "Total Biaya" and ach_row is not None and ach_row > 100:
             if worst_row is None or ach_row > worst_row[1]:
@@ -1608,7 +1608,7 @@ for row in ringkasan_rows:
         <td>{budget_disp}</td>
         <td>{aktual_disp}</td>
         <td>{rk_badge(row['ach'], higher_is_better=False, na=(row['ach'] is None), small=True)}</td>
-        <td>{rk_badge(row['capaian_prestasi'], higher_is_better=False, na=(hide_cp or row['capaian_prestasi'] is None), small=True)}</td>
+        <td>{rk_badge(row['capaian_prestasi'], higher_is_better=True, na=(hide_cp or row['capaian_prestasi'] is None), small=True)}</td>
     </tr>"""
 
 col_tbl, col_pie = st.columns([1, 1])
