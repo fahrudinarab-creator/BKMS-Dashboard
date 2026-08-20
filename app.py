@@ -899,14 +899,19 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                  ach_btl is not None and ach_btl <= 100)
 
-    add_textbox(s, 0.55, 3.85, 11.5, 0.4, "Realisasi Utilisasi vs Target Utilisasi (Avg) — per Site", size=13, bold=True, color=TEXT_DARK)
+    add_textbox(s, 0.55, 3.85, 11.5, 0.4, "Realisasi Utilisasi vs Target Utilisasi (Avg) — per Site & Jenis Sarmut", size=13, bold=True, color=TEXT_DARK)
     if not sasaran_mutu_data.empty:
-        site_util = sasaran_mutu_data.groupby("lokasi", as_index=False).agg(
+        sm_data = sasaran_mutu_data.copy()
+        sm_data["sarmut_label"] = sm_data["Jenis_Sarmut"].astype(str).str.replace("Sarmut Kelompok ", "", regex=False)
+        sm_data.loc[sasaran_mutu_data["Jenis_Sarmut"].isna(), "sarmut_label"] = None
+        sm_data = sm_data.dropna(subset=["sarmut_label"])
+        site_util = sm_data.groupby(["lokasi", "sarmut_label"], as_index=False).agg(
             util_r=("utilisasi_pct", "mean"), util_t=("utilisasi_target", "mean"),
         )
-        site_util = site_util.sort_values("util_r", ascending=False)
+        site_util["label"] = site_util["lokasi"] + " (" + site_util["sarmut_label"] + ")"
+        site_util = site_util.sort_values(["lokasi", "sarmut_label"], ascending=[True, True])
         cd = CategoryChartData()
-        cd.categories = list(site_util["lokasi"])
+        cd.categories = list(site_util["label"])
         cd.add_series("Target Utilisasi (%)", tuple(round(v, 1) for v in site_util["util_t"]))
         cd.add_series("Realisasi Utilisasi (%)", tuple(round(v, 1) for v in site_util["util_r"]))
         gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(4.3), Inches(12.2), Inches(2.85), cd)
