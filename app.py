@@ -1124,45 +1124,46 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     maint_site = data.groupby(["lokasi", "kategori"], as_index=False).agg(
         maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
-        prestasi_r=("prestasi_realisasi", "sum"),
+        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
     )
     maint_site = maint_site[maint_site["maint_b"] > 0].copy()
-    maint_site["kategori_label"] = maint_site["kategori"].map(KATEGORI_LABEL).fillna(maint_site["kategori"])
-    maint_site["label"] = maint_site["lokasi"] + " (" + maint_site["kategori_label"] + ")"
-    add_textbox(s, 7.1, 4.68, 5.55, 0.35, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site & Kategori", size=12, bold=True, color=TEXT_DARK)
+    maint_site["label"] = maint_site["lokasi"] + " (" + maint_site["kategori"] + ")"
+    add_textbox(s, 7.1, 4.68, 5.55, 0.3, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site & Kategori", size=11.5, bold=True, color=TEXT_DARK)
     if not maint_site.empty:
         maint_site["pct"] = maint_site["maint_r"] / maint_site["maint_b"] * 100
         maint_site["rate_r"] = maint_site.apply(lambda r: (r["maint_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
+        maint_site["rate_b"] = maint_site.apply(lambda r: (r["maint_b"] / r["prestasi_b"]) if r["prestasi_b"] else None, axis=1)
         maint_site = maint_site.sort_values("pct", ascending=False)
         cd6 = CategoryChartData()
         cd6.categories = list(maint_site["label"])
         cd6.add_series("% Aktual vs Plan", tuple(round(v, 1) for v in maint_site["pct"]))
-        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(5.1), Inches(5.55), Inches(2.1), cd6)
+        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(5.0), Inches(5.55), Inches(1.45), cd6)
         chart6 = gframe6.chart
         chart6.series[0].format.fill.solid(); chart6.series[0].format.fill.fore_color.rgb = TEAL
         plot6 = chart6.plots[0]
         plot6.has_data_labels = True
         dls6 = plot6.data_labels
-        dls6.font.size = Pt(9); dls6.font.bold = True; dls6.font.color.rgb = TEXT_DARK; dls6.font.name = "Calibri"
+        dls6.font.size = Pt(8); dls6.font.bold = True; dls6.font.color.rgb = TEXT_DARK; dls6.font.name = "Calibri"
         dls6.position = XL_LABEL_POSITION.OUTSIDE_END
         for i, pt in enumerate(chart6.series[0].points):
             pct_val = maint_site["pct"].iloc[i]
-            rate_val = maint_site["rate_r"].iloc[i]
             if pct_val > 105:
                 pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
             dl = pt.data_label
             dl.has_text_frame = True
-            dtf = dl.text_frame
-            dtf.text = f"{pct_val:.0f}%"
-            dtf.paragraphs[0].runs[0].font.size = Pt(10); dtf.paragraphs[0].runs[0].font.bold = True
-            dtf.paragraphs[0].runs[0].font.color.rgb = TEXT_DARK; dtf.paragraphs[0].runs[0].font.name = "Calibri"
-            if rate_val is not None:
-                p2 = dtf.add_paragraph()
-                r2 = p2.add_run(); r2.text = fmt_rp(rate_val)
-                r2.font.size = Pt(8); r2.font.bold = False
-                r2.font.color.rgb = TEXT_MUTED; r2.font.name = "Calibri"
+            dl.text_frame.text = f"{pct_val:.0f}%"
+            r0 = dl.text_frame.paragraphs[0].runs[0]
+            r0.font.size = Pt(8); r0.font.bold = True; r0.font.color.rgb = TEXT_DARK; r0.font.name = "Calibri"
         chart6.has_title = False
         style_chart_light(chart6, legend=False)
+
+        tbl6_rows = [
+            ["Budget (Rp/Prestasi)"] + [fmt_rp(v) if v is not None else "-" for v in maint_site["rate_b"]],
+            ["Realisasi (Rp/Prestasi)"] + [fmt_rp(v) if v is not None else "-" for v in maint_site["rate_r"]],
+        ]
+        n6 = len(maint_site)
+        add_table(s, 7.1, 6.55, 5.55, 0.8, ["Metrik"] + list(maint_site["label"]), tbl6_rows,
+                  col_widths=[1.3] + [0.85] * n6, font_size=7.5, header_size=7.5)
 
     # ================= SLIDE 4: ANALISIS BIAYA vs CAPAIAN PRESTASI & MAINTENANCE =================
     s = add_content_slide(f"ANALISIS: Biaya vs Capaian Prestasi & Maintenance — s/d {period}", "Performance Keseluruhan · 01")
