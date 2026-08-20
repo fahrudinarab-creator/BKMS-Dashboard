@@ -344,6 +344,10 @@ def load_from_upload_sparepart(uploaded_file) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 with st.sidebar:
+    MINING_SITES = ["TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"]
+    PLANTATION_SITES = ["SUNGAI DANAU", "KUMAI"]
+    DIVISI_MAP = {"Mining": MINING_SITES, "Plantation": PLANTATION_SITES}
+
     st.markdown("### 📁 Sumber Data")
     uploaded = st.file_uploader("Upload file Gabungan.xlsx terbaru (opsional)", type=["xlsx"])
     if uploaded is not None:
@@ -379,9 +383,15 @@ with st.sidebar:
         sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
 
     st.markdown("---")
+    st.markdown("### 🏭 Divisi")
+    sel_divisi = st.multiselect("Divisi (Mining / Plantation)", list(DIVISI_MAP.keys()), default=list(DIVISI_MAP.keys()))
+    sites_allowed_by_divisi = [s for d in sel_divisi for s in DIVISI_MAP.get(d, [])]
+
+    st.markdown("---")
     st.markdown("### 🔎 Filter")
 
-    site_opts = sorted(df_raw["lokasi"].dropna().unique().tolist())
+    all_sites_raw = sorted(df_raw["lokasi"].dropna().unique().tolist())
+    site_opts = [s for s in all_sites_raw if s in sites_allowed_by_divisi] if sel_divisi else []
     sel_site = st.multiselect("Site / Lokasi", site_opts, default=site_opts)
 
     month_opts = [m for m in MONTH_ORDER if m in df_raw["bulan"].unique()]
