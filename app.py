@@ -1396,7 +1396,7 @@ with colY:
         st.session_state["pptx_bytes"] = pptx_bytes
     if "pptx_bytes" in st.session_state:
         st.download_button(
-            "⬇️ Unduh PPTX",
+            "⬇️ Unduh PPTX untuk RTM",
             data=st.session_state["pptx_bytes"],
             file_name="Laporan_Biaya_Pendapatan_BKMS.pptx",
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
