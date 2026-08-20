@@ -1122,18 +1122,20 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     add_table(s, 7.1, 2.2, 5.55, 2.3, ["Site", "Budget", "Aktual", "% Target", "% BTL"], btl_rows,
               status_col=3, col_widths=[1.6, 1.2, 1.2, 0.8, 0.8], font_size=11.5, header_size=12)
 
-    maint_site = data.groupby("lokasi", as_index=False).agg(
+    maint_site = data.groupby(["lokasi", "kategori"], as_index=False).agg(
         maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
         prestasi_r=("prestasi_realisasi", "sum"),
     )
     maint_site = maint_site[maint_site["maint_b"] > 0].copy()
-    add_textbox(s, 7.1, 4.68, 5.55, 0.35, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site", size=12.5, bold=True, color=TEXT_DARK)
+    maint_site["kategori_label"] = maint_site["kategori"].map(KATEGORI_LABEL).fillna(maint_site["kategori"])
+    maint_site["label"] = maint_site["lokasi"] + " (" + maint_site["kategori_label"] + ")"
+    add_textbox(s, 7.1, 4.68, 5.55, 0.35, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site & Kategori", size=12, bold=True, color=TEXT_DARK)
     if not maint_site.empty:
         maint_site["pct"] = maint_site["maint_r"] / maint_site["maint_b"] * 100
         maint_site["rate_r"] = maint_site.apply(lambda r: (r["maint_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
         maint_site = maint_site.sort_values("pct", ascending=False)
         cd6 = CategoryChartData()
-        cd6.categories = list(maint_site["lokasi"])
+        cd6.categories = list(maint_site["label"])
         cd6.add_series("% Aktual vs Plan", tuple(round(v, 1) for v in maint_site["pct"]))
         gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(5.1), Inches(5.55), Inches(2.1), cd6)
         chart6 = gframe6.chart
