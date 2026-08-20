@@ -958,7 +958,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     cd4.categories = list(bln_agg["bulan"])
     cd4.add_series("Prestasi Budget", tuple(bln_agg["prestasi_b"]))
     cd4.add_series("Prestasi Realisasi", tuple(bln_agg["prestasi_r"]))
-    gframe4 = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.55), Inches(1.45), Inches(6.1), Inches(5.5), cd4)
+    gframe4 = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.55), Inches(1.45), Inches(6.1), Inches(4.35), cd4)
     chart4 = gframe4.chart
     chart4.series[0].format.line.color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
     chart4.series[0].format.line.width = Pt(2)
@@ -978,6 +978,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             r0.font.size = Pt(9); r0.font.bold = True; r0.font.color.rgb = TEAL; r0.font.name = "Calibri"
     style_chart_light(chart4)
 
+    tbl4_rows = [
+        ["Prestasi Budget"] + [f"{v:,.0f}" for v in bln_agg["prestasi_b"]],
+        ["Prestasi Realisasi"] + [f"{v:,.0f}" for v in bln_agg["prestasi_r"]],
+    ]
+    add_table(s, 0.55, 5.9, 6.1, 1.0, ["Metrik"] + list(bln_agg["bulan"]), tbl4_rows,
+              col_widths=[1.6] + [1.0] * len(bln_agg), font_size=9.5, header_size=9.5)
+
     site_prs2 = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
         prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
     )
@@ -989,7 +996,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     cd5.categories = list(site_prs2["label"])
     cd5.add_series("Target", tuple(site_prs2["prestasi_b"]))
     cd5.add_series("Aktual", tuple(site_prs2["prestasi_r"]))
-    gframe5 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(6.85), Inches(1.45), Inches(5.9), Inches(5.5), cd5)
+    gframe5 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(6.85), Inches(1.45), Inches(5.9), Inches(4.35), cd5)
     chart5 = gframe5.chart
     chart5.series[0].format.fill.solid(); chart5.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
     chart5.series[1].format.fill.solid(); chart5.series[1].format.fill.fore_color.rgb = TEAL
@@ -1006,6 +1013,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             r0 = dl.text_frame.paragraphs[0].runs[0]
             r0.font.size = Pt(9); r0.font.bold = True; r0.font.color.rgb = TEAL; r0.font.name = "Calibri"
     style_chart_light(chart5)
+
+    tbl5_rows = [
+        ["Target"] + [f"{v:,.0f}" for v in site_prs2["prestasi_b"]],
+        ["Aktual"] + [f"{v:,.0f}" for v in site_prs2["prestasi_r"]],
+    ]
+    n5 = len(site_prs2)
+    add_table(s, 6.85, 5.9, 5.9, 1.0, ["Metrik"] + list(site_prs2["label"]), tbl5_rows,
+              col_widths=[1.1] + [0.9] * n5, font_size=8, header_size=8)
 
     # ================= SLIDE 3: BIAYA OPERASIONAL =================
     s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", "Performance Keseluruhan · 01")
