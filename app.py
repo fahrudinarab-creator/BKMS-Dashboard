@@ -912,6 +912,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
         chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = TEAL
         chart.has_title = False
+        plot_u = chart.plots[0]
+        plot_u.has_data_labels = True
+        dls_u = plot_u.data_labels
+        dls_u.number_format = '0.0"%"'; dls_u.number_format_is_linked = False
+        dls_u.font.size = Pt(9); dls_u.font.bold = True; dls_u.font.color.rgb = TEXT_DARK; dls_u.font.name = "Calibri"
+        dls_u.position = XL_LABEL_POSITION.OUTSIDE_END
         style_chart_light(chart, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
     else:
         add_textbox(s, 0.55, 4.3, 12.2, 0.6, "Data Sasaran Mutu (Availability/Utilisasi) belum tersedia untuk periode/filter ini.",
@@ -952,6 +958,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     chart4.series[1].format.line.color.rgb = TEAL
     chart4.series[1].format.line.width = Pt(2.5)
     chart4.has_title = False
+    # Label % capaian (Realisasi/Budget) di tiap titik garis Realisasi
+    for i, pt in enumerate(chart4.series[1].points):
+        b_val = bln_agg["prestasi_b"].iloc[i]
+        r_val = bln_agg["prestasi_r"].iloc[i]
+        pct_val = (r_val / b_val * 100) if b_val else None
+        if pct_val is not None:
+            dl = pt.data_label
+            dl.has_text_frame = True
+            dl.text_frame.text = f"{pct_val:.0f}%"
+            r0 = dl.text_frame.paragraphs[0].runs[0]
+            r0.font.size = Pt(9); r0.font.bold = True; r0.font.color.rgb = TEAL; r0.font.name = "Calibri"
     style_chart_light(chart4)
 
     site_prs2 = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
@@ -970,6 +987,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     chart5.series[0].format.fill.solid(); chart5.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
     chart5.series[1].format.fill.solid(); chart5.series[1].format.fill.fore_color.rgb = TEAL
     chart5.has_title = False
+    # Label % capaian (Aktual/Target) di tiap bar Aktual
+    for i, pt in enumerate(chart5.series[1].points):
+        b_val = site_prs2["prestasi_b"].iloc[i]
+        r_val = site_prs2["prestasi_r"].iloc[i]
+        pct_val = (r_val / b_val * 100) if b_val else None
+        if pct_val is not None:
+            dl = pt.data_label
+            dl.has_text_frame = True
+            dl.text_frame.text = f"{pct_val:.0f}%"
+            r0 = dl.text_frame.paragraphs[0].runs[0]
+            r0.font.size = Pt(9); r0.font.bold = True; r0.font.color.rgb = TEAL; r0.font.name = "Calibri"
     style_chart_light(chart5)
 
     # ================= SLIDE 3: BIAYA OPERASIONAL =================
