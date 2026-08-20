@@ -917,19 +917,34 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_textbox(s, 0.55, 4.3, 12.2, 0.6, "Data Sasaran Mutu (Availability/Utilisasi) belum tersedia untuk periode/filter ini.",
                     size=12, italic=True, color=TEXT_MUTED)
 
-    # ================= SLIDE 2: TREN BULANAN & PENDAPATAN PER SITE =================
-    s = add_content_slide(f"PENDAPATAN — Tren Bulanan {_now.year}", "Performance Keseluruhan · 01")
+    # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
+    s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", "Performance Keseluruhan · 01")
+
+    def klasifikasi_satuan_lokal(row):
+        lok, kat = row["lokasi"], row["kategori"]
+        if lok == "BUHUT LHL":
+            return "Ton"
+        if lok in ("SUNGAI DANAU", "KUMAI"):
+            if kat == "AB":
+                return "HM"
+            if kat == "TR":
+                return "KM"
+            return "HM"
+        return "HM"
+
+    data = data.copy()
+    data["satuan_lokal"] = data.apply(klasifikasi_satuan_lokal, axis=1)
 
     bln_agg = data.groupby("bulan", as_index=False).agg(
-        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
+        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
     )
     bln_agg["order"] = bln_agg["bulan"].apply(lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99)
     bln_agg = bln_agg.sort_values("order")
-    add_textbox(s, 0.55, 1.05, 6, 0.35, "Tren Bulanan: Pendapatan (Realisasi vs Budget)", size=13, bold=True, color=TEXT_DARK)
+    add_textbox(s, 0.55, 1.05, 6, 0.35, "Tren Bulanan: Prestasi (Realisasi vs Budget)", size=13, bold=True, color=TEXT_DARK)
     cd4 = CategoryChartData()
     cd4.categories = list(bln_agg["bulan"])
-    cd4.add_series("Pendapatan Budget (Rp)", tuple(bln_agg["pendapatan_b"]))
-    cd4.add_series("Pendapatan Realisasi (Rp)", tuple(bln_agg["pendapatan_r"]))
+    cd4.add_series("Prestasi Budget", tuple(bln_agg["prestasi_b"]))
+    cd4.add_series("Prestasi Realisasi", tuple(bln_agg["prestasi_r"]))
     gframe4 = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.55), Inches(1.45), Inches(6.1), Inches(5.5), cd4)
     chart4 = gframe4.chart
     chart4.series[0].format.line.color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
@@ -939,14 +954,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     chart4.has_title = False
     style_chart_light(chart4)
 
-    site_pdt2 = data.groupby("lokasi", as_index=False).agg(
-        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
-    ).sort_values("pendapatan_b", ascending=True)
-    add_textbox(s, 6.85, 1.05, 6, 0.35, "Pendapatan Aktual vs Budget — per Site", size=13, bold=True, color=TEXT_DARK)
+    site_prs2 = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
+        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
+    )
+    site_prs2 = site_prs2[(site_prs2["prestasi_r"] > 0) | (site_prs2["prestasi_b"] > 0)].copy()
+    site_prs2["label"] = site_prs2["lokasi"] + " (" + site_prs2["satuan_lokal"] + ")"
+    site_prs2 = site_prs2.sort_values(["lokasi", "satuan_lokal"], ascending=[True, True])
+    add_textbox(s, 6.85, 1.05, 6, 0.35, "Prestasi Aktual vs Target — per Site & Satuan (HM/KM/Ton)", size=13, bold=True, color=TEXT_DARK)
     cd5 = CategoryChartData()
-    cd5.categories = list(site_pdt2["lokasi"])
-    cd5.add_series("Budget", tuple(site_pdt2["pendapatan_b"]))
-    cd5.add_series("Aktual", tuple(site_pdt2["pendapatan_r"]))
+    cd5.categories = list(site_prs2["label"])
+    cd5.add_series("Target", tuple(site_prs2["prestasi_b"]))
+    cd5.add_series("Aktual", tuple(site_prs2["prestasi_r"]))
     gframe5 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(6.85), Inches(1.45), Inches(5.9), Inches(5.5), cd5)
     chart5 = gframe5.chart
     chart5.series[0].format.fill.solid(); chart5.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
