@@ -821,6 +821,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         val_ax.tick_labels.font.color.rgb = TEXT_DARK
         val_ax.tick_labels.font.size = Pt(9.5)
         val_ax.tick_labels.font.name = "Calibri"
+        val_ax.tick_labels.number_format = '#,##0'
+        val_ax.tick_labels.number_format_is_linked = False
         val_ax.format.line.color.rgb = BORDER
         val_ax.has_major_gridlines = True
         val_ax.major_gridlines.format.line.color.rgb = BORDER
