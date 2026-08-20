@@ -1072,27 +1072,41 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     maint_site = data.groupby("lokasi", as_index=False).agg(
         maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
+        prestasi_r=("prestasi_realisasi", "sum"),
     )
     maint_site = maint_site[maint_site["maint_b"] > 0].copy()
     add_textbox(s, 7.1, 4.68, 5.55, 0.35, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site", size=12.5, bold=True, color=TEXT_DARK)
     if not maint_site.empty:
         maint_site["pct"] = maint_site["maint_r"] / maint_site["maint_b"] * 100
+        maint_site["rate_r"] = maint_site.apply(lambda r: (r["maint_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
         maint_site = maint_site.sort_values("pct", ascending=False)
         cd6 = CategoryChartData()
         cd6.categories = list(maint_site["lokasi"])
         cd6.add_series("% Aktual vs Plan", tuple(round(v, 1) for v in maint_site["pct"]))
-        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(5.1), Inches(5.55), Inches(2.0), cd6)
+        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(5.1), Inches(5.55), Inches(2.1), cd6)
         chart6 = gframe6.chart
         chart6.series[0].format.fill.solid(); chart6.series[0].format.fill.fore_color.rgb = TEAL
         plot6 = chart6.plots[0]
         plot6.has_data_labels = True
         dls6 = plot6.data_labels
-        dls6.number_format = '0"%"'; dls6.number_format_is_linked = False
-        dls6.font.size = Pt(9); dls6.font.bold = True; dls6.font.color.rgb = TEXT_DARK
+        dls6.font.size = Pt(9); dls6.font.bold = True; dls6.font.color.rgb = TEXT_DARK; dls6.font.name = "Calibri"
         dls6.position = XL_LABEL_POSITION.OUTSIDE_END
         for i, pt in enumerate(chart6.series[0].points):
-            if maint_site["pct"].iloc[i] > 105:
+            pct_val = maint_site["pct"].iloc[i]
+            rate_val = maint_site["rate_r"].iloc[i]
+            if pct_val > 105:
                 pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
+            dl = pt.data_label
+            dl.has_text_frame = True
+            dtf = dl.text_frame
+            dtf.text = f"{pct_val:.0f}%"
+            dtf.paragraphs[0].runs[0].font.size = Pt(10); dtf.paragraphs[0].runs[0].font.bold = True
+            dtf.paragraphs[0].runs[0].font.color.rgb = TEXT_DARK; dtf.paragraphs[0].runs[0].font.name = "Calibri"
+            if rate_val is not None:
+                p2 = dtf.add_paragraph()
+                r2 = p2.add_run(); r2.text = fmt_rp(rate_val)
+                r2.font.size = Pt(8); r2.font.bold = False
+                r2.font.color.rgb = TEXT_MUTED; r2.font.name = "Calibri"
         chart6.has_title = False
         style_chart_light(chart6, legend=False)
 
@@ -1565,11 +1579,19 @@ ju["capaian"] = ju.apply(lambda r: (r["realisasi_pendapatan"] / r["target_pendap
 ju["selisih_pendapatan"] = ju["realisasi_pendapatan"] - ju["target_pendapatan"]
 ju = ju.sort_values("selisih_pendapatan", ascending=False)
 
-def fmt_rp_signed(x):
+def fmt_rp_signed(x, pct=None):
     if x is None or pd.isna(x):
         return "-"
     sign = "▲ +" if x > 0 else ("▼ -" if x < 0 else "")
-    return f"{sign}{fmt_rp(abs(x))}" if x != 0 else fmt_rp(0)
+    base = f"{sign}{fmt_rp(abs(x))}" if x != 0 else fmt_rp(0)
+    if pct is not None and pd.notna(pct):
+        pct_sign = "+" if pct > 0 else ("" if pct < 0 else "+")
+        base += f" ({pct_sign}{pct:.1f}%)"
+    return base
+
+ju["selisih_pct"] = ju.apply(
+    lambda r: (r["selisih_pendapatan"] / r["target_pendapatan"] * 100) if r["target_pendapatan"] else None, axis=1
+)
 
 show_ju = pd.DataFrame({
     "Jenis Unit": ju["jenis_unit"],
@@ -1577,7 +1599,7 @@ show_ju = pd.DataFrame({
     "Realisasi Populasi": ju["realisasi_populasi"],
     "Target Pendapatan": ju["target_pendapatan"].apply(fmt_rp),
     "Realisasi Pendapatan": ju["realisasi_pendapatan"].apply(fmt_rp),
-    "Selisih (Realisasi − Target)": ju["selisih_pendapatan"].apply(fmt_rp_signed),
+    "Selisih (Realisasi − Target)": ju.apply(lambda r: fmt_rp_signed(r["selisih_pendapatan"], r["selisih_pct"]), axis=1),
     "Target Prestasi": ju["target_prestasi"].apply(lambda v: f"{v:,.0f}"),
     "Realisasi Prestasi": ju["realisasi_prestasi"].apply(lambda v: f"{v:,.0f}"),
     "Target (Rp/Satuan)": ju.apply(lambda r: f"{fmt_rp(r['rate_target'])}{r['suffix']}" if pd.notna(r["rate_target"]) else "-", axis=1),
