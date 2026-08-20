@@ -392,8 +392,9 @@ with st.sidebar:
     sel_kat_labels = st.multiselect("Kategori Unit", kat_labels, default=kat_labels)
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
 
-    kriteria_opts_raw = sorted(df_raw["kriteria_unit"].dropna().unique().tolist()) if "kriteria_unit" in df_raw.columns else []
-    has_null_kriteria = ("kriteria_unit" in df_raw.columns) and df_raw["kriteria_unit"].isna().any()
+    kriteria_scope_df = df_raw[df_raw["lokasi"].isin(sel_site) & df_raw["kategori"].isin(sel_kat)]
+    kriteria_opts_raw = sorted(kriteria_scope_df["kriteria_unit"].dropna().unique().tolist()) if "kriteria_unit" in df_raw.columns else []
+    has_null_kriteria = ("kriteria_unit" in df_raw.columns) and kriteria_scope_df["kriteria_unit"].isna().any()
     kriteria_opts = kriteria_opts_raw + (["Tidak Diketahui"] if has_null_kriteria else [])
     if kriteria_opts:
         sel_kriteria = st.multiselect("Kriteria Unit (Tarif)", kriteria_opts, default=kriteria_opts)
