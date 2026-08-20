@@ -1386,82 +1386,19 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     prs.save(buf)
     return buf.getvalue()
 
-def build_pptx_format2(data, maint_data, sparepart_data, site_list, month_list, kat_list) -> bytes:
-    """PPTX Format 2 — struktur/isi akan ditentukan kemudian sesuai kebutuhan."""
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-    from pptx.enum.shapes import MSO_SHAPE
-    import io as _io2
-
-    NAVY = RGBColor(0x1B, 0x25, 0x4B)
-    TEAL = RGBColor(0x17, 0xA9, 0xC7)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    MUTED = RGBColor(0xB9, 0xC2, 0xDE)
-
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
-    blank = prs.slide_layouts[6]
-
-    period = ", ".join(month_list) if month_list else "-"
-    site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
-
-    s = prs.slides.add_slide(blank)
-    bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
-    bg.fill.solid(); bg.fill.fore_color.rgb = NAVY
-    bg.line.fill.background(); bg.shadow.inherit = False
-
-    tb = s.shapes.add_textbox(Inches(0.8), Inches(2.6), Inches(11.7), Inches(1.3))
-    tf = tb.text_frame; p = tf.paragraphs[0]
-    r = p.add_run(); r.text = "LAPORAN — FORMAT 2"
-    r.font.size = Pt(40); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = "Calibri"
-
-    tb2 = s.shapes.add_textbox(Inches(0.8), Inches(3.55), Inches(11.7), Inches(0.5))
-    tf2 = tb2.text_frame; p2 = tf2.paragraphs[0]
-    r2 = p2.add_run(); r2.text = f"Site: {site_txt}  •  Bulan: {period}"
-    r2.font.size = Pt(15); r2.font.color.rgb = MUTED; r2.font.name = "Calibri"
-
-    tb3 = s.shapes.add_textbox(Inches(0.8), Inches(4.3), Inches(11.7), Inches(1.5))
-    tf3 = tb3.text_frame; tf3.word_wrap = True
-    p3 = tf3.paragraphs[0]
-    r3 = p3.add_run()
-    r3.text = "Struktur & isi Format 2 belum ditentukan — akan disesuaikan setelah kebutuhan slide dikonfirmasi."
-    r3.font.size = Pt(13); r3.font.italic = True; r3.font.color.rgb = TEAL; r3.font.name = "Calibri"
-
-    buf = _io2.BytesIO()
-    prs.save(buf)
-    return buf.getvalue()
-
-colX, colY, colZ = st.columns([3.6, 1.4, 1.4])
+colX, colY = st.columns([5, 1.4])
 with colY:
-    if st.button("📽️ Buat PPT Format 1", use_container_width=True, type="primary"):
-        with st.spinner("Menyusun slide presentasi (Format 1)..."):
+    if st.button("📽️ Buat Presentasi (PPTX)", use_container_width=True, type="primary"):
+        with st.spinner("Menyusun slide presentasi..."):
             maint_for_pptx = maint_df_site_bulan if not maint_raw.empty else pd.DataFrame()
             sparepart_for_pptx = sparepart_df_site_bulan if not sparepart_raw.empty else pd.DataFrame()
-            pptx_bytes_1 = build_pptx(df, maint_for_pptx, sparepart_for_pptx, sel_site, sel_month, sel_kat)
-        st.session_state["pptx_bytes_format1"] = pptx_bytes_1
-    if "pptx_bytes_format1" in st.session_state:
+            pptx_bytes = build_pptx(df, maint_for_pptx, sparepart_for_pptx, sel_site, sel_month, sel_kat)
+        st.session_state["pptx_bytes"] = pptx_bytes
+    if "pptx_bytes" in st.session_state:
         st.download_button(
-            "⬇️ Download PPT Format 1",
-            data=st.session_state["pptx_bytes_format1"],
-            file_name="Laporan_BKMS_Format1.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            use_container_width=True,
-        )
-with colZ:
-    if st.button("📽️ Buat PPT Format 2", use_container_width=True, type="secondary"):
-        with st.spinner("Menyusun slide presentasi (Format 2)..."):
-            maint_for_pptx2 = maint_df_site_bulan if not maint_raw.empty else pd.DataFrame()
-            sparepart_for_pptx2 = sparepart_df_site_bulan if not sparepart_raw.empty else pd.DataFrame()
-            pptx_bytes_2 = build_pptx_format2(df, maint_for_pptx2, sparepart_for_pptx2, sel_site, sel_month, sel_kat)
-        st.session_state["pptx_bytes_format2"] = pptx_bytes_2
-    if "pptx_bytes_format2" in st.session_state:
-        st.download_button(
-            "⬇️ Download PPT Format 2",
-            data=st.session_state["pptx_bytes_format2"],
-            file_name="Laporan_BKMS_Format2.pptx",
+            "⬇️ Unduh PPTX",
+            data=st.session_state["pptx_bytes"],
+            file_name="Laporan_Biaya_Pendapatan_BKMS.pptx",
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             use_container_width=True,
         )
