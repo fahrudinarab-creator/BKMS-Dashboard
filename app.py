@@ -852,10 +852,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
     pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
-    bl_r = data["biaya_langsung_realisasi"].sum(); bl_b = data["biaya_langsung_budget"].sum()
-    btl_r = data["biaya_tidak_langsung_realisasi"].sum(); btl_b = data["biaya_tidak_langsung_budget"].sum()
+    bl_r_raw = data["biaya_langsung_realisasi"].sum(); bl_b_raw = data["biaya_langsung_budget"].sum()
+    btl_r_raw = data["biaya_tidak_langsung_realisasi"].sum(); btl_b_raw = data["biaya_tidak_langsung_budget"].sum()
+    bl_r = (bl_r_raw / pr_) if pr_ else None
+    bl_b = (bl_b_raw / pb_) if pb_ else None
+    btl_r = (btl_r_raw / pr_) if pr_ else None
+    btl_b = (btl_b_raw / pb_) if pb_ else None
     ach_r = ach_txt_pct(r_, b_); ach_p = ach_txt_pct(pr_, pb_)
-    ach_bl = ach_txt_pct(bl_r, bl_b); ach_btl = ach_txt_pct(btl_r, btl_b)
+    ach_bl = ach_txt_pct(bl_r, bl_b) if (bl_r is not None and bl_b) else None
+    ach_btl = ach_txt_pct(btl_r, btl_b) if (btl_r is not None and btl_b) else None
 
     if sasaran_mutu_data is None:
         sasaran_mutu_data = pd.DataFrame()
@@ -882,11 +887,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  (f"✓ {ach_util:.1f}% dari Target" if ach_util is not None and ach_util >= 100 else (f"✗ {ach_util:.1f}% dari Target" if ach_util is not None else "Data tidak tersedia")),
                  ach_util is not None and ach_util >= 100)
     add_kpi_card(s, 0.55 + 2 * (card_w4 + gap4), cy4, card_w4, card_h4, "◆", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
-                 "Biaya Langsung", fmt_rp(bl_r), f"Budget: {fmt_rp(bl_b)}",
+                 "Biaya Langsung (Rp/Prestasi)", (fmt_rp(bl_r) if bl_r is not None else "-"),
+                 f"Budget: {fmt_rp(bl_b)}" if bl_b is not None else "Budget: -",
                  (f"✓ {ach_bl:.1f}% — Under Budget" if ach_bl is not None and ach_bl <= 100 else (f"✗ {ach_bl:.1f}% — Over Budget" if ach_bl is not None else "Target = 0")),
                  ach_bl is not None and ach_bl <= 100)
     add_kpi_card(s, 0.55 + 3 * (card_w4 + gap4), cy4, card_w4, card_h4, "◇", TEAL, GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
-                 "Biaya Tidak Langsung", fmt_rp(btl_r), f"Budget: {fmt_rp(btl_b)}",
+                 "Biaya Tidak Langsung (Rp/Prestasi)", (fmt_rp(btl_r) if btl_r is not None else "-"),
+                 f"Budget: {fmt_rp(btl_b)}" if btl_b is not None else "Budget: -",
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                  ach_btl is not None and ach_btl <= 100)
 
