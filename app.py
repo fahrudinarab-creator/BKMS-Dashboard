@@ -1015,7 +1015,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             suffix = ""
             display_label = f"{label}{kat_label_suffix_pptx}"
         ach = ach_txt_pct(rate_r, rate_b) if (rate_r is not None and rate_b) else None
-        return display_label, rate_b, rate_r, suffix, ach
+        return display_label, rate_b, rate_r, suffix, ach, label
 
     ringkasan_rows_pptx = [
         biaya_row_pptx("Total Biaya", "total_biaya_realisasi", "total_biaya_budget", raw=True),
@@ -1028,18 +1028,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     ]
     tbl_rows = []
     worst_row = None  # (label, ach_row) untuk catatan OVER BUDGET terburuk
-    for label, rb, rr, suffix, ach_row in ringkasan_rows_pptx:
+    for label, rb, rr, suffix, ach_row, base_label in ringkasan_rows_pptx:
         budget_disp = f"{fmt_rp(rb)}{suffix}" if rb is not None else "-"
         aktual_disp = f"{fmt_rp(rr)}{suffix}" if rr is not None else "-"
         ach_disp = (f"✓ {ach_row:.1f}%" if ach_row is not None and ach_row <= 100
                     else (f"✗ {ach_row:.1f}%" if ach_row is not None else "-"))
-        hide_cp = label in ("Total Biaya", "Biaya Tidak Langsung")
+        hide_cp = base_label in ("Total Biaya", "Biaya Tidak Langsung")
         if hide_cp or ach_prestasi_pptx is None:
             cp_disp = "N/A"
         else:
             cp_disp = f"✓ {ach_prestasi_pptx:.1f}%" if ach_prestasi_pptx >= 100 else f"✗ {ach_prestasi_pptx:.1f}%"
         tbl_rows.append([label, budget_disp, aktual_disp, ach_disp, cp_disp])
-        if label != "Total Biaya" and ach_row is not None and ach_row > 100:
+        if base_label != "Total Biaya" and ach_row is not None and ach_row > 100:
             if worst_row is None or ach_row > worst_row[1]:
                 worst_row = (label, ach_row)
 
@@ -1130,15 +1130,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     add_panel_header(s, 0.5, 1.05, 6.15, "Biaya vs Budget 🔷 vs Capaian Prestasi ⬛ — Total Keseluruhan")
 
     komponen_labels = ["Lainnya", "Penyusutan", "Biaya Maintenance", "Biaya BBM", "Upah Operator"]
-    komponen_ach = {row[0]: row[4] for row in ringkasan_rows_pptx}
-    cats7 = [lbl for lbl in komponen_labels if komponen_ach.get(lbl) is not None]
-    biaya_vals = [round(komponen_ach[lbl], 1) for lbl in cats7]
+    komponen_ach = {row[5]: row[4] for row in ringkasan_rows_pptx}
+    komponen_display = {row[5]: row[0] for row in ringkasan_rows_pptx}
+    cats7 = [komponen_display[lbl] for lbl in komponen_labels if komponen_ach.get(lbl) is not None]
+    biaya_vals = [round(komponen_ach[lbl], 1) for lbl in komponen_labels if komponen_ach.get(lbl) is not None]
     prestasi_vals = [round(ach_prestasi_pptx, 1) if ach_prestasi_pptx is not None else 0 for _ in cats7]
 
     cd7 = CategoryChartData()
-    cd7.categories = cats7
-    cd7.add_series("% Capaian Prestasi", tuple(prestasi_vals))
-    cd7.add_series("% Biaya vs Budget", tuple(biaya_vals))
+    cd7.categories = cats7 if cats7 else ["Tidak ada data"]
+    cd7.add_series("% Capaian Prestasi", tuple(prestasi_vals) if cats7 else (0,))
+    cd7.add_series("% Biaya vs Budget", tuple(biaya_vals) if cats7 else (0,))
     gframe7 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.65), Inches(1.65), Inches(5.85), Inches(3.7), cd7)
     chart7 = gframe7.chart
     chart7.series[0].format.fill.solid(); chart7.series[0].format.fill.fore_color.rgb = TEAL
