@@ -460,6 +460,8 @@ def fmt_rp(x):
         return f"Rp {x/1e9:,.2f} M"
     if abs(x) >= 1e6:
         return f"Rp {x/1e6:,.1f} Jt"
+    if abs(x) >= 1e3:
+        return f"Rp {x/1e3:,.1f} Rb"
     return f"Rp {x:,.0f}"
 
 def achievement(real, budget):
@@ -989,20 +991,30 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     tot_qty_bbm_b_pptx = data["qty_bbm_budget"].sum()
     tot_qty_bbm_r_pptx = data["qty_bbm_realisasi"].sum()
 
+    if kat_list == ["TR"]:
+        kat_label_suffix_pptx = "/KM"
+    elif kat_list == ["AB"]:
+        kat_label_suffix_pptx = "/satuan"
+    else:
+        kat_label_suffix_pptx = ""
+
     def biaya_row_pptx(label, real_col, budget_col, is_bbm=False, raw=False):
         comp_r = data[real_col].sum(); comp_b = data[budget_col].sum()
         if raw:
             rate_b, rate_r, suffix = comp_b, comp_r, ""
+            display_label = label
         elif is_bbm:
             rate_b = (comp_b / tot_qty_bbm_b_pptx) if tot_qty_bbm_b_pptx else None
             rate_r = (comp_r / tot_qty_bbm_r_pptx) if tot_qty_bbm_r_pptx else None
             suffix = "/Ltr"
+            display_label = f"{label}/Ltr"
         else:
             rate_b = (comp_b / tot_prestasi_b_pptx) if tot_prestasi_b_pptx else None
             rate_r = (comp_r / tot_prestasi_r_pptx) if tot_prestasi_r_pptx else None
             suffix = ""
+            display_label = f"{label}{kat_label_suffix_pptx}"
         ach = ach_txt_pct(rate_r, rate_b) if (rate_r is not None and rate_b) else None
-        return label, rate_b, rate_r, suffix, ach
+        return display_label, rate_b, rate_r, suffix, ach
 
     ringkasan_rows_pptx = [
         biaya_row_pptx("Total Biaya", "total_biaya_realisasi", "total_biaya_budget", raw=True),
@@ -1706,6 +1718,13 @@ ach_prestasi_all = (tot_prestasi_r_all / tot_prestasi_b_all * 100) if tot_presta
 tot_qty_bbm_b_all = df["qty_bbm_budget"].sum()
 tot_qty_bbm_r_all = df["qty_bbm_realisasi"].sum()
 
+if sel_kat == ["TR"]:
+    kat_label_suffix = "/KM"
+elif sel_kat == ["AB"]:
+    kat_label_suffix = "/satuan"
+else:
+    kat_label_suffix = ""
+
 def biaya_row(label, real_col, budget_col, is_bbm=False, raw=False):
     comp_r_raw = df[real_col].sum()
     comp_b_raw = df[budget_col].sum()
@@ -1714,17 +1733,20 @@ def biaya_row(label, real_col, budget_col, is_bbm=False, raw=False):
         rate_b = comp_b_raw
         rate_r = comp_r_raw
         suffix = ""
+        display_label = label
     elif is_bbm:
         rate_b = (comp_b_raw / tot_qty_bbm_b_all) if tot_qty_bbm_b_all else None
         rate_r = (comp_r_raw / tot_qty_bbm_r_all) if tot_qty_bbm_r_all else None
         suffix = "/Ltr"
+        display_label = f"{label}/Ltr"
     else:
         rate_b = (comp_b_raw / tot_prestasi_b_all) if tot_prestasi_b_all else None
         rate_r = (comp_r_raw / tot_prestasi_r_all) if tot_prestasi_r_all else None
         suffix = ""
+        display_label = f"{label}{kat_label_suffix}"
 
     ach = (rate_r / rate_b * 100) if (rate_r is not None and rate_b) else None
-    return dict(label=label, budget=rate_b, aktual=rate_r, suffix=suffix, ach=ach,
+    return dict(label=display_label, budget=rate_b, aktual=rate_r, suffix=suffix, ach=ach,
                 capaian_prestasi=ach_prestasi_all, aktual_raw=comp_r_raw)
 
 ringkasan_rows = [
