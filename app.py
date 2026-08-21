@@ -1138,9 +1138,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     maint_site["label"] = maint_site["lokasi"] + " (" + maint_site["kategori"] + ")"
     add_textbox(s, 7.1, 4.68, 5.55, 0.3, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site & Kategori", size=11.5, bold=True, color=TEXT_DARK)
     if not maint_site.empty:
-        maint_site["pct"] = maint_site["maint_r"] / maint_site["maint_b"] * 100
         maint_site["rate_r"] = maint_site.apply(lambda r: (r["maint_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
         maint_site["rate_b"] = maint_site.apply(lambda r: (r["maint_b"] / r["prestasi_b"]) if r["prestasi_b"] else None, axis=1)
+        maint_site["pct"] = maint_site.apply(lambda r: (r["rate_r"] / r["rate_b"] * 100) if (r["rate_r"] is not None and r["rate_b"]) else None, axis=1)
+        maint_site = maint_site.dropna(subset=["pct"])
         maint_site = maint_site.sort_values("pct", ascending=False)
         cd6 = CategoryChartData()
         cd6.categories = list(maint_site["label"])
