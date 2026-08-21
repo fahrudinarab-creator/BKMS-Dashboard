@@ -1207,15 +1207,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     add_card_panel(s, 6.85, 1.05, 5.95, 5.6)
     add_panel_header(s, 6.85, 1.05, 5.95, "Biaya Maintenance ⬜ Realisasi vs Budget 🔷 — per Site")
 
-    maint_site7 = data.groupby("lokasi", as_index=False).agg(
+    maint_site7 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
         maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
     )
     maint_site7 = maint_site7[(maint_site7["maint_r"] > 0) | (maint_site7["maint_b"] > 0)].copy()
+    maint_site7["label"] = maint_site7["lokasi"] + " (" + maint_site7["kategori"] + ")"
     maint_site7 = maint_site7.sort_values("maint_b", ascending=False)
 
     if not maint_site7.empty:
         cd8 = CategoryChartData()
-        cd8.categories = list(maint_site7["lokasi"])
+        cd8.categories = list(maint_site7["label"])
         cd8.add_series("Budget", tuple(maint_site7["maint_b"] / 1e6))
         cd8.add_series("Realisasi", tuple(maint_site7["maint_r"] / 1e6))
         gframe8 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.0), Inches(1.65), Inches(5.65), Inches(3.7), cd8)
@@ -1238,7 +1239,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         if total_maint_r7 > total_maint_b7:
             worst7 = over_sites7.iloc[0] if not over_sites7.empty else None
-            worst_txt = f" Site paling over: {worst7['lokasi']} ({worst7['pct']:.0f}%)." if worst7 is not None else ""
+            worst_txt = f" Site paling over: {worst7['label']} ({worst7['pct']:.0f}%)." if worst7 is not None else ""
             finding_txt = (f"Realisasi Maintenance keseluruhan ({fmt_rp(total_maint_r7)}) melebihi Budget ({fmt_rp(total_maint_b7)}).{worst_txt} "
                            f"Perlu efisiensi biaya maintenance.")
             add_finding_box(s, 7.1, 5.3, 5.45, 1.15, "🔴", finding_txt, RED_BG, RED, RED)
