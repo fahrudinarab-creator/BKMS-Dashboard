@@ -927,10 +927,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         )
         au_tbl["site_short"] = au_tbl["lokasi"].map(SITE_ABBR).fillna(au_tbl["lokasi"])
         au_tbl = au_tbl.sort_values(["lokasi", "sarmut_label"])
-        au_rows = [[f"{r['site_short']} — {r['sarmut_label']}",
-                     f"{r['avail_r']:.1f}% / {r['avail_t']:.1f}%",
-                     f"{r['util_r']:.1f}% / {r['util_t']:.1f}%"]
-                    for _, r in au_tbl.iterrows()]
+        for _, r in au_tbl.iterrows():
+            avail_ok = "✓" if r["avail_r"] >= r["avail_t"] else "✗"
+            util_ok = "✓" if r["util_r"] >= r["util_t"] else "✗"
+            au_rows.append([f"{r['site_short']} — {r['sarmut_label']}",
+                             f"{avail_ok} {r['avail_r']:.1f}%", f"{r['avail_t']:.1f}%",
+                             f"{util_ok} {r['util_r']:.1f}%", f"{r['util_t']:.1f}%"])
 
     biaya_su = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
         bl_r=("biaya_langsung_realisasi", "sum"), bl_b=("biaya_langsung_budget", "sum"),
@@ -941,42 +943,75 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     biaya_su["site_short"] = biaya_su["lokasi"].map(SITE_ABBR).fillna(biaya_su["lokasi"])
     biaya_su = biaya_su.sort_values(["lokasi", "satuan_lokal"])
 
-    def _rate_pair(rr, rb, pr, pb):
-        rv = (rr / pr) if pr else None
-        bv = (rb / pb) if pb else None
-        rv_txt = fmt_rp(rv) if rv is not None else "-"
-        bv_txt = fmt_rp(bv) if bv is not None else "-"
-        return f"{rv_txt} / {bv_txt}"
+    def _rate(rr, pr):
+        return (rr / pr) if pr else None
 
     biaya_rows = []
     for _, r in biaya_su.iterrows():
-        bl_txt = _rate_pair(r["bl_r"], r["bl_b"], r["prestasi_r"], r["prestasi_b"])
-        btl_txt = _rate_pair(r["btl_r"], r["btl_b"], r["prestasi_r"], r["prestasi_b"])
-        biaya_rows.append([f"{r['site_short']} ({r['satuan_lokal']})", bl_txt, btl_txt])
+        bl_r = _rate(r["bl_r"], r["prestasi_r"]); bl_b = _rate(r["bl_b"], r["prestasi_b"])
+        btl_r = _rate(r["btl_r"], r["prestasi_r"]); btl_b = _rate(r["btl_b"], r["prestasi_b"])
+        bl_ok = "✓" if (bl_r is not None and bl_b is not None and bl_r <= bl_b) else "✗"
+        btl_ok = "✓" if (btl_r is not None and btl_b is not None and btl_r <= btl_b) else "✗"
+        biaya_rows.append([f"{r['site_short']} ({r['satuan_lokal']})",
+                            f"{bl_ok} {fmt_rp(bl_r) if bl_r is not None else '-'}", fmt_rp(bl_b) if bl_b is not None else "-",
+                            f"{btl_ok} {fmt_rp(btl_r) if btl_r is not None else '-'}", fmt_rp(btl_b) if btl_b is not None else "-"])
+
+    # --- Kartu ringkasan mini (ringkasan cepat keseluruhan) ---
+    mini_w, mini_h, mini_gap, mini_y = 2.85, 0.95, 0.25, 1.05
+    mini_specs = [
+        ("⚙", TEAL, "Avg Availability", f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-",
+         ach_avail is not None and ach_avail >= 100),
+        ("🎯", GOLD, "Avg Utilisasi", f"{avg_util_r:.1f}%" if avg_util_r is not None else "-",
+         ach_util is not None and ach_util >= 100),
+        ("💰", GREEN, "Biaya Langsung/Prestasi", fmt_rp(bl_r) if bl_r is not None else "-",
+         ach_bl is not None and ach_bl <= 100),
+        ("🧾", RGBColor(0x8E, 0x6B, 0xC9), "Biaya T.Langsung/Prestasi", fmt_rp(btl_r) if btl_r is not None else "-",
+         ach_btl is not None and ach_btl <= 100),
+    ]
+    for i, (ic, ic_color, lbl, val, good) in enumerate(mini_specs):
+        mx = 0.55 + i * (mini_w + mini_gap)
+        card = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(mx), Inches(mini_y), Inches(mini_w), Inches(mini_h))
+        card.adjustments[0] = 0.09
+        card.fill.solid(); card.fill.fore_color.rgb = WHITE
+        card.line.color.rgb = (GREEN if good else RED); card.line.width = Pt(1.25)
+        card.shadow.inherit = False
+        circ = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(mx + 0.15), Inches(mini_y + 0.19), Inches(0.55), Inches(0.55))
+        circ.fill.solid(); circ.fill.fore_color.rgb = ic_color
+        circ.line.fill.background(); circ.shadow.inherit = False
+        ctf = circ.text_frame; ctf.vertical_anchor = MSO_ANCHOR.MIDDLE; ctf.margin_left = 0; ctf.margin_right = 0
+        cp = ctf.paragraphs[0]; cp.alignment = PP_ALIGN.CENTER
+        cr = cp.add_run(); cr.text = ic; cr.font.size = Pt(16); cr.font.bold = True; cr.font.color.rgb = WHITE
+        add_textbox(s, mx + 0.85, mini_y + 0.1, mini_w - 1.0, 0.3, lbl, size=9.5, color=TEXT_MUTED)
+        add_textbox(s, mx + 0.85, mini_y + 0.38, mini_w - 1.0, 0.45, val, size=17, bold=True, color=TEXT_DARK)
 
     # --- Hitung tinggi tabel & posisi dinamis (agar tidak overflow saat kategori banyak) ---
     max_rows = max(len(au_rows), len(biaya_rows), 1)
     tbl_font = 8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)
-    row_h = 0.26 if max_rows <= 6 else (0.24 if max_rows <= 9 else 0.225)
+    row_h = 0.26 if max_rows <= 6 else (0.22 if max_rows <= 9 else 0.19)
     tbl_h = 0.35 + max_rows * row_h
-    tbl_top = 1.4
-    chart_top = max(3.85, tbl_top + tbl_h + 0.4)
-    chart_h = max(1.6, 7.15 - chart_top)
+    tbl_top = 2.45
+    panel_bottom = 2.1 + (tbl_h + 0.55)
+    chart_top = max(4.9, panel_bottom + 0.4)
+    chart_h = max(1.6, 7.35 - chart_top)
 
     # --- Tabel kiri: Availability & Utilisasi per Site & Jenis Sarmut ---
-    add_textbox(s, 0.55, 1.05, 5.9, 0.3, "Availability & Utilisasi — per Site & Jenis Sarmut", size=11.5, bold=True, color=TEXT_DARK)
+    add_card_panel(s, 0.45, 2.1, 6.0, tbl_h + 0.55)
+    add_panel_header(s, 0.45, 2.1, 6.0, "🟢 Availability & Utilisasi — per Site & Jenis Sarmut", height=0.36)
     if au_rows:
-        add_table(s, 0.55, tbl_top, 5.9, tbl_h,
-                  ["Site — Sarmut", "Availability (R/T)", "Utilisasi (R/T)"], au_rows,
-                  col_widths=[2.2, 1.85, 1.85], font_size=tbl_font, header_size=tbl_font)
+        add_table(s, 0.6, tbl_top, 5.7, tbl_h,
+                  ["Site — Sarmut", "Avail. R", "Avail. T", "Util. R", "Util. T"], au_rows,
+                  status_col=[1, 3], col_widths=[2.5, 1.1, 1.0, 1.1, 1.0], font_size=tbl_font, header_size=tbl_font,
+                  fill_badge=False)
     else:
-        add_textbox(s, 0.55, 1.45, 5.9, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
+        add_textbox(s, 0.6, tbl_top + 0.1, 5.7, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
 
     # --- Tabel kanan: Biaya Langsung & Tidak Langsung (Rp/Prestasi) per Site & Satuan (KM/HM) ---
-    add_textbox(s, 6.85, 1.05, 5.9, 0.3, "Biaya Langsung & Tidak Langsung (Rp/Prestasi) — per Site & Satuan", size=11.5, bold=True, color=TEXT_DARK)
-    add_table(s, 6.85, tbl_top, 5.9, tbl_h,
-              ["Site (Satuan)", "Biaya Langsung (R/T)", "Biaya T.Langsung (R/T)"], biaya_rows,
-              col_widths=[1.7, 2.1, 2.1], font_size=tbl_font, header_size=tbl_font)
+    add_card_panel(s, 6.85, 2.1, 5.95, tbl_h + 0.55)
+    add_panel_header(s, 6.85, 2.1, 5.95, "🔴 Biaya Langsung & T.Langsung (Rp/Prestasi) — per Site & Satuan", height=0.36)
+    add_table(s, 7.0, tbl_top, 5.65, tbl_h,
+              ["Site (Satuan)", "B.Langsung R", "Budget", "B.T.Langsung R", "Budget"], biaya_rows,
+              status_col=[1, 3], col_widths=[1.7, 1.35, 1.0, 1.55, 1.0], font_size=tbl_font, header_size=tbl_font,
+              fill_badge=False)
 
     add_textbox(s, 0.55, chart_top - 0.45, 11.5, 0.4, "Realisasi Utilisasi vs Target Utilisasi (Avg) — per Site & Jenis Sarmut", size=13, bold=True, color=TEXT_DARK)
     if not sasaran_mutu_data.empty:
