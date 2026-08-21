@@ -954,6 +954,29 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              f"{util_ok} {r['util_r']:.1f}%", f"{r['util_t']:.1f}%",
                              f"{avail_ok} {r['avail_r']:.1f}%", f"{r['avail_t']:.1f}%"])
 
+    # --- Data tabel kanan: Biaya Langsung & Tidak Langsung (Rp/Prestasi) per Site & Satuan (KM/HM) ---
+    biaya_su = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
+        bl_r=("biaya_langsung_realisasi", "sum"), bl_b=("biaya_langsung_budget", "sum"),
+        btl_r=("biaya_tidak_langsung_realisasi", "sum"), btl_b=("biaya_tidak_langsung_budget", "sum"),
+        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
+    )
+    biaya_su = biaya_su[(biaya_su["prestasi_r"] > 0) | (biaya_su["prestasi_b"] > 0)].copy()
+    biaya_su["site_short"] = biaya_su["lokasi"].map(SITE_ABBR).fillna(biaya_su["lokasi"])
+    biaya_su = biaya_su.sort_values(["lokasi", "satuan_lokal"])
+
+    def _rate(rr, pr):
+        return (rr / pr) if pr else None
+
+    biaya_rows = []
+    for _, r in biaya_su.iterrows():
+        row_bl_r = _rate(r["bl_r"], r["prestasi_r"]); row_bl_b = _rate(r["bl_b"], r["prestasi_b"])
+        row_btl_r = _rate(r["btl_r"], r["prestasi_r"]); row_btl_b = _rate(r["btl_b"], r["prestasi_b"])
+        bl_ok = "✓" if (row_bl_r is not None and row_bl_b is not None and row_bl_r <= row_bl_b) else "✗"
+        btl_ok = "✓" if (row_btl_r is not None and row_btl_b is not None and row_btl_r <= row_btl_b) else "✗"
+        biaya_rows.append([f"{r['site_short']} ({r['satuan_lokal']})",
+                            f"{bl_ok} {fmt_rp(row_bl_r) if row_bl_r is not None else '-'}", fmt_rp(row_bl_b) if row_bl_b is not None else "-",
+                            f"{btl_ok} {fmt_rp(row_btl_r) if row_btl_r is not None else '-'}", fmt_rp(row_btl_b) if row_btl_b is not None else "-"])
+
     # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
     mini_w, mini_h, mini_gap, mini_y = 2.85, 1.95, 0.25, 1.05
     add_kpi_card(s, 0.55, mini_y, mini_w, mini_h, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
@@ -978,7 +1001,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  ach_btl is not None and ach_btl <= 100)
 
     # --- Hitung tinggi tabel & posisi dinamis (agar tidak overflow saat kategori banyak) ---
-    max_rows = max(len(au_rows), 1)
+    max_rows = max(len(au_rows), len(biaya_rows), 1)
     tbl_font = 8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)
     row_h = 0.26 if max_rows <= 6 else (0.22 if max_rows <= 9 else 0.19)
     tbl_h = 0.35 + max_rows * row_h
@@ -986,16 +1009,27 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     tbl_top = panel_top + 0.35
     panel_h = tbl_h + 0.55
 
-    # --- Tabel: Availability & Utilisasi per Site & Jenis Sarmut (full width) ---
-    add_card_panel(s, 0.45, panel_top, 12.35, panel_h)
-    add_panel_header(s, 0.45, panel_top, 12.35, "🟢 Availability & Utilisasi — per Site & Jenis Sarmut", height=0.36)
+    # --- Tabel kiri: Availability & Utilisasi per Site & Jenis Sarmut ---
+    add_card_panel(s, 0.45, panel_top, 6.0, panel_h)
+    add_panel_header(s, 0.45, panel_top, 6.0, "🟢 Availability & Utilisasi — per Site & Jenis Sarmut", height=0.36)
     if au_rows:
-        add_table(s, 0.6, tbl_top, 12.05, tbl_h,
+        add_table(s, 0.6, tbl_top, 5.7, tbl_h,
                   ["Site — Sarmut", "Util. R", "Util. T", "Avail. R", "Avail. T"], au_rows,
-                  status_col=[1, 3], col_widths=[3.0, 1.2, 1.1, 1.2, 1.1], font_size=tbl_font, header_size=tbl_font,
+                  status_col=[1, 3], col_widths=[2.5, 1.1, 1.0, 1.1, 1.0], font_size=tbl_font, header_size=tbl_font,
                   fill_badge=False)
     else:
-        add_textbox(s, 0.6, tbl_top + 0.1, 12.05, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
+        add_textbox(s, 0.6, tbl_top + 0.1, 5.7, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
+
+    # --- Tabel kanan: Biaya Langsung & Tidak Langsung (Rp/Prestasi) per Site & Satuan (KM/HM) ---
+    add_card_panel(s, 6.85, panel_top, 5.95, panel_h)
+    add_panel_header(s, 6.85, panel_top, 5.95, "🔴 Biaya Langsung & T.Langsung (Rp/Prestasi) — per Site & Satuan", height=0.36)
+    if biaya_rows:
+        add_table(s, 7.0, tbl_top, 5.65, tbl_h,
+                  ["Site (Satuan)", "B.Langsung R", "Budget", "B.T.Langsung R", "Budget"], biaya_rows,
+                  status_col=[1, 3], col_widths=[1.7, 1.35, 1.0, 1.55, 1.0], font_size=tbl_font, header_size=tbl_font,
+                  fill_badge=False)
+    else:
+        add_textbox(s, 7.0, tbl_top + 0.1, 5.65, 0.6, "Data biaya belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
     s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
