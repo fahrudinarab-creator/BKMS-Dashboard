@@ -934,7 +934,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
     s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", f"Ringkasan Kinerja · 01{divisi_label}")
 
-    # --- Siapkan data tabel kiri (Availability & Utilisasi) & kanan (Biaya) dulu utk hitung tinggi dinamis ---
+    # --- Siapkan data tabel kiri (Availability & Utilisasi) & kanan (Populasi Unit) ---
     au_rows = []
     if not sasaran_mutu_data.empty:
         sm_kpi = sasaran_mutu_data.copy()
@@ -954,27 +954,20 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              f"{avail_ok} {r['avail_r']:.1f}%", f"{r['avail_t']:.1f}%",
                              f"{util_ok} {r['util_r']:.1f}%", f"{r['util_t']:.1f}%"])
 
-    biaya_su = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
-        bl_r=("biaya_langsung_realisasi", "sum"), bl_b=("biaya_langsung_budget", "sum"),
-        btl_r=("biaya_tidak_langsung_realisasi", "sum"), btl_b=("biaya_tidak_langsung_budget", "sum"),
-        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
-    )
-    biaya_su = biaya_su[(biaya_su["prestasi_r"] > 0) | (biaya_su["prestasi_b"] > 0)].copy()
-    biaya_su["site_short"] = biaya_su["lokasi"].map(SITE_ABBR).fillna(biaya_su["lokasi"])
-    biaya_su = biaya_su.sort_values(["lokasi", "satuan_lokal"])
-
-    def _rate(rr, pr):
-        return (rr / pr) if pr else None
-
-    biaya_rows = []
-    for _, r in biaya_su.iterrows():
-        row_bl_r = _rate(r["bl_r"], r["prestasi_r"]); row_bl_b = _rate(r["bl_b"], r["prestasi_b"])
-        row_btl_r = _rate(r["btl_r"], r["prestasi_r"]); row_btl_b = _rate(r["btl_b"], r["prestasi_b"])
-        bl_ok = "✓" if (row_bl_r is not None and row_bl_b is not None and row_bl_r <= row_bl_b) else "✗"
-        btl_ok = "✓" if (row_btl_r is not None and row_btl_b is not None and row_btl_r <= row_btl_b) else "✗"
-        biaya_rows.append([f"{r['site_short']} ({r['satuan_lokal']})",
-                            f"{bl_ok} {fmt_rp(row_bl_r) if row_bl_r is not None else '-'}", fmt_rp(row_bl_b) if row_bl_b is not None else "-",
-                            f"{btl_ok} {fmt_rp(row_btl_r) if row_btl_r is not None else '-'}", fmt_rp(row_btl_b) if row_btl_b is not None else "-"])
+    pop_data = data.copy()
+    pop_data["sarmut_group"] = pop_data["jenis_unit"].apply(map_jenis_sarmut)
+    _bln_no = pop_data["bulan_no"].max()
+    pop_last = pop_data[pop_data["bulan_no"] == _bln_no]
+    pop_site = pop_last.groupby(["lokasi", "sarmut_group"]).apply(
+        lambda g: pd.Series({
+            "target": g.loc[g["pendapatan_budget"] > 0, "nama_unit"].nunique(),
+            "realisasi": g.loc[g["pendapatan_realisasi"] > 0, "nama_unit"].nunique(),
+        })
+    ).reset_index()
+    pop_site = pop_site[(pop_site["target"] > 0) | (pop_site["realisasi"] > 0)].copy()
+    pop_site["site_short"] = pop_site["lokasi"].map(SITE_ABBR).fillna(pop_site["lokasi"])
+    pop_site["label"] = pop_site["site_short"] + " (" + pop_site["sarmut_group"] + ")"
+    pop_site = pop_site.sort_values(["lokasi", "sarmut_group"], ascending=[True, True])
 
     # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
     mini_w, mini_h, mini_gap, mini_y = 2.85, 1.95, 0.25, 1.05
@@ -999,21 +992,24 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                  ach_btl is not None and ach_btl <= 100)
 
-    # --- Hitung tinggi tabel & posisi dinamis (agar tidak overflow saat kategori banyak) ---
-    max_rows = max(len(au_rows), len(biaya_rows), 1)
+    # --- Hitung tinggi panel & posisi dinamis (agar tidak overflow/rapat saat kategori banyak) ---
+    max_rows = max(len(au_rows), 1)
     tbl_font = 8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)
     row_h = 0.26 if max_rows <= 6 else (0.22 if max_rows <= 9 else 0.19)
     tbl_h = 0.35 + max_rows * row_h
+    panel_h_left = tbl_h + 0.55
+
+    n_pop_cats = len(pop_site)
+    pop_row_h = 0.26 if n_pop_cats <= 6 else (0.21 if n_pop_cats <= 9 else 0.175)
+    panel_h_right = 0.55 + 0.6 + n_pop_cats * pop_row_h  # header + (legend+axis overhead) + per-kategori
+
+    panel_h = max(panel_h_left, panel_h_right, 2.0)
     panel_top = mini_y + mini_h + 0.15
     tbl_top = panel_top + 0.35
-    panel_bottom = panel_top + (tbl_h + 0.55)
-    chart_top = panel_bottom + 0.35
-    chart_available = 7.4 - chart_top
-    show_chart = chart_available >= 1.15
-    chart_h = chart_available if show_chart else 0
+    panel_bottom = panel_top + panel_h
 
     # --- Tabel kiri: Availability & Utilisasi per Site & Jenis Sarmut ---
-    add_card_panel(s, 0.45, panel_top, 6.0, tbl_h + 0.55)
+    add_card_panel(s, 0.45, panel_top, 6.0, panel_h)
     add_panel_header(s, 0.45, panel_top, 6.0, "🟢 Availability & Utilisasi — per Site & Jenis Sarmut", height=0.36)
     if au_rows:
         add_table(s, 0.6, tbl_top, 5.7, tbl_h,
@@ -1023,36 +1019,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     else:
         add_textbox(s, 0.6, tbl_top + 0.1, 5.7, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
 
-    # --- Tabel kanan: Biaya Langsung & Tidak Langsung (Rp/Prestasi) per Site & Satuan (KM/HM) ---
-    add_card_panel(s, 6.85, panel_top, 5.95, tbl_h + 0.55)
-    add_panel_header(s, 6.85, panel_top, 5.95, "🔴 Biaya Langsung & T.Langsung (Rp/Prestasi) — per Site & Satuan", height=0.36)
-    add_table(s, 7.0, tbl_top, 5.65, tbl_h,
-              ["Site (Satuan)", "B.Langsung R", "Budget", "B.T.Langsung R", "Budget"], biaya_rows,
-              status_col=[1, 3], col_widths=[1.7, 1.35, 1.0, 1.55, 1.0], font_size=tbl_font, header_size=tbl_font,
-              fill_badge=False)
-
-    if show_chart:
-        add_textbox(s, 0.55, chart_top - 0.4, 11.5, 0.35, "Populasi Unit — per Site & Jenis Sarmut", size=12.5, bold=True, color=TEXT_DARK)
-    if show_chart:
-        pop_data = data.copy()
-        pop_data["sarmut_group"] = pop_data["jenis_unit"].apply(map_jenis_sarmut)
-        _bln_no = pop_data["bulan_no"].max()
-        pop_last = pop_data[pop_data["bulan_no"] == _bln_no]
-        pop_site = pop_last.groupby(["lokasi", "sarmut_group"]).apply(
-            lambda g: pd.Series({
-                "target": g.loc[g["pendapatan_budget"] > 0, "nama_unit"].nunique(),
-                "realisasi": g.loc[g["pendapatan_realisasi"] > 0, "nama_unit"].nunique(),
-            })
-        ).reset_index()
-        pop_site = pop_site[(pop_site["target"] > 0) | (pop_site["realisasi"] > 0)].copy()
-        pop_site["site_short"] = pop_site["lokasi"].map(SITE_ABBR).fillna(pop_site["lokasi"])
-        pop_site["label"] = pop_site["site_short"] + " (" + pop_site["sarmut_group"] + ")"
-        pop_site = pop_site.sort_values(["lokasi", "sarmut_group"], ascending=[True, True])
+    # --- Panel kanan: Populasi Unit — per Site & Jenis Sarmut (chart horizontal, tinggi menyesuaikan panel kiri) ---
+    add_card_panel(s, 6.85, panel_top, 5.95, panel_h)
+    add_panel_header(s, 6.85, panel_top, 5.95, "🟩 Populasi Unit — per Site & Jenis Sarmut", height=0.36)
+    if not pop_site.empty:
+        n_pop_cats = len(pop_site)
         cd = CategoryChartData()
         cd.categories = list(pop_site["label"])
         cd.add_series("Target Populasi", tuple(int(v) for v in pop_site["target"]))
         cd.add_series("Realisasi Populasi", tuple(int(v) for v in pop_site["realisasi"]))
-        gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top), Inches(12.2), Inches(chart_h), cd)
+        chart_h_pop = panel_h - 0.5
+        gframe = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(7.0), Inches(tbl_top), Inches(5.65), Inches(chart_h_pop), cd)
         chart = gframe.chart
         chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
         chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = GREEN
@@ -1060,14 +1037,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         plot_u = chart.plots[0]
         plot_u.has_data_labels = True
         dls_u = plot_u.data_labels
-        dls_u.font.size = Pt(8); dls_u.font.bold = True; dls_u.font.color.rgb = TEXT_DARK; dls_u.font.name = "Calibri"
+        pop_font = 8.5 if n_pop_cats <= 6 else (7.5 if n_pop_cats <= 9 else 6.5)
+        dls_u.font.size = Pt(pop_font); dls_u.font.bold = True; dls_u.font.color.rgb = TEXT_DARK; dls_u.font.name = "Calibri"
         dls_u.position = XL_LABEL_POSITION.OUTSIDE_END
         style_chart_light(chart, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
-        # Kecilkan font sumbu kategori kalau kategorinya banyak (agar label tidak bertabrakan)
-        n_pop_cats = len(pop_site)
-        cat_font_pop = 9 if n_pop_cats <= 5 else (7.5 if n_pop_cats <= 8 else 6.3)
-        chart.category_axis.tick_labels.font.size = Pt(cat_font_pop)
-        dls_u.font.size = Pt(7 if n_pop_cats > 8 else 8)
+        chart.category_axis.tick_labels.font.size = Pt(pop_font)
+    else:
+        add_textbox(s, 7.0, tbl_top + 0.1, 5.65, 0.6, "Data populasi belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
     s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
