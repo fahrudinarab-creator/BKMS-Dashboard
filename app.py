@@ -992,20 +992,25 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                  ach_btl is not None and ach_btl <= 100)
 
-    # --- Hitung tinggi panel & posisi dinamis (agar tidak overflow/rapat saat kategori banyak) ---
+    # --- Hitung tinggi panel & posisi dinamis: panel memenuhi ruang ke bawah (rapi, tidak ada spasi kosong berlebih) ---
     max_rows = max(len(au_rows), 1)
+    n_pop_cats = max(len(pop_site), 1)
+    panel_top = mini_y + mini_h + 0.15
+    tbl_top = panel_top + 0.35
+    target_bottom = 7.35
+    panel_h_fill = target_bottom - panel_top  # tinggi panel kalau memenuhi ruang sampai bawah
+
+    # Tabel kiri: sebar tinggi baris supaya isi tabel memenuhi panel_h_fill, tapi jangan sampai baris jadi kegedean kalau isinya dikit
+    row_h_fill = (panel_h_fill - 0.55 - 0.35) / max_rows
+    row_h = min(0.48, max(0.19, row_h_fill))
     tbl_font = 8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)
-    row_h = 0.26 if max_rows <= 6 else (0.22 if max_rows <= 9 else 0.19)
     tbl_h = 0.35 + max_rows * row_h
     panel_h_left = tbl_h + 0.55
 
-    n_pop_cats = len(pop_site)
-    pop_row_h = 0.26 if n_pop_cats <= 6 else (0.21 if n_pop_cats <= 9 else 0.175)
-    panel_h_right = 0.55 + 0.6 + n_pop_cats * pop_row_h  # header + (legend+axis overhead) + per-kategori
+    # Chart kanan: selalu isi penuh ke bawah (chart tidak masalah dibesarkan, bar makin lega)
+    panel_h_right = panel_h_fill
 
     panel_h = max(panel_h_left, panel_h_right, 2.0)
-    panel_top = mini_y + mini_h + 0.15
-    tbl_top = panel_top + 0.35
     panel_bottom = panel_top + panel_h
 
     # --- Tabel kiri: Availability & Utilisasi per Site & Jenis Sarmut ---
