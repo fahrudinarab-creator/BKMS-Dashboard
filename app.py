@@ -574,6 +574,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     from pptx.enum.shapes import MSO_SHAPE
     import io as _io
 
+    # Khusus site TANJUNG: gabungkan kategori TR ke AB (tidak dipisah AB/TR di seluruh chart PPTX)
+    data = data.copy()
+    data.loc[data["lokasi"] == "TANJUNG", "kategori"] = "AB"
+    if sasaran_mutu_data is not None and not sasaran_mutu_data.empty:
+        sasaran_mutu_data = sasaran_mutu_data.copy()
+        sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "kategori"] = "AB"
+        sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "Jenis_Sarmut"] = "Sarmut Kelompok Alat Berat"
+
     # --- Palet warna (mengikuti gaya laporan RTM: terang, header navy) ---
     NAVY = RGBColor(0x1B, 0x25, 0x4B)
     NAVY_DARK = RGBColor(0x12, 0x18, 0x35)
