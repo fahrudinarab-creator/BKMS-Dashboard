@@ -582,6 +582,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "kategori"] = "AB"
         sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "Jenis_Sarmut"] = "Sarmut Kelompok Alat Berat"
 
+    # Singkatan nama site dipakai konsisten di semua chart yg padat kategori
+    SITE_ABBR = {"SUNGAI DANAU": "S.DANAU", "BUHUT LHL": "B.LHL", "TANJUNG": "TANJUNG",
+                 "BUHUT": "BUHUT", "KUMAI": "KUMAI", "AMPAH": "AMPAH"}
+
     # --- Palet warna (mengikuti gaya laporan RTM: terang, header navy) ---
     NAVY = RGBColor(0x1B, 0x25, 0x4B)
     NAVY_DARK = RGBColor(0x12, 0x18, 0x35)
@@ -883,25 +887,25 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     ach_util = ach_txt_pct(avg_util_r, avg_util_t) if (avg_util_r is not None and avg_util_t) else None
 
     # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
-    s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", "Performance Keseluruhan · 01")
+    s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", "Ringkasan Kinerja · 01")
 
     card_w4, card_h4, gap4, cy4 = 2.85, 2.3, 0.25, 1.15
-    add_kpi_card(s, 0.55, cy4, card_w4, card_h4, "A", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
+    add_kpi_card(s, 0.55, cy4, card_w4, card_h4, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
                  "Realisasi Availability (Avg)", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
                  f"Target: {avg_avail_t:.1f}%" if avg_avail_t is not None else "Target: -",
                  (f"✓ {ach_avail:.1f}% dari Target" if ach_avail is not None and ach_avail >= 100 else (f"✗ {ach_avail:.1f}% dari Target" if ach_avail is not None else "Data tidak tersedia")),
                  ach_avail is not None and ach_avail >= 100)
-    add_kpi_card(s, 0.55 + (card_w4 + gap4), cy4, card_w4, card_h4, "U", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
+    add_kpi_card(s, 0.55 + (card_w4 + gap4), cy4, card_w4, card_h4, "🎯", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
                  "Realisasi Utilisasi (Avg)", (f"{avg_util_r:.1f}%" if avg_util_r is not None else "-"),
                  f"Target: {avg_util_t:.1f}%" if avg_util_t is not None else "Target: -",
                  (f"✓ {ach_util:.1f}% dari Target" if ach_util is not None and ach_util >= 100 else (f"✗ {ach_util:.1f}% dari Target" if ach_util is not None else "Data tidak tersedia")),
                  ach_util is not None and ach_util >= 100)
-    add_kpi_card(s, 0.55 + 2 * (card_w4 + gap4), cy4, card_w4, card_h4, "◆", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
+    add_kpi_card(s, 0.55 + 2 * (card_w4 + gap4), cy4, card_w4, card_h4, "💰", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
                  "Biaya Langsung (Rp/Prestasi)", (fmt_rp(bl_r) if bl_r is not None else "-"),
                  f"Budget: {fmt_rp(bl_b)}" if bl_b is not None else "Budget: -",
                  (f"✓ {ach_bl:.1f}% — Under Budget" if ach_bl is not None and ach_bl <= 100 else (f"✗ {ach_bl:.1f}% — Over Budget" if ach_bl is not None else "Target = 0")),
                  ach_bl is not None and ach_bl <= 100)
-    add_kpi_card(s, 0.55 + 3 * (card_w4 + gap4), cy4, card_w4, card_h4, "◇", TEAL, GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
+    add_kpi_card(s, 0.55 + 3 * (card_w4 + gap4), cy4, card_w4, card_h4, "🧾", TEAL, GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
                  "Biaya Tidak Langsung (Rp/Prestasi)", (fmt_rp(btl_r) if btl_r is not None else "-"),
                  f"Budget: {fmt_rp(btl_b)}" if btl_b is not None else "Budget: -",
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
@@ -916,7 +920,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         site_util = sm_data.groupby(["lokasi", "sarmut_label"], as_index=False).agg(
             util_r=("utilisasi_pct", "mean"), util_t=("utilisasi_target", "mean"),
         )
-        site_util["label"] = site_util["lokasi"] + " (" + site_util["sarmut_label"] + ")"
+        site_util["site_short"] = site_util["lokasi"].map(SITE_ABBR).fillna(site_util["lokasi"])
+        site_util["label"] = site_util["site_short"] + " (" + site_util["sarmut_label"] + ")"
         site_util = site_util.sort_values(["lokasi", "sarmut_label"], ascending=[True, True])
         cd = CategoryChartData()
         cd.categories = list(site_util["label"])
@@ -930,8 +935,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         plot_u = chart.plots[0]
         plot_u.has_data_labels = True
         dls_u = plot_u.data_labels
-        dls_u.number_format = '0.0"%"'; dls_u.number_format_is_linked = False
-        dls_u.font.size = Pt(9); dls_u.font.bold = True; dls_u.font.color.rgb = TEXT_DARK; dls_u.font.name = "Calibri"
+        dls_u.number_format = '0"%"'; dls_u.number_format_is_linked = False
+        dls_u.font.size = Pt(8); dls_u.font.bold = True; dls_u.font.color.rgb = TEXT_DARK; dls_u.font.name = "Calibri"
         dls_u.position = XL_LABEL_POSITION.OUTSIDE_END
         style_chart_light(chart, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
     else:
@@ -939,7 +944,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     size=12, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
-    s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", "Performance Keseluruhan · 01")
+    s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", "Tren Bulanan · 02")
 
     def klasifikasi_satuan_lokal(row):
         lok, kat = row["lokasi"], row["kategori"]
@@ -997,7 +1002,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
     )
     site_prs2 = site_prs2[(site_prs2["prestasi_r"] > 0) | (site_prs2["prestasi_b"] > 0)].copy()
-    site_prs2["label"] = site_prs2["lokasi"] + " (" + site_prs2["satuan_lokal"] + ")"
+    site_prs2["site_short"] = site_prs2["lokasi"].map(SITE_ABBR).fillna(site_prs2["lokasi"])
+    site_prs2["label"] = site_prs2["site_short"] + " (" + site_prs2["satuan_lokal"] + ")"
     site_prs2 = site_prs2.sort_values(["lokasi", "satuan_lokal"], ascending=[True, True])
     add_textbox(s, 6.85, 1.05, 6, 0.35, "Prestasi Aktual vs Target — per Site & Satuan (HM/KM/Ton)", size=13, bold=True, color=TEXT_DARK)
     cd5 = CategoryChartData()
@@ -1031,7 +1037,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
               col_widths=[1.1] + [0.9] * n5, font_size=8, header_size=8)
 
     # ================= SLIDE 3: BIAYA OPERASIONAL =================
-    s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", "Performance Keseluruhan · 01")
+    s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", "Biaya Operasional · 03")
 
     tot_prestasi_r_pptx = data["prestasi_realisasi"].sum()
     tot_prestasi_b_pptx = data["prestasi_budget"].sum()
@@ -1135,8 +1141,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
     )
     maint_site = maint_site[maint_site["maint_b"] > 0].copy()
-    maint_site["label"] = maint_site["lokasi"] + " (" + maint_site["kategori"] + ")"
-    add_textbox(s, 7.1, 4.68, 5.55, 0.3, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site & Kategori", size=11.5, bold=True, color=TEXT_DARK)
+    maint_site["site_short"] = maint_site["lokasi"].map(SITE_ABBR).fillna(maint_site["lokasi"])
+    maint_site["label"] = maint_site["site_short"] + " (" + maint_site["kategori"] + ")"
+    add_textbox(s, 7.1, 4.6, 5.55, 0.3, "Biaya Maintenance Rp/Prestasi % — Aktual vs Plan per Site & Kategori", size=11, bold=True, color=TEXT_DARK)
     if not maint_site.empty:
         maint_site["rate_r"] = maint_site.apply(lambda r: (r["maint_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
         maint_site["rate_b"] = maint_site.apply(lambda r: (r["maint_b"] / r["prestasi_b"]) if r["prestasi_b"] else None, axis=1)
@@ -1146,13 +1153,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         cd6 = CategoryChartData()
         cd6.categories = list(maint_site["label"])
         cd6.add_series("% Aktual vs Plan", tuple(round(v, 1) for v in maint_site["pct"]))
-        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(5.0), Inches(5.55), Inches(1.45), cd6)
+        gframe6 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.1), Inches(4.92), Inches(5.55), Inches(1.15), cd6)
         chart6 = gframe6.chart
         chart6.series[0].format.fill.solid(); chart6.series[0].format.fill.fore_color.rgb = TEAL
         plot6 = chart6.plots[0]
         plot6.has_data_labels = True
         dls6 = plot6.data_labels
-        dls6.font.size = Pt(8); dls6.font.bold = True; dls6.font.color.rgb = TEXT_DARK; dls6.font.name = "Calibri"
+        dls6.font.size = Pt(7.5); dls6.font.bold = True; dls6.font.color.rgb = TEXT_DARK; dls6.font.name = "Calibri"
         dls6.position = XL_LABEL_POSITION.OUTSIDE_END
         for i, pt in enumerate(chart6.series[0].points):
             pct_val = maint_site["pct"].iloc[i]
@@ -1162,7 +1169,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             dl.has_text_frame = True
             dl.text_frame.text = f"{pct_val:.0f}%"
             r0 = dl.text_frame.paragraphs[0].runs[0]
-            r0.font.size = Pt(8); r0.font.bold = True; r0.font.color.rgb = TEXT_DARK; r0.font.name = "Calibri"
+            r0.font.size = Pt(7.5); r0.font.bold = True; r0.font.color.rgb = TEXT_DARK; r0.font.name = "Calibri"
         chart6.has_title = False
         style_chart_light(chart6, legend=False)
 
@@ -1171,11 +1178,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             ["Realisasi (Rp/Prestasi)"] + [fmt_rp(v) if v is not None else "-" for v in maint_site["rate_r"]],
         ]
         n6 = len(maint_site)
-        add_table(s, 7.1, 6.55, 5.55, 0.8, ["Metrik"] + list(maint_site["label"]), tbl6_rows,
-                  col_widths=[1.3] + [0.85] * n6, font_size=7.5, header_size=7.5)
+        add_table(s, 7.1, 6.15, 5.55, 0.95, ["Metrik"] + list(maint_site["label"]), tbl6_rows,
+                  col_widths=[1.3] + [0.85] * n6, font_size=7, header_size=7)
 
     # ================= SLIDE 4: ANALISIS BIAYA vs CAPAIAN PRESTASI & MAINTENANCE =================
-    s = add_content_slide(f"ANALISIS: Biaya vs Capaian Prestasi & Maintenance — s/d {period}", "Performance Keseluruhan · 01")
+    s = add_content_slide(f"ANALISIS: Biaya vs Capaian Prestasi & Maintenance — s/d {period}", "Analisis Biaya · 04")
 
     add_card_panel(s, 0.5, 1.05, 6.15, 5.6)
     add_panel_header(s, 0.5, 1.05, 6.15, "Biaya vs Budget 🔷 vs Capaian Prestasi ⬛ — Total Keseluruhan")
@@ -1220,7 +1227,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
     )
     maint_site7 = maint_site7[(maint_site7["maint_r"] > 0) | (maint_site7["maint_b"] > 0)].copy()
-    maint_site7["label"] = maint_site7["lokasi"] + " (" + maint_site7["kategori"] + ")"
+    maint_site7["site_short"] = maint_site7["lokasi"].map(SITE_ABBR).fillna(maint_site7["lokasi"])
+    maint_site7["label"] = maint_site7["site_short"] + " (" + maint_site7["kategori"] + ")"
     maint_site7 = maint_site7.sort_values("maint_b", ascending=False)
 
     if not maint_site7.empty:
@@ -1262,17 +1270,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     # ================= SLIDE 5: POPULASI UNIT =================
     card_w, card_h, gap, cy = 3.75, 2.4, 0.35, 1.25
-    s = add_content_slide("POPULASI UNIT — Target vs Realisasi", "Populasi Unit · 02")
+    s = add_content_slide("POPULASI UNIT — Target vs Realisasi", "Populasi Unit · 05")
     tp = data.loc[data["pendapatan_budget"] > 0, "nama_unit"].nunique()
     rp = data.loc[data["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
     pct_p = (rp / tp * 100) if tp else None
 
-    add_kpi_card(s, 0.55, cy, card_w, card_h, "T", RGBColor(0xB8, 0xBE, 0xCC), RGBColor(0xB8, 0xBE, 0xCC),
+    add_kpi_card(s, 0.55, cy, card_w, card_h, "🏁", RGBColor(0xB8, 0xBE, 0xCC), RGBColor(0xB8, 0xBE, 0xCC),
                  "Target Populasi", f"{tp:,}", "Unit dengan target Pendapatan", "Baseline", True)
-    add_kpi_card(s, 0.55 + (card_w + gap), cy, card_w, card_h, "R", GREEN, GREEN,
+    add_kpi_card(s, 0.55 + (card_w + gap), cy, card_w, card_h, "✅", GREEN, GREEN,
                  "Realisasi Populasi", f"{rp:,}", "Unit dengan realisasi Pendapatan", f"vs Target: {tp:,}", True)
     pct_good = pct_p is not None and pct_p >= 100
-    add_kpi_card(s, 0.55 + 2 * (card_w + gap), cy, card_w, card_h, "%", GOLD, GREEN if pct_good else RED,
+    add_kpi_card(s, 0.55 + 2 * (card_w + gap), cy, card_w, card_h, "📈", GOLD, GREEN if pct_good else RED,
                  "Capaian Populasi", f"{pct_p:.1f}%" if pct_p is not None else "-", "Realisasi vs Target Populasi",
                  (f"✓ {pct_p:.1f}% — Tercapai" if pct_good else (f"✗ {pct_p:.1f}% vs Target" if pct_p is not None else "-")), pct_good)
 
@@ -1284,7 +1292,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         })
     ).reset_index()
     pop_kat = pop_kat[(pop_kat["target"] > 0) | (pop_kat["realisasi"] > 0)].copy()
-    pop_kat["label"] = pop_kat["lokasi"] + " (" + pop_kat["kategori"] + ")"
+    pop_kat["site_short"] = pop_kat["lokasi"].map(SITE_ABBR).fillna(pop_kat["lokasi"])
+    pop_kat["label"] = pop_kat["site_short"] + " (" + pop_kat["kategori"] + ")"
     pop_kat = pop_kat.sort_values(["lokasi", "kategori"])
     chart3_h = min(3.0, max(2.6, 0.32 * len(pop_kat)))
     cd3.categories = list(pop_kat["label"])
