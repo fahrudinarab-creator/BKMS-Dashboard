@@ -890,6 +890,20 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     if sasaran_mutu_data is None:
         sasaran_mutu_data = pd.DataFrame()
 
+    def klasifikasi_satuan_lokal(row):
+        lok, kat = row["lokasi"], row["kategori"]
+        if lok == "BUHUT LHL":
+            return "Ton"
+        if lok in ("SUNGAI DANAU", "KUMAI"):
+            if kat == "AB":
+                return "HM"
+            if kat == "TR":
+                return "KM"
+            return "HM"
+        return "HM"
+
+    data["satuan_lokal"] = data.apply(klasifikasi_satuan_lokal, axis=1)
+
     avg_avail_r = sasaran_mutu_data["availability_pct"].mean() if not sasaran_mutu_data.empty else None
     avg_avail_t = sasaran_mutu_data["availability_target"].mean() if not sasaran_mutu_data.empty else None
     avg_util_r = sasaran_mutu_data["utilisasi_pct"].mean() if not sasaran_mutu_data.empty else None
@@ -900,29 +914,71 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
     s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", f"Ringkasan Kinerja · 01{divisi_label}")
 
-    card_w4, card_h4, gap4, cy4 = 2.85, 2.3, 0.25, 1.15
-    add_kpi_card(s, 0.55, cy4, card_w4, card_h4, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
-                 "Realisasi Availability (Avg)", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
-                 f"Target: {avg_avail_t:.1f}%" if avg_avail_t is not None else "Target: -",
-                 (f"✓ {ach_avail:.1f}% dari Target" if ach_avail is not None and ach_avail >= 100 else (f"✗ {ach_avail:.1f}% dari Target" if ach_avail is not None else "Data tidak tersedia")),
-                 ach_avail is not None and ach_avail >= 100)
-    add_kpi_card(s, 0.55 + (card_w4 + gap4), cy4, card_w4, card_h4, "🎯", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
-                 "Realisasi Utilisasi (Avg)", (f"{avg_util_r:.1f}%" if avg_util_r is not None else "-"),
-                 f"Target: {avg_util_t:.1f}%" if avg_util_t is not None else "Target: -",
-                 (f"✓ {ach_util:.1f}% dari Target" if ach_util is not None and ach_util >= 100 else (f"✗ {ach_util:.1f}% dari Target" if ach_util is not None else "Data tidak tersedia")),
-                 ach_util is not None and ach_util >= 100)
-    add_kpi_card(s, 0.55 + 2 * (card_w4 + gap4), cy4, card_w4, card_h4, "💰", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
-                 "Biaya Langsung (Rp/Prestasi)", (fmt_rp(bl_r) if bl_r is not None else "-"),
-                 f"Budget: {fmt_rp(bl_b)}" if bl_b is not None else "Budget: -",
-                 (f"✓ {ach_bl:.1f}% — Under Budget" if ach_bl is not None and ach_bl <= 100 else (f"✗ {ach_bl:.1f}% — Over Budget" if ach_bl is not None else "Target = 0")),
-                 ach_bl is not None and ach_bl <= 100)
-    add_kpi_card(s, 0.55 + 3 * (card_w4 + gap4), cy4, card_w4, card_h4, "🧾", TEAL, GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
-                 "Biaya Tidak Langsung (Rp/Prestasi)", (fmt_rp(btl_r) if btl_r is not None else "-"),
-                 f"Budget: {fmt_rp(btl_b)}" if btl_b is not None else "Budget: -",
-                 (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
-                 ach_btl is not None and ach_btl <= 100)
+    # --- Siapkan data tabel kiri (Availability & Utilisasi) & kanan (Biaya) dulu utk hitung tinggi dinamis ---
+    au_rows = []
+    if not sasaran_mutu_data.empty:
+        sm_kpi = sasaran_mutu_data.copy()
+        sm_kpi["sarmut_label"] = sm_kpi["Jenis_Sarmut"].astype(str).str.replace("Sarmut Kelompok ", "", regex=False)
+        sm_kpi.loc[sasaran_mutu_data["Jenis_Sarmut"].isna(), "sarmut_label"] = None
+        sm_kpi = sm_kpi.dropna(subset=["sarmut_label"])
+        au_tbl = sm_kpi.groupby(["lokasi", "sarmut_label"], as_index=False).agg(
+            avail_r=("availability_pct", "mean"), avail_t=("availability_target", "mean"),
+            util_r=("utilisasi_pct", "mean"), util_t=("utilisasi_target", "mean"),
+        )
+        au_tbl["site_short"] = au_tbl["lokasi"].map(SITE_ABBR).fillna(au_tbl["lokasi"])
+        au_tbl = au_tbl.sort_values(["lokasi", "sarmut_label"])
+        au_rows = [[f"{r['site_short']} — {r['sarmut_label']}",
+                     f"{r['avail_r']:.1f}% / {r['avail_t']:.1f}%",
+                     f"{r['util_r']:.1f}% / {r['util_t']:.1f}%"]
+                    for _, r in au_tbl.iterrows()]
 
-    add_textbox(s, 0.55, 3.85, 11.5, 0.4, "Realisasi Utilisasi vs Target Utilisasi (Avg) — per Site & Jenis Sarmut", size=13, bold=True, color=TEXT_DARK)
+    biaya_su = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
+        bl_r=("biaya_langsung_realisasi", "sum"), bl_b=("biaya_langsung_budget", "sum"),
+        btl_r=("biaya_tidak_langsung_realisasi", "sum"), btl_b=("biaya_tidak_langsung_budget", "sum"),
+        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
+    )
+    biaya_su = biaya_su[(biaya_su["prestasi_r"] > 0) | (biaya_su["prestasi_b"] > 0)].copy()
+    biaya_su["site_short"] = biaya_su["lokasi"].map(SITE_ABBR).fillna(biaya_su["lokasi"])
+    biaya_su = biaya_su.sort_values(["lokasi", "satuan_lokal"])
+
+    def _rate_pair(rr, rb, pr, pb):
+        rv = (rr / pr) if pr else None
+        bv = (rb / pb) if pb else None
+        rv_txt = fmt_rp(rv) if rv is not None else "-"
+        bv_txt = fmt_rp(bv) if bv is not None else "-"
+        return f"{rv_txt} / {bv_txt}"
+
+    biaya_rows = []
+    for _, r in biaya_su.iterrows():
+        bl_txt = _rate_pair(r["bl_r"], r["bl_b"], r["prestasi_r"], r["prestasi_b"])
+        btl_txt = _rate_pair(r["btl_r"], r["btl_b"], r["prestasi_r"], r["prestasi_b"])
+        biaya_rows.append([f"{r['site_short']} ({r['satuan_lokal']})", bl_txt, btl_txt])
+
+    # --- Hitung tinggi tabel & posisi dinamis (agar tidak overflow saat kategori banyak) ---
+    max_rows = max(len(au_rows), len(biaya_rows), 1)
+    tbl_font = 8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)
+    row_h = 0.26 if max_rows <= 6 else (0.24 if max_rows <= 9 else 0.225)
+    tbl_h = 0.35 + max_rows * row_h
+    tbl_top = 1.4
+    chart_top = max(3.85, tbl_top + tbl_h + 0.4)
+    chart_h = max(1.6, 7.15 - chart_top)
+
+    # --- Tabel kiri: Availability & Utilisasi per Site & Jenis Sarmut ---
+    add_textbox(s, 0.55, 1.05, 5.9, 0.3, "Availability & Utilisasi — per Site & Jenis Sarmut", size=11.5, bold=True, color=TEXT_DARK)
+    if au_rows:
+        add_table(s, 0.55, tbl_top, 5.9, tbl_h,
+                  ["Site — Sarmut", "Availability (R/T)", "Utilisasi (R/T)"], au_rows,
+                  col_widths=[2.2, 1.85, 1.85], font_size=tbl_font, header_size=tbl_font)
+    else:
+        add_textbox(s, 0.55, 1.45, 5.9, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
+
+    # --- Tabel kanan: Biaya Langsung & Tidak Langsung (Rp/Prestasi) per Site & Satuan (KM/HM) ---
+    add_textbox(s, 6.85, 1.05, 5.9, 0.3, "Biaya Langsung & Tidak Langsung (Rp/Prestasi) — per Site & Satuan", size=11.5, bold=True, color=TEXT_DARK)
+    add_table(s, 6.85, tbl_top, 5.9, tbl_h,
+              ["Site (Satuan)", "Biaya Langsung (R/T)", "Biaya T.Langsung (R/T)"], biaya_rows,
+              col_widths=[1.7, 2.1, 2.1], font_size=tbl_font, header_size=tbl_font)
+
+    add_textbox(s, 0.55, chart_top - 0.45, 11.5, 0.4, "Realisasi Utilisasi vs Target Utilisasi (Avg) — per Site & Jenis Sarmut", size=13, bold=True, color=TEXT_DARK)
     if not sasaran_mutu_data.empty:
         sm_data = sasaran_mutu_data.copy()
         sm_data["sarmut_label"] = sm_data["Jenis_Sarmut"].astype(str).str.replace("Sarmut Kelompok ", "", regex=False)
@@ -938,7 +994,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         cd.categories = list(site_util["label"])
         cd.add_series("Target Utilisasi (%)", tuple(round(v, 1) for v in site_util["util_t"]))
         cd.add_series("Realisasi Utilisasi (%)", tuple(round(v, 1) for v in site_util["util_r"]))
-        gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(4.3), Inches(12.2), Inches(2.85), cd)
+        gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top), Inches(12.2), Inches(chart_h), cd)
         chart = gframe.chart
         chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
         chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = TEAL
@@ -951,26 +1007,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         dls_u.position = XL_LABEL_POSITION.OUTSIDE_END
         style_chart_light(chart, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
     else:
-        add_textbox(s, 0.55, 4.3, 12.2, 0.6, "Data Sasaran Mutu (Availability/Utilisasi) belum tersedia untuk periode/filter ini.",
+        add_textbox(s, 0.55, chart_top, 12.2, 0.6, "Data Sasaran Mutu (Availability/Utilisasi) belum tersedia untuk periode/filter ini.",
                     size=12, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
     s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
-
-    def klasifikasi_satuan_lokal(row):
-        lok, kat = row["lokasi"], row["kategori"]
-        if lok == "BUHUT LHL":
-            return "Ton"
-        if lok in ("SUNGAI DANAU", "KUMAI"):
-            if kat == "AB":
-                return "HM"
-            if kat == "TR":
-                return "KM"
-            return "HM"
-        return "HM"
-
-    data = data.copy()
-    data["satuan_lokal"] = data.apply(klasifikasi_satuan_lokal, axis=1)
 
     bln_agg = data.groupby("bulan", as_index=False).agg(
         prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
