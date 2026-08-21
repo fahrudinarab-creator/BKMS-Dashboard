@@ -673,7 +673,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         card.shadow.inherit = False
         # icon circle
         icon_size = 0.5
-        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.25), Inches(top + 0.25), Inches(icon_size), Inches(icon_size))
+        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.25), Inches(top + 0.22), Inches(icon_size), Inches(icon_size))
         circ.fill.solid(); circ.fill.fore_color.rgb = icon_color
         circ.line.fill.background(); circ.shadow.inherit = False
         ic_tf = circ.text_frame; ic_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -682,22 +682,23 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         icr = icp.add_run(); icr.text = icon_txt
         icr.font.size = Pt(15); icr.font.bold = True; icr.font.color.rgb = WHITE
         # label
-        add_textbox(slide, left + 0.95, top + 0.27, width - 1.1, 0.4, label, size=11.5, bold=False, color=TEXT_MUTED)
-        # value
-        add_textbox(slide, left + 0.25, top + 0.85, width - 0.5, 0.55, value, size=23, bold=True, color=TEXT_DARK)
-        # sub text
+        add_textbox(slide, left + 0.95, top + 0.24, width - 1.1, 0.4, label, size=11.5, bold=False, color=TEXT_MUTED)
+        # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
+        value_top = top + 0.62
+        add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=21, bold=True, color=TEXT_DARK)
+        # sub text (target/budget)
         if sub_text:
-            add_textbox(slide, left + 0.25, top + 1.38, width - 0.5, 0.35, sub_text, size=10.5, color=TEXT_MUTED)
-        # pill
+            add_textbox(slide, left + 0.25, value_top + 0.42, width - 0.5, 0.3, sub_text, size=10, color=TEXT_MUTED)
+        # pill (selalu menempel ke bawah kartu)
         pbg, ptxt = pill_colors(pill_good)
-        pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + 0.25), Inches(top + height - 0.55), Inches(width - 0.5), Inches(0.38))
+        pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + 0.25), Inches(top + height - 0.5), Inches(width - 0.5), Inches(0.35))
         pill.adjustments[0] = 0.5
         pill.fill.solid(); pill.fill.fore_color.rgb = pbg
         pill.line.fill.background(); pill.shadow.inherit = False
         ptf = pill.text_frame; ptf.vertical_anchor = MSO_ANCHOR.MIDDLE
         pp = ptf.paragraphs[0]; pp.alignment = PP_ALIGN.CENTER
         pr = pp.add_run(); pr.text = pill_text
-        pr.font.size = Pt(11); pr.font.bold = True; pr.font.color.rgb = ptxt
+        pr.font.size = Pt(10.5); pr.font.bold = True; pr.font.color.rgb = ptxt
 
     def add_card_panel(slide, left, top, width, height, accent_color=None):
         card = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
@@ -957,7 +958,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                             f"{btl_ok} {fmt_rp(row_btl_r) if row_btl_r is not None else '-'}", fmt_rp(row_btl_b) if row_btl_b is not None else "-"])
 
     # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
-    mini_w, mini_h, mini_gap, mini_y = 2.85, 1.85, 0.25, 1.05
+    mini_w, mini_h, mini_gap, mini_y = 2.85, 1.95, 0.25, 1.05
     add_kpi_card(s, 0.55, mini_y, mini_w, mini_h, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
                  "Avg Availability", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
                  f"Target: {avg_avail_t:.1f}%" if avg_avail_t is not None else "Target: -",
