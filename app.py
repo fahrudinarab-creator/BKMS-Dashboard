@@ -1000,15 +1000,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                  ach_btl is not None and ach_btl <= 100)
 
-    # --- Hitung tinggi tabel & posisi dinamis: baris disebar memenuhi ruang ke bawah agar terlihat besar ---
+    # --- Hitung tinggi tabel & posisi dinamis: baris disebar memenuhi ruang secukupnya (tidak berlebihan) ---
     max_rows = max(len(au_rows), len(biaya_rows), 1)
     panel_top = mini_y + mini_h + 0.15
     tbl_top = panel_top + 0.35
-    target_bottom = 7.35
-    tbl_h_fill = target_bottom - tbl_top  # tinggi tabel kalau memenuhi ruang sampai bawah
+    target_bottom = 6.85
+    tbl_h_fill = target_bottom - tbl_top  # tinggi tabel kalau memenuhi ruang sampai target_bottom
     row_h_fill = (tbl_h_fill - 0.35) / max_rows
-    row_h = min(0.55, max(0.19, row_h_fill))
-    tbl_font = 11 if row_h >= 0.42 else (9.5 if row_h >= 0.32 else (8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)))
+    row_h = min(0.36, max(0.19, row_h_fill))
+    tbl_font = 10 if row_h >= 0.32 else (8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5))
     tbl_h = 0.35 + max_rows * row_h
     panel_h = tbl_h + 0.55
 
@@ -1018,7 +1018,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     if au_rows:
         add_table(s, 0.6, tbl_top, 5.7, tbl_h,
                   ["Site — Sarmut", "Util. R", "Util. T", "Avail. R", "Avail. T"], au_rows,
-                  status_col=[1, 3], col_widths=[2.5, 1.1, 1.0, 1.1, 1.0], font_size=tbl_font, header_size=tbl_font,
+                  status_col=[1, 3], col_widths=[2.3, 1.1, 1.1, 1.1, 1.1], font_size=tbl_font, header_size=tbl_font,
                   fill_badge=False)
     else:
         add_textbox(s, 0.6, tbl_top + 0.1, 5.7, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
@@ -1029,7 +1029,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     if biaya_rows:
         add_table(s, 7.0, tbl_top, 5.65, tbl_h,
                   ["Site (Satuan)", "B.Langsung R", "Budget", "B.T.Langsung R", "Budget"], biaya_rows,
-                  status_col=[1, 3], col_widths=[1.7, 1.35, 1.0, 1.55, 1.0], font_size=tbl_font, header_size=tbl_font,
+                  status_col=[1, 3], col_widths=[1.55, 1.3, 1.25, 1.3, 1.25], font_size=tbl_font, header_size=tbl_font,
                   fill_badge=False)
     else:
         add_textbox(s, 7.0, tbl_top + 0.1, 5.65, 0.6, "Data biaya belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
