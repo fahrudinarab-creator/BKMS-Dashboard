@@ -1277,24 +1277,27 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  (f"✓ {pct_p:.1f}% — Tercapai" if pct_good else (f"✗ {pct_p:.1f}% vs Target" if pct_p is not None else "-")), pct_good)
 
     cd3 = CategoryChartData()
-    pop_kat = data.groupby("kategori").apply(
+    pop_kat = data.groupby(["lokasi", "kategori"]).apply(
         lambda g: pd.Series({
             "target": g.loc[g["pendapatan_budget"] > 0, "nama_unit"].nunique(),
             "realisasi": g.loc[g["pendapatan_realisasi"] > 0, "nama_unit"].nunique(),
         })
     ).reset_index()
-    pop_kat["label"] = pop_kat["kategori"].map(KATEGORI_LABEL).fillna(pop_kat["kategori"])
+    pop_kat = pop_kat[(pop_kat["target"] > 0) | (pop_kat["realisasi"] > 0)].copy()
+    pop_kat["label"] = pop_kat["lokasi"] + " (" + pop_kat["kategori"] + ")"
+    pop_kat = pop_kat.sort_values(["lokasi", "kategori"])
+    chart3_h = min(3.0, max(2.6, 0.32 * len(pop_kat)))
     cd3.categories = list(pop_kat["label"])
     cd3.add_series("Target", tuple(int(v) for v in pop_kat["target"]))
     cd3.add_series("Realisasi", tuple(int(v) for v in pop_kat["realisasi"]))
-    gframe3 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(2.7), Inches(4.3), Inches(8.0), Inches(2.9), cd3)
+    gframe3 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(2.0), Inches(4.3), Inches(9.5), Inches(chart3_h), cd3)
     chart3 = gframe3.chart
     chart3.series[0].format.fill.solid(); chart3.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
     chart3.series[1].format.fill.solid(); chart3.series[1].format.fill.fore_color.rgb = GREEN
     plot3 = chart3.plots[0]
     plot3.has_data_labels = True
     dls3 = plot3.data_labels
-    dls3.font.size = Pt(10); dls3.font.bold = True; dls3.font.color.rgb = TEXT_DARK; dls3.font.name = "Calibri"
+    dls3.font.size = Pt(9); dls3.font.bold = True; dls3.font.color.rgb = TEXT_DARK; dls3.font.name = "Calibri"
     dls3.position = XL_LABEL_POSITION.OUTSIDE_END
     style_chart_light(chart3)
 
