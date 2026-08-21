@@ -1000,13 +1000,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                  (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                  ach_btl is not None and ach_btl <= 100)
 
-    # --- Hitung tinggi tabel & posisi dinamis (agar tidak overflow saat kategori banyak) ---
+    # --- Hitung tinggi tabel & posisi dinamis: baris disebar memenuhi ruang ke bawah agar terlihat besar ---
     max_rows = max(len(au_rows), len(biaya_rows), 1)
-    tbl_font = 8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)
-    row_h = 0.26 if max_rows <= 6 else (0.22 if max_rows <= 9 else 0.19)
-    tbl_h = 0.35 + max_rows * row_h
     panel_top = mini_y + mini_h + 0.15
     tbl_top = panel_top + 0.35
+    target_bottom = 7.35
+    tbl_h_fill = target_bottom - tbl_top  # tinggi tabel kalau memenuhi ruang sampai bawah
+    row_h_fill = (tbl_h_fill - 0.35) / max_rows
+    row_h = min(0.55, max(0.19, row_h_fill))
+    tbl_font = 11 if row_h >= 0.42 else (9.5 if row_h >= 0.32 else (8.5 if max_rows <= 6 else (7.5 if max_rows <= 9 else 6.5)))
+    tbl_h = 0.35 + max_rows * row_h
     panel_h = tbl_h + 0.55
 
     # --- Tabel kiri: Availability & Utilisasi per Site & Jenis Sarmut ---
