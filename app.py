@@ -586,6 +586,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     SITE_ABBR = {"SUNGAI DANAU": "S.DANAU", "BUHUT LHL": "B.LHL", "TANJUNG": "TANJUNG",
                  "BUHUT": "BUHUT", "KUMAI": "KUMAI", "AMPAH": "AMPAH"}
 
+    # Deteksi divisi (Mining/Plantation) berdasarkan site yang difilter
+    MINING_SITES_PPTX = {"TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"}
+    PLANTATION_SITES_PPTX = {"SUNGAI DANAU", "KUMAI"}
+    site_set = set(site_list) if site_list else set()
+    if site_set and site_set.issubset(MINING_SITES_PPTX):
+        divisi_label = " · MINING"
+    elif site_set and site_set.issubset(PLANTATION_SITES_PPTX):
+        divisi_label = " · PLANTATION"
+    else:
+        divisi_label = ""
+
     # --- Palet warna (mengikuti gaya laporan RTM: terang, header navy) ---
     NAVY = RGBColor(0x1B, 0x25, 0x4B)
     NAVY_DARK = RGBColor(0x12, 0x18, 0x35)
@@ -887,7 +898,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     ach_util = ach_txt_pct(avg_util_r, avg_util_t) if (avg_util_r is not None and avg_util_t) else None
 
     # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
-    s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", "Ringkasan Kinerja · 01")
+    s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", f"Ringkasan Kinerja · 01{divisi_label}")
 
     card_w4, card_h4, gap4, cy4 = 2.85, 2.3, 0.25, 1.15
     add_kpi_card(s, 0.55, cy4, card_w4, card_h4, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
@@ -944,7 +955,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     size=12, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
-    s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", "Tren Bulanan · 02")
+    s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
 
     def klasifikasi_satuan_lokal(row):
         lok, kat = row["lokasi"], row["kategori"]
@@ -1037,7 +1048,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
               col_widths=[1.1] + [0.9] * n5, font_size=8, header_size=8)
 
     # ================= SLIDE 3: BIAYA OPERASIONAL =================
-    s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", "Biaya Operasional · 03")
+    s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional · 03{divisi_label}")
 
     tot_prestasi_r_pptx = data["prestasi_realisasi"].sum()
     tot_prestasi_b_pptx = data["prestasi_budget"].sum()
@@ -1182,7 +1193,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                   col_widths=[1.3] + [0.85] * n6, font_size=7, header_size=7)
 
     # ================= SLIDE 4: ANALISIS BIAYA vs CAPAIAN PRESTASI & MAINTENANCE =================
-    s = add_content_slide(f"ANALISIS: Biaya vs Capaian Prestasi & Maintenance — s/d {period}", "Analisis Biaya · 04")
+    s = add_content_slide(f"ANALISIS: Biaya vs Capaian Prestasi & Maintenance — s/d {period}", f"Analisis Biaya · 04{divisi_label}")
 
     add_card_panel(s, 0.5, 1.05, 6.15, 5.6)
     add_panel_header(s, 0.5, 1.05, 6.15, "Biaya vs Budget 🔷 vs Capaian Prestasi ⬛ — Total Keseluruhan")
@@ -1270,7 +1281,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     # ================= SLIDE 5: POPULASI UNIT =================
     card_w, card_h, gap, cy = 3.75, 2.4, 0.35, 1.25
-    s = add_content_slide("POPULASI UNIT — Target vs Realisasi", "Populasi Unit · 05")
+    s = add_content_slide("POPULASI UNIT — Target vs Realisasi", f"Populasi Unit · 05{divisi_label}")
     tp = data.loc[data["pendapatan_budget"] > 0, "nama_unit"].nunique()
     rp = data.loc[data["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
     pct_p = (rp / tp * 100) if tp else None
