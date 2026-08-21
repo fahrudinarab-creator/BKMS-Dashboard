@@ -1063,6 +1063,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         dls_u.font.size = Pt(8); dls_u.font.bold = True; dls_u.font.color.rgb = TEXT_DARK; dls_u.font.name = "Calibri"
         dls_u.position = XL_LABEL_POSITION.OUTSIDE_END
         style_chart_light(chart, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
+        # Kecilkan font sumbu kategori kalau kategorinya banyak (agar label tidak bertabrakan)
+        n_pop_cats = len(pop_site)
+        cat_font_pop = 9 if n_pop_cats <= 5 else (7.5 if n_pop_cats <= 8 else 6.3)
+        chart.category_axis.tick_labels.font.size = Pt(cat_font_pop)
+        dls_u.font.size = Pt(7 if n_pop_cats > 8 else 8)
 
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
     s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
