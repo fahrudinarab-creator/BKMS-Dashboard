@@ -586,6 +586,25 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     SITE_ABBR = {"SUNGAI DANAU": "S.DANAU", "BUHUT LHL": "B.LHL", "TANJUNG": "TANJUNG",
                  "BUHUT": "BUHUT", "KUMAI": "KUMAI", "AMPAH": "AMPAH"}
 
+    # Korelasi Jenis Unit -> Jenis Sarmut (mis. Arm Roll -> Dump Truck)
+    JENIS_UNIT_TO_SARMUT = {
+        "DT": "Dump Truck", "DT FM 260 JD": "Dump Truck", "DT Hino": "Dump Truck",
+        "DT Howo": "Dump Truck", "Arm Roll": "Dump Truck", "Trailler": "Dump Truck",
+        "Isuzu Elf": "Dump Truck",
+        "Crawler": "Crawler",
+        "Excavator": "Excavator", "Excavator All in": "Excavator", "Excavator Braaker 20 Ton": "Excavator",
+        "Excavator Breaker 30 Ton": "Excavator", "Excavator Bucket": "Excavator",
+        "Excavator Long arm": "Excavator", "Excavator Mini": "Excavator", "Excavator ZX-130": "Excavator",
+        "FT": "FT",
+        "Bulldozer": "Unit Support", "Compactor": "Unit Support", "Grader": "Unit Support",
+        "TLB": "Unit Support", "Backhoe Loader": "Unit Support", "Wheel Loader": "Unit Support",
+        "Pompa Air": "Unit Support", "Fuel Tank": "Unit Support",
+        "Truk Tangki": "Tangki CPO", "Tangki Air": "Tangki CPO",
+    }
+
+    def map_jenis_sarmut(jenis_unit):
+        return JENIS_UNIT_TO_SARMUT.get(jenis_unit, "Alat Berat")
+
     # Deteksi divisi (Mining/Plantation) berdasarkan site yang difilter
     MINING_SITES_PPTX = {"TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"}
     PLANTATION_SITES_PPTX = {"SUNGAI DANAU", "KUMAI"}
@@ -1013,37 +1032,37 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
               fill_badge=False)
 
     if show_chart:
-        add_textbox(s, 0.55, chart_top - 0.4, 11.5, 0.35, "Realisasi Utilisasi vs Target Utilisasi (Avg) — per Site & Jenis Sarmut", size=12.5, bold=True, color=TEXT_DARK)
-    if show_chart and not sasaran_mutu_data.empty:
-        sm_data = sasaran_mutu_data.copy()
-        sm_data["sarmut_label"] = sm_data["Jenis_Sarmut"].astype(str).str.replace("Sarmut Kelompok ", "", regex=False)
-        sm_data.loc[sasaran_mutu_data["Jenis_Sarmut"].isna(), "sarmut_label"] = None
-        sm_data = sm_data.dropna(subset=["sarmut_label"])
-        site_util = sm_data.groupby(["lokasi", "sarmut_label"], as_index=False).agg(
-            util_r=("utilisasi_pct", "mean"), util_t=("utilisasi_target", "mean"),
-        )
-        site_util["site_short"] = site_util["lokasi"].map(SITE_ABBR).fillna(site_util["lokasi"])
-        site_util["label"] = site_util["site_short"] + " (" + site_util["sarmut_label"] + ")"
-        site_util = site_util.sort_values(["lokasi", "sarmut_label"], ascending=[True, True])
+        add_textbox(s, 0.55, chart_top - 0.4, 11.5, 0.35, "Populasi Unit — per Site & Jenis Sarmut", size=12.5, bold=True, color=TEXT_DARK)
+    if show_chart:
+        pop_data = data.copy()
+        pop_data["sarmut_group"] = pop_data["jenis_unit"].apply(map_jenis_sarmut)
+        _bln_no = pop_data["bulan_no"].max()
+        pop_last = pop_data[pop_data["bulan_no"] == _bln_no]
+        pop_site = pop_last.groupby(["lokasi", "sarmut_group"]).apply(
+            lambda g: pd.Series({
+                "target": g.loc[g["pendapatan_budget"] > 0, "nama_unit"].nunique(),
+                "realisasi": g.loc[g["pendapatan_realisasi"] > 0, "nama_unit"].nunique(),
+            })
+        ).reset_index()
+        pop_site = pop_site[(pop_site["target"] > 0) | (pop_site["realisasi"] > 0)].copy()
+        pop_site["site_short"] = pop_site["lokasi"].map(SITE_ABBR).fillna(pop_site["lokasi"])
+        pop_site["label"] = pop_site["site_short"] + " (" + pop_site["sarmut_group"] + ")"
+        pop_site = pop_site.sort_values(["lokasi", "sarmut_group"], ascending=[True, True])
         cd = CategoryChartData()
-        cd.categories = list(site_util["label"])
-        cd.add_series("Target Utilisasi (%)", tuple(round(v, 1) for v in site_util["util_t"]))
-        cd.add_series("Realisasi Utilisasi (%)", tuple(round(v, 1) for v in site_util["util_r"]))
+        cd.categories = list(pop_site["label"])
+        cd.add_series("Target Populasi", tuple(int(v) for v in pop_site["target"]))
+        cd.add_series("Realisasi Populasi", tuple(int(v) for v in pop_site["realisasi"]))
         gframe = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top), Inches(12.2), Inches(chart_h), cd)
         chart = gframe.chart
         chart.series[0].format.fill.solid(); chart.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
-        chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = TEAL
+        chart.series[1].format.fill.solid(); chart.series[1].format.fill.fore_color.rgb = GREEN
         chart.has_title = False
         plot_u = chart.plots[0]
         plot_u.has_data_labels = True
         dls_u = plot_u.data_labels
-        dls_u.number_format = '0"%"'; dls_u.number_format_is_linked = False
         dls_u.font.size = Pt(8); dls_u.font.bold = True; dls_u.font.color.rgb = TEXT_DARK; dls_u.font.name = "Calibri"
         dls_u.position = XL_LABEL_POSITION.OUTSIDE_END
         style_chart_light(chart, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
-    elif show_chart:
-        add_textbox(s, 0.55, chart_top, 12.2, 0.6, "Data Sasaran Mutu (Availability/Utilisasi) belum tersedia untuk periode/filter ini.",
-                    size=12, italic=True, color=TEXT_MUTED)
 
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
     s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
