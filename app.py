@@ -845,7 +845,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     import datetime as _dt
 
-    period = ", ".join(month_list) if month_list else "-"
+    period = sorted(month_list, key=lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99)[-1] if month_list else "-"
     site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
     kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
     _bulan_id = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
