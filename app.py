@@ -1472,11 +1472,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         chart_h_m4 = 3.35
         chart_top_m4 = panel_top4 + 0.75
 
-        # --- Chart KIRI: 3 batang VERTIKAL basis % (Budget=100% referensi, Aktual=%capaian biaya, %Prestasi) ---
+        # --- Chart KIRI: 2 batang VERTIKAL basis % (Aktual=%capaian biaya, %Prestasi) ---
         add_textbox(s, 0.55, chart_top_m4 - 0.32, 5.85, 0.28, "Capaian Biaya vs Prestasi (%)", size=10.5, bold=True, color=TEXT_DARK)
         cd_m4 = CategoryChartData()
         cd_m4.categories = list(maint_sk4["label"])
-        cd_m4.add_series("Budget (100%)", tuple(100 for _ in range(n_m4)))
         cd_m4.add_series("Aktual (% Biaya)", tuple(round(v, 1) if v is not None and pd.notna(v) else 0 for v in maint_sk4["pct"]))
         cd_m4.add_series("% Prestasi", tuple(round(v, 1) if v is not None and pd.notna(v) else 0 for v in maint_sk4["prestasi_pct"]))
         gframe_m4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_m4), Inches(5.85), Inches(chart_h_m4), cd_m4)
@@ -1495,11 +1494,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             fill_obj.gradient_stops[1].color.rgb = bot_rgb
             fill_obj.gradient_angle = 90
 
-        _grad_fill(chart_m4.series[0], CHART_BUDGET_COLOR, BUDGET_DARK)
-        _grad_fill(chart_m4.series[1], GREEN, GREEN_DARK)
-        _grad_fill(chart_m4.series[2], CHART_PRESTASI_COLOR, PRESTASI_DARK)
+        _grad_fill(chart_m4.series[0], GREEN, GREEN_DARK)
+        _grad_fill(chart_m4.series[1], CHART_PRESTASI_COLOR, PRESTASI_DARK)
         chart_m4.has_title = False
-        for i, pt in enumerate(chart_m4.series[1].points):
+        for i, pt in enumerate(chart_m4.series[0].points):
             pv = maint_sk4["pct"].iloc[i]
             if pv is not None and pd.notna(pv) and pv > 105:
                 _grad_fill(pt, RED, RED_DARK)
@@ -1546,6 +1544,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         s_aktual.marker.format.fill.solid(); s_aktual.marker.format.fill.fore_color.rgb = WHITE
         s_aktual.marker.format.line.color.rgb = AKTUAL_COLOR
         s_aktual.marker.format.line.width = Pt(2.25)
+        for i, pt in enumerate(s_target.points):
+            dl = pt.data_label
+            dl.has_text_frame = True
+            dl.text_frame.text = fmt_rp(maint_sk4["maint_b"].iloc[i])
+            r0 = dl.text_frame.paragraphs[0].runs[0]
+            r0.font.size = Pt(6.5); r0.font.bold = True; r0.font.color.rgb = BUDGET_DARK; r0.font.name = "Calibri"
         for i, pt in enumerate(s_aktual.points):
             dl = pt.data_label
             dl.has_text_frame = True
@@ -1555,7 +1559,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         style_chart_light(chart_line, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
         chart_line.category_axis.tick_labels.font.size = Pt(cat_font_m4)
         chart_line.value_axis.tick_labels.font.size = Pt(cat_font_m4)
-        chart_line.value_axis.tick_labels.number_format = '#,##0.0,,"Jt"'
+        max_val_line = max(maint_sk4["maint_b"].max(), maint_sk4["maint_r"].max())
+        if max_val_line >= 1e9:
+            chart_line.value_axis.tick_labels.number_format = '#,##0.00,,,"M"'
+        else:
+            chart_line.value_axis.tick_labels.number_format = '#,##0.0,,"Jt"'
         chart_line.value_axis.tick_labels.number_format_is_linked = False
 
         over_sk4 = maint_sk4[maint_sk4["pct"] > 100].sort_values("pct", ascending=False)
