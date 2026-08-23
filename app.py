@@ -1365,7 +1365,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         headers_bl.extend(sub_headers)
 
     n_bl3 = n_bl * 3
-    tbl_font_bl = 8.5 if n_bl <= 3 else (7.5 if n_bl <= 5 else 6.3)
+    tbl_font_bl = 11 if n_bl <= 3 else (10 if n_bl <= 5 else 8.5)
     label_w_bl = 1.3
     sub_col_w = (12.2 - label_w_bl) / n_bl3
     col_widths_bl = [label_w_bl] + [sub_col_w] * n_bl3
