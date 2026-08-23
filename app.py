@@ -1131,7 +1131,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         analysis_txt = "Seluruh site & satuan mencapai atau melampaui target pendapatan — tidak ada kekurangan yang perlu disorot."
     analysis_top = tbl5_top + tbl_h5 + 0.2
     add_finding_box(s, 0.55, analysis_top, 12.2, analysis_h, "📌",
-                     f"Analisa Capaian Prestasi vs Pendapatan: {analysis_txt}",
+                     f"Analisa Prestasi Terhadap Pendapatan: {analysis_txt}",
                      GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
     # ================= SLIDE 3: BIAYA OPERASIONAL =================
