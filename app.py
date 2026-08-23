@@ -1037,75 +1037,32 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
     s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
 
-    # --- Chart kiri dipecah per satuan (HM/KM/Ton) — masing2 dalam card panel berwarna khas, lebih lega tanpa tabel kecil ---
     satuan_present = sorted(data["satuan_lokal"].dropna().unique().tolist())
     n_sat = max(len(satuan_present), 1)
-    block_top0 = 1.05
-    block_bottom = 6.9
-    block_gap = 0.22
-    block_h = (block_bottom - block_top0 - (n_sat - 1) * block_gap) / n_sat
-
     SAT_COLOR = {"HM": TEAL, "KM": GOLD, "Ton": RGBColor(0x8E, 0x6B, 0xC9)}
     SAT_ICON = {"HM": "⏱", "KM": "🛣", "Ton": "⚖"}
 
+    # --- Kartu ringkasan Prestasi per satuan (gaya sama dgn Avg Availability/Utilisasi) ---
+    card_gap = 0.25
+    card_y = 1.05
+    card_h = 1.85
+    card_w = (12.2 - (n_sat - 1) * card_gap) / n_sat
     for i, sat in enumerate(satuan_present):
         d_sat = data[data["satuan_lokal"] == sat]
-        bln_agg = d_sat.groupby("bulan", as_index=False).agg(
-            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
-        )
-        bln_agg["order"] = bln_agg["bulan"].apply(lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99)
-        bln_agg = bln_agg.sort_values("order")
+        r_tot = d_sat["prestasi_realisasi"].sum()
+        b_tot = d_sat["prestasi_budget"].sum()
+        capaian = (r_tot / b_tot * 100) if b_tot else None
         sat_color = SAT_COLOR.get(sat, TEAL)
         sat_icon = SAT_ICON.get(sat, "📊")
+        good = capaian is not None and capaian >= 100
+        cx = 0.55 + i * (card_w + card_gap)
+        add_kpi_card(s, cx, card_y, card_w, card_h, sat_icon, sat_color, GREEN if good else RED,
+                     f"Prestasi {sat}", (f"{capaian:.1f}%" if capaian is not None else "-"),
+                     f"Realisasi: {r_tot:,.0f} / Target: {b_tot:,.0f}",
+                     (f"✓ {capaian:.1f}% dari Target" if good else (f"✗ {capaian:.1f}% dari Target" if capaian is not None else "Data tidak tersedia")),
+                     good)
 
-        block_top = block_top0 + i * (block_h + block_gap)
-        header_h = 0.4
-        tbl_h_sat = 0.5
-
-        add_card_panel(s, 0.45, block_top, 6.1, block_h, accent_color=sat_color)
-        add_panel_header(s, 0.45, block_top, 6.1, f"{sat_icon}  Prestasi {sat} — Tren Bulanan (Realisasi vs Budget)", height=header_h)
-
-        cd4 = CategoryChartData()
-        cd4.categories = list(bln_agg["bulan"])
-        cd4.add_series("Prestasi Budget", tuple(bln_agg["prestasi_b"]))
-        cd4.add_series("Prestasi Realisasi", tuple(bln_agg["prestasi_r"]))
-        chart_h_sat = block_h - header_h - tbl_h_sat - 0.2
-        gframe4 = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.6), Inches(block_top + header_h + 0.05), Inches(5.95), Inches(chart_h_sat), cd4)
-        chart4 = gframe4.chart
-        chart4.series[0].format.line.color.rgb = RGBColor(0xC7, 0xCC, 0xD8)
-        chart4.series[0].format.line.width = Pt(1.75)
-        chart4.series[0].marker.format.fill.solid(); chart4.series[0].marker.format.fill.fore_color.rgb = RGBColor(0xC7, 0xCC, 0xD8)
-        chart4.series[0].marker.format.line.fill.background()
-        chart4.series[1].format.line.color.rgb = sat_color
-        chart4.series[1].format.line.width = Pt(3)
-        chart4.series[1].marker.format.fill.solid(); chart4.series[1].marker.format.fill.fore_color.rgb = sat_color
-        chart4.series[1].marker.format.line.fill.background()
-        chart4.has_title = False
-        for j, pt in enumerate(chart4.series[1].points):
-            b_val = bln_agg["prestasi_b"].iloc[j]
-            r_val = bln_agg["prestasi_r"].iloc[j]
-            pct_val = (r_val / b_val * 100) if b_val else None
-            if pct_val is not None:
-                dl = pt.data_label
-                dl.has_text_frame = True
-                dl.text_frame.text = f"{pct_val:.0f}%"
-                r0 = dl.text_frame.paragraphs[0].runs[0]
-                r0.font.size = Pt(9.5); r0.font.bold = True; r0.font.color.rgb = sat_color; r0.font.name = "Calibri"
-        style_chart_light(chart4, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
-        cat_font_sat = 9.5 if n_sat <= 2 else 8
-        chart4.category_axis.tick_labels.font.size = Pt(cat_font_sat)
-        chart4.value_axis.tick_labels.font.size = Pt(cat_font_sat)
-        chart4.value_axis.tick_labels.number_format = '#,##0'
-        chart4.value_axis.tick_labels.number_format_is_linked = False
-
-        tbl4_rows = [
-            ["Budget"] + [f"{v:,.0f}" for v in bln_agg["prestasi_b"]],
-            ["Realisasi"] + [f"{v:,.0f}" for v in bln_agg["prestasi_r"]],
-        ]
-        tbl_font_sat = 8 if n_sat <= 2 else 6.8
-        add_table(s, 0.6, block_top + block_h - tbl_h_sat - 0.08, 5.95, tbl_h_sat, ["Metrik"] + list(bln_agg["bulan"]), tbl4_rows,
-                  col_widths=[1.1] + [(5.95 - 1.1) / len(bln_agg)] * len(bln_agg), font_size=tbl_font_sat, header_size=tbl_font_sat)
-
+    # --- Chart per site & satuan (full width, di bawah kartu) ---
     site_prs2 = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
         prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
     )
@@ -1113,12 +1070,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     site_prs2["site_short"] = site_prs2["lokasi"].map(SITE_ABBR).fillna(site_prs2["lokasi"])
     site_prs2["label"] = site_prs2["site_short"] + " (" + site_prs2["satuan_lokal"] + ")"
     site_prs2 = site_prs2.sort_values(["lokasi", "satuan_lokal"], ascending=[True, True])
-    add_textbox(s, 6.85, 1.05, 6, 0.35, "Prestasi Aktual vs Target — per Site & Satuan (HM/KM/Ton)", size=13, bold=True, color=TEXT_DARK)
+
+    chart_top2 = card_y + card_h + 0.2
+    add_textbox(s, 0.55, chart_top2, 12.2, 0.35, "Prestasi Aktual vs Target — per Site & Satuan (HM/KM/Ton)", size=13, bold=True, color=TEXT_DARK)
     cd5 = CategoryChartData()
     cd5.categories = list(site_prs2["label"])
     cd5.add_series("Target", tuple(site_prs2["prestasi_b"]))
     cd5.add_series("Aktual", tuple(site_prs2["prestasi_r"]))
-    gframe5 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(6.85), Inches(1.45), Inches(5.9), Inches(4.35), cd5)
+    n5 = len(site_prs2)
+    analysis_h = 0.72
+    tbl_h5 = 0.55
+    chart_h5 = 6.9 - (chart_top2 + 0.4) - tbl_h5 - analysis_h - 0.25
+    gframe5 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.55), Inches(chart_top2 + 0.4), Inches(12.2), Inches(chart_h5), cd5)
     chart5 = gframe5.chart
     chart5.series[0].format.fill.solid(); chart5.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
     chart5.series[1].format.fill.solid(); chart5.series[1].format.fill.fore_color.rgb = TEAL
@@ -1134,15 +1097,42 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             dl.text_frame.text = f"{pct_val:.0f}%"
             r0 = dl.text_frame.paragraphs[0].runs[0]
             r0.font.size = Pt(9); r0.font.bold = True; r0.font.color.rgb = TEAL; r0.font.name = "Calibri"
-    style_chart_light(chart5)
+    style_chart_light(chart5, legend=True, legend_pos=XL_LEGEND_POSITION.LEFT)
+    cat_font5 = 9.5 if n5 <= 6 else (8 if n5 <= 9 else 6.8)
+    chart5.category_axis.tick_labels.font.size = Pt(cat_font5)
 
+    # --- Tabel data utk chart Prestasi Aktual vs Target ---
     tbl5_rows = [
         ["Target"] + [f"{v:,.0f}" for v in site_prs2["prestasi_b"]],
         ["Aktual"] + [f"{v:,.0f}" for v in site_prs2["prestasi_r"]],
     ]
-    n5 = len(site_prs2)
-    add_table(s, 6.85, 5.9, 5.9, 1.0, ["Metrik"] + list(site_prs2["label"]), tbl5_rows,
-              col_widths=[1.1] + [0.9] * n5, font_size=8, header_size=8)
+    tbl5_top = chart_top2 + 0.4 + chart_h5 + 0.1
+    tbl_font5 = 8.5 if n5 <= 6 else (7 if n5 <= 9 else 6)
+    label_w5 = 1.1
+    col_w5 = (12.2 - label_w5) / n5
+    add_table(s, 0.55, tbl5_top, 12.2, tbl_h5, ["Metrik"] + list(site_prs2["label"]), tbl5_rows,
+              col_widths=[label_w5] + [col_w5] * n5, font_size=tbl_font5, header_size=tbl_font5)
+
+    # --- Analisa: site & satuan mana yg gap prestasinya paling menekan pendapatan ---
+    site_pdt_gap = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
+        pendapatan_r=("pendapatan_realisasi", "sum"), pendapatan_b=("pendapatan_budget", "sum"),
+        prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
+    )
+    site_pdt_gap["gap_pendapatan"] = site_pdt_gap["pendapatan_r"] - site_pdt_gap["pendapatan_b"]
+    site_pdt_gap = site_pdt_gap[site_pdt_gap["gap_pendapatan"] < 0].sort_values("gap_pendapatan")
+    if not site_pdt_gap.empty:
+        worst = site_pdt_gap.iloc[0]
+        worst_prestasi_pct = (worst["prestasi_r"] / worst["prestasi_b"] * 100) if worst["prestasi_b"] else None
+        prestasi_txt = f"prestasi baru tercapai {worst_prestasi_pct:.0f}% dari target" if worst_prestasi_pct is not None else "prestasi tidak tercapai target"
+        analysis_txt = (f"{worst['lokasi']} ({worst['satuan_lokal']}) adalah kontributor terbesar kekurangan pendapatan — "
+                         f"{prestasi_txt}, menyebabkan gap pendapatan {fmt_rp(abs(worst['gap_pendapatan']))} "
+                         f"dari total kekurangan pendapatan {fmt_rp(abs(site_pdt_gap['gap_pendapatan'].sum()))} di seluruh site.")
+    else:
+        analysis_txt = "Seluruh site & satuan mencapai atau melampaui target pendapatan — tidak ada kekurangan yang perlu disorot."
+    analysis_top = tbl5_top + tbl_h5 + 0.2
+    add_finding_box(s, 0.55, analysis_top, 12.2, analysis_h, "📌",
+                     f"Analisa Capaian Prestasi vs Pendapatan: {analysis_txt}",
+                     GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
     # ================= SLIDE 3: BIAYA OPERASIONAL =================
     s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional · 03{divisi_label}")
