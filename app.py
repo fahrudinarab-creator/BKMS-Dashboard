@@ -1037,12 +1037,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
     s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · 02{divisi_label}")
 
-    # --- Chart kiri dipecah per satuan (HM/KM/Ton) — jangan digabung krn beda dimensi ---
+    # --- Chart kiri dipecah per satuan (HM/KM/Ton) — masing2 dalam card panel berwarna khas, lebih lega tanpa tabel kecil ---
     satuan_present = sorted(data["satuan_lokal"].dropna().unique().tolist())
     n_sat = max(len(satuan_present), 1)
     block_top0 = 1.05
     block_bottom = 6.9
-    block_h = (block_bottom - block_top0) / n_sat
+    block_gap = 0.22
+    block_h = (block_bottom - block_top0 - (n_sat - 1) * block_gap) / n_sat
+
+    SAT_COLOR = {"HM": TEAL, "KM": GOLD, "Ton": RGBColor(0x8E, 0x6B, 0xC9)}
+    SAT_ICON = {"HM": "⏱", "KM": "🛣", "Ton": "⚖"}
 
     for i, sat in enumerate(satuan_present):
         d_sat = data[data["satuan_lokal"] == sat]
@@ -1051,24 +1055,31 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         )
         bln_agg["order"] = bln_agg["bulan"].apply(lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99)
         bln_agg = bln_agg.sort_values("order")
+        sat_color = SAT_COLOR.get(sat, TEAL)
+        sat_icon = SAT_ICON.get(sat, "📊")
 
-        block_top = block_top0 + i * block_h
-        title_h = 0.3
-        tbl_h_sat = 0.55
-        block_gap = 0.15
-        chart_h_sat = block_h - title_h - tbl_h_sat - block_gap
+        block_top = block_top0 + i * (block_h + block_gap)
+        header_h = 0.4
+        tbl_h_sat = 0.5
 
-        add_textbox(s, 0.55, block_top, 6, title_h, f"Tren Bulanan: Prestasi {sat} (Realisasi vs Budget)", size=12, bold=True, color=TEXT_DARK)
+        add_card_panel(s, 0.45, block_top, 6.1, block_h, accent_color=sat_color)
+        add_panel_header(s, 0.45, block_top, 6.1, f"{sat_icon}  Prestasi {sat} — Tren Bulanan (Realisasi vs Budget)", height=header_h)
+
         cd4 = CategoryChartData()
         cd4.categories = list(bln_agg["bulan"])
         cd4.add_series("Prestasi Budget", tuple(bln_agg["prestasi_b"]))
         cd4.add_series("Prestasi Realisasi", tuple(bln_agg["prestasi_r"]))
-        gframe4 = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.55), Inches(block_top + title_h), Inches(6.1), Inches(chart_h_sat), cd4)
+        chart_h_sat = block_h - header_h - tbl_h_sat - 0.2
+        gframe4 = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.6), Inches(block_top + header_h + 0.05), Inches(5.95), Inches(chart_h_sat), cd4)
         chart4 = gframe4.chart
-        chart4.series[0].format.line.color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
-        chart4.series[0].format.line.width = Pt(2)
-        chart4.series[1].format.line.color.rgb = TEAL
-        chart4.series[1].format.line.width = Pt(2.5)
+        chart4.series[0].format.line.color.rgb = RGBColor(0xC7, 0xCC, 0xD8)
+        chart4.series[0].format.line.width = Pt(1.75)
+        chart4.series[0].marker.format.fill.solid(); chart4.series[0].marker.format.fill.fore_color.rgb = RGBColor(0xC7, 0xCC, 0xD8)
+        chart4.series[0].marker.format.line.fill.background()
+        chart4.series[1].format.line.color.rgb = sat_color
+        chart4.series[1].format.line.width = Pt(3)
+        chart4.series[1].marker.format.fill.solid(); chart4.series[1].marker.format.fill.fore_color.rgb = sat_color
+        chart4.series[1].marker.format.line.fill.background()
         chart4.has_title = False
         for j, pt in enumerate(chart4.series[1].points):
             b_val = bln_agg["prestasi_b"].iloc[j]
@@ -1079,19 +1090,21 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dl.has_text_frame = True
                 dl.text_frame.text = f"{pct_val:.0f}%"
                 r0 = dl.text_frame.paragraphs[0].runs[0]
-                r0.font.size = Pt(8); r0.font.bold = True; r0.font.color.rgb = TEAL; r0.font.name = "Calibri"
-        style_chart_light(chart4, legend=(n_sat <= 2))
-        cat_font_sat = 9 if n_sat <= 2 else 7.5
+                r0.font.size = Pt(9.5); r0.font.bold = True; r0.font.color.rgb = sat_color; r0.font.name = "Calibri"
+        style_chart_light(chart4, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
+        cat_font_sat = 9.5 if n_sat <= 2 else 8
         chart4.category_axis.tick_labels.font.size = Pt(cat_font_sat)
         chart4.value_axis.tick_labels.font.size = Pt(cat_font_sat)
+        chart4.value_axis.tick_labels.number_format = '#,##0'
+        chart4.value_axis.tick_labels.number_format_is_linked = False
 
         tbl4_rows = [
-            [f"Budget {sat}"] + [f"{v:,.0f}" for v in bln_agg["prestasi_b"]],
-            [f"Realisasi {sat}"] + [f"{v:,.0f}" for v in bln_agg["prestasi_r"]],
+            ["Budget"] + [f"{v:,.0f}" for v in bln_agg["prestasi_b"]],
+            ["Realisasi"] + [f"{v:,.0f}" for v in bln_agg["prestasi_r"]],
         ]
-        tbl_font_sat = 8.5 if n_sat <= 2 else 7
-        add_table(s, 0.55, block_top + block_h - block_gap - tbl_h_sat, 6.1, tbl_h_sat, ["Metrik"] + list(bln_agg["bulan"]), tbl4_rows,
-                  col_widths=[1.4] + [(6.1 - 1.4) / len(bln_agg)] * len(bln_agg), font_size=tbl_font_sat, header_size=tbl_font_sat)
+        tbl_font_sat = 8 if n_sat <= 2 else 6.8
+        add_table(s, 0.6, block_top + block_h - tbl_h_sat - 0.08, 5.95, tbl_h_sat, ["Metrik"] + list(bln_agg["bulan"]), tbl4_rows,
+                  col_widths=[1.1] + [(5.95 - 1.1) / len(bln_agg)] * len(bln_agg), font_size=tbl_font_sat, header_size=tbl_font_sat)
 
     site_prs2 = data.groupby(["lokasi", "satuan_lokal"], as_index=False).agg(
         prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
