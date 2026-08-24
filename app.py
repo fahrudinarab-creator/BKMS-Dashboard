@@ -1037,20 +1037,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             else:
                 add_textbox(slide, 0.6, chart_top_x + 0.1, 12.0, 0.4, "Tidak ada data untuk kategori ini.", size=10, italic=True, color=TEXT_MUTED)
 
-        # --- Dua chart terpisah: Floating Tarif (lebih besar) di atas, Tarif Tetap di bawah ---
+        # --- Chart Floating Tarif saja (Tarif Tetap dihilangkan krn tidak ada tracking Utilisasi/Availability yg berarti) ---
         panel_top = mini_y + mini_h + 0.15
         panel_bottom = 7.3
         total_h = panel_bottom - panel_top
-        h_floating = total_h * 0.56
-        h_tetap = total_h * 0.27
-        h_finding = total_h - h_floating - h_tetap - 0.2
+        h_floating = total_h * 0.8
+        h_finding = total_h - h_floating - 0.15
 
-        _draw_util_chart(s, au_rows_floating, panel_top, h_floating, "🟢 Capaian Utilisasi & Prestasi — Floating Tarif (per Site & Jenis Unit)")
-        top_tetap = panel_top + h_floating + 0.1
-        _draw_util_chart(s, au_rows_tetap, top_tetap, h_tetap, "🔵 Capaian Utilisasi & Prestasi — Tarif Tetap (per Site & Jenis Unit)")
+        _draw_util_chart(s, au_rows_floating, panel_top, h_floating, "🟢 Capaian Utilisasi & Prestasi — per Site & Jenis Unit")
 
         # --- Analisa: unit dgn gap pendapatan (realisasi - budget) paling minus, dikaitkan dgn capaian utilisasinya ---
-        note_top_au = top_tetap + h_tetap + 0.1
+        note_top_au = panel_top + h_floating + 0.1
         note_h_au = panel_bottom - note_top_au
         gap_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
             pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"))
@@ -1061,10 +1058,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         util_cap_lookup = {r["label"]: r["util_cap"] for r in au_rows}
         gap_unit["util_cap"] = gap_unit["label"].map(util_cap_lookup)
         gap_unit_neg = gap_unit[gap_unit["gap"] < 0].sort_values("gap")
-        # Prioritaskan unit yang gap minusnya memang berkaitan dgn utilisasi rendah (util_cap < 100%);
-        # kalau tidak ada, baru fallback ke gap paling minus secara umum (dgn narasi yang jujur/kondisional)
-        gap_unit_neg_lowutil = gap_unit_neg[gap_unit_neg["util_cap"] < 100]
-        target_row = gap_unit_neg_lowutil.iloc[0] if not gap_unit_neg_lowutil.empty else (gap_unit_neg.iloc[0] if not gap_unit_neg.empty else None)
+        # Cari unit dgn gap pendapatan paling minus secara keseluruhan (tanpa filter prioritas utilisasi)
+        target_row = gap_unit_neg.iloc[0] if not gap_unit_neg.empty else None
         if target_row is not None:
             wg = target_row
             wg_util = wg["util_cap"]
@@ -1108,9 +1103,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         panel_top2 = 1.05
         panel_bottom2 = 7.3
         total_h2 = panel_bottom2 - panel_top2
-        h_chart1 = total_h2 * 0.42
-        h_chart2 = total_h2 * 0.42
-        h_finding2 = total_h2 - h_chart1 - h_chart2 - 0.2
+        h_chart1 = total_h2 * 0.48
+        h_chart2 = total_h2 * 0.48
 
         def _draw_avail_chart(slide, rows, top, height, title, series1_name, series1_key, series1_color,
                                series2_name, series2_key, series2_color, num_fmt):
@@ -1154,41 +1148,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                            "🔵 % Capaian Availability vs % Capaian Utilisasi — per Site & Jenis Unit",
                            "% Capaian Availability", "avail_cap", TEAL,
                            "% Capaian Utilisasi", "util_cap", GOLD, '0"%"')
-
-        # --- Analisa: unit mana yang PALING mempengaruhi pendapatan (gap pendapatan paling minus), dikaitkan dgn Availability ---
-        note_top2 = top_chart2 + h_chart2 + 0.1
-        gap_unit2 = data.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-            pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"))
-        gap_unit2 = gap_unit2[(gap_unit2["pend_r"] > 0) | (gap_unit2["pend_b"] > 0)].copy()
-        gap_unit2["gap"] = gap_unit2["pend_r"] - gap_unit2["pend_b"]
-        gap_unit2["site_short"] = gap_unit2["lokasi"].map(SITE_ABBR).fillna(gap_unit2["lokasi"])
-        gap_unit2["label"] = gap_unit2["site_short"] + " — " + gap_unit2["jenis_unit"]
-        avail_cap_lookup2 = {r["label"]: r["avail_cap"] for r in avail_rows}
-        gap_unit2["avail_cap"] = gap_unit2["label"].map(avail_cap_lookup2)
-        gap_unit2_neg = gap_unit2[gap_unit2["gap"] < 0].sort_values("gap")
-        # Prioritaskan unit yang gap minusnya memang berkaitan dgn availability rendah (avail_cap < 100%);
-        # kalau tidak ada, fallback ke gap paling minus secara umum (dgn narasi jujur/kondisional)
-        gap_unit2_neg_lowavail = gap_unit2_neg[gap_unit2_neg["avail_cap"] < 100]
-        target_row2 = gap_unit2_neg_lowavail.iloc[0] if not gap_unit2_neg_lowavail.empty else (gap_unit2_neg.iloc[0] if not gap_unit2_neg.empty else None)
-        if target_row2 is not None:
-            wg2 = target_row2
-            wg2_avail = wg2["avail_cap"]
-            avail_txt2 = f"{wg2_avail:.1f}%" if wg2_avail is not None else "tidak tersedia"
-            if wg2_avail is not None and wg2_avail < 100:
-                penyebab_txt2 = "Rendahnya capaian availability unit ini menjadi salah satu penyebab utama kekurangan pendapatan."
-            elif wg2_avail is not None:
-                penyebab_txt2 = "Meski capaian availability sudah tercapai, gap pendapatan tetap terjadi — kemungkinan disebabkan faktor lain (tarif/rate, harga jual, atau komposisi pekerjaan)."
-            else:
-                penyebab_txt2 = "Data capaian availability unit ini belum tersedia untuk analisis lebih lanjut."
-            add_finding_box(s, 0.6, note_top2, 12.2, h_finding2, "📌",
-                             f"{wg2['label']} adalah unit yang PALING MEMPENGARUHI PENDAPATAN ({fmt_rp(wg2['gap'])}) — "
-                             f"Realisasi {fmt_rp(wg2['pend_r'])} vs Budget {fmt_rp(wg2['pend_b'])}, dengan Capaian Availability {avail_txt2}. "
-                             f"{penyebab_txt2}",
-                             RED_BG, RED, RED)
-        else:
-            add_finding_box(s, 0.6, note_top2, 12.2, h_finding2, "✅",
-                             "Tidak ada unit dengan gap pendapatan minus — seluruh unit mencapai/melebihi target pendapatan.",
-                             GREEN_BG, GREEN, GREEN)
 
         # ================= SLIDE 3: BIAYA OPERASIONAL =================
         s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional · {snum3}{divisi_label}{kat_suffix}")
