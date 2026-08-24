@@ -1243,7 +1243,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             ["Biaya Lainnya", fmt_rp(lain_b3), fmt_rp(lain_r3), _cap_disp3(cap_lain3), "-"],
         ]
 
-        tbl3_top = 1.4
+        add_textbox(s, 1.9, 1.0, 9.5, 0.35, f"Ringkasan Biaya PT. BKMS (s/d {period})", size=18, bold=True, color=TEXT_DARK)
+
+        tbl3_top = 1.5
         tbl3_h = 3.7
         add_table(s, 1.9, tbl3_top, 9.5, tbl3_h,
                   ["Metrik", "Budget", "Aktual", "Capaian", "Capaian Fisik"], ringkasan3_rows,
