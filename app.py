@@ -949,6 +949,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             au_tbl["site_short"] = au_tbl["lokasi"].map(SITE_ABBR).fillna(au_tbl["lokasi"])
             au_tbl = au_tbl.sort_values(["lokasi", "kategori", "jenis_unit"])
 
+            prestasi_unit = data.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+                prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
+            prestasi_unit["cap"] = prestasi_unit.apply(lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
+            prestasi_lookup_unit = {(r["lokasi"], r["kategori"], r["jenis_unit"]): r["cap"] for _, r in prestasi_unit.iterrows()}
+
+            # Fallback ke level site+kategori kalau kombinasi jenis_unit spesifik tidak ada datanya
             prestasi_sk1 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
                 prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
             prestasi_sk1["cap"] = prestasi_sk1.apply(lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
@@ -956,7 +962,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             for _, r in au_tbl.iterrows():
                 util_cap = (r["util_r"] / r["util_t"] * 100) if r["util_t"] else None
-                prestasi_cap = prestasi_lookup.get((r["lokasi"], r["kategori"]))
+                prestasi_cap = prestasi_lookup_unit.get((r["lokasi"], r["kategori"], r["jenis_unit"]))
+                if prestasi_cap is None:
+                    prestasi_cap = prestasi_lookup.get((r["lokasi"], r["kategori"]))
                 au_rows.append({"label": f"{r['site_short']} — {r['jenis_unit']}", "util_cap": util_cap, "prestasi_cap": prestasi_cap})
 
         # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
