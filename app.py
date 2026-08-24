@@ -982,16 +982,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
         mini_w, mini_h, mini_gap, mini_y = 2.85, 1.95, 0.25, 1.05
-        add_kpi_card(s, 0.55, mini_y, mini_w, mini_h, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
-                     "Avg Availability", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
-                     f"Target: {avg_avail_t:.1f}%" if avg_avail_t is not None else "Target: -",
-                     (f"✓ {ach_avail:.1f}% dari Target" if ach_avail is not None and ach_avail >= 100 else (f"✗ {ach_avail:.1f}% dari Target" if ach_avail is not None else "Data tidak tersedia")),
-                     ach_avail is not None and ach_avail >= 100)
-        add_kpi_card(s, 0.55 + (mini_w + mini_gap), mini_y, mini_w, mini_h, "🎯", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
+        add_kpi_card(s, 0.55, mini_y, mini_w, mini_h, "🎯", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
                      "Avg Utilisasi", (f"{avg_util_r:.1f}%" if avg_util_r is not None else "-"),
                      f"Target: {avg_util_t:.1f}%" if avg_util_t is not None else "Target: -",
                      (f"✓ {ach_util:.1f}% dari Target" if ach_util is not None and ach_util >= 100 else (f"✗ {ach_util:.1f}% dari Target" if ach_util is not None else "Data tidak tersedia")),
                      ach_util is not None and ach_util >= 100)
+        add_kpi_card(s, 0.55 + (mini_w + mini_gap), mini_y, mini_w, mini_h, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
+                     "Avg Availability", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
+                     f"Target: {avg_avail_t:.1f}%" if avg_avail_t is not None else "Target: -",
+                     (f"✓ {ach_avail:.1f}% dari Target" if ach_avail is not None and ach_avail >= 100 else (f"✗ {ach_avail:.1f}% dari Target" if ach_avail is not None else "Data tidak tersedia")),
+                     ach_avail is not None and ach_avail >= 100)
         add_kpi_card(s, 0.55 + 2 * (mini_w + mini_gap), mini_y, mini_w, mini_h, "💰", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
                      "Biaya Langsung/Prestasi", (fmt_rp(bl_r) if bl_r is not None else "-"),
                      f"Budget: {fmt_rp(bl_b)}" if bl_b is not None else "Budget: -",
