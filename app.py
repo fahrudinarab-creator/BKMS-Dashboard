@@ -1149,272 +1149,122 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                            "% Capaian Availability", "avail_cap", TEAL,
                            "% Capaian Utilisasi", "util_cap", GOLD, '0"%"')
 
-        # ================= SLIDE 3: BIAYA OPERASIONAL =================
-        s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional · {snum3}{divisi_label}{kat_suffix}")
+        # ================= SLIDE 3: BIAYA OPERASIONAL — Ringkasan Biaya vs Fisik =================
+        s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional \u00b7 {snum3}{divisi_label}{kat_suffix}")
 
-        tot_prestasi_r_pptx = data["prestasi_realisasi"].sum()
-        tot_prestasi_b_pptx = data["prestasi_budget"].sum()
-        ach_prestasi_pptx = ach_txt_pct(tot_prestasi_r_pptx, tot_prestasi_b_pptx)
-        tot_qty_bbm_b_pptx = data["qty_bbm_budget"].sum()
-        tot_qty_bbm_r_pptx = data["qty_bbm_realisasi"].sum()
+        # --- Filter khusus BBM: baris dgn qty_bbm ada TAPI biaya_bbm ATAU prestasi tidak ada -> jangan dihitung ---
+        def _bbm_valid_mask(df_):
+            bad_r = (df_["qty_bbm_realisasi"] > 0) & ((df_["biaya_bbm_realisasi"].fillna(0) == 0) | (df_["prestasi_realisasi"].fillna(0) == 0))
+            bad_b = (df_["qty_bbm_budget"] > 0) & ((df_["biaya_bbm_budget"].fillna(0) == 0) | (df_["prestasi_budget"].fillna(0) == 0))
+            return ~(bad_r | bad_b)
 
-        if kat_list == ["TR"]:
-            kat_label_suffix_pptx = "/KM"
-        elif kat_list == ["AB"]:
-            kat_label_suffix_pptx = "/satuan"
+        data_bbm_ok = data[_bbm_valid_mask(data)]
+
+        tot_biaya_r3 = data["total_biaya_realisasi"].sum()
+        tot_biaya_b3 = data["total_biaya_budget"].sum()
+        cap_biaya3 = (tot_biaya_r3 / tot_biaya_b3 * 100) if tot_biaya_b3 else None
+        prestasi_r3 = data["prestasi_realisasi"].sum()
+        prestasi_b3 = data["prestasi_budget"].sum()
+        cap_fisik_biaya3 = (prestasi_r3 / prestasi_b3 * 100) if prestasi_b3 else None
+
+        upah_r3 = data["upah_realisasi"].sum()
+        upah_b3 = data["upah_budget"].sum()
+        cap_upah3 = (upah_r3 / upah_b3 * 100) if upah_b3 else None
+
+        bbm_biaya_r3 = data_bbm_ok["biaya_bbm_realisasi"].sum()
+        bbm_biaya_b3 = data_bbm_ok["biaya_bbm_budget"].sum()
+        bbm_qty_r3 = data_bbm_ok["qty_bbm_realisasi"].sum()
+        bbm_qty_b3 = data_bbm_ok["qty_bbm_budget"].sum()
+        # Rp/Ltr = Total Biaya BBM dibagi Total Qty BBM
+        harga_bbm_r3 = (bbm_biaya_r3 / bbm_qty_r3) if bbm_qty_r3 else None
+        harga_bbm_b3 = (bbm_biaya_b3 / bbm_qty_b3) if bbm_qty_b3 else None
+        cap_bbm3 = (harga_bbm_r3 / harga_bbm_b3 * 100) if (harga_bbm_r3 is not None and harga_bbm_b3) else None
+        bbm_prestasi_r3 = data_bbm_ok["prestasi_realisasi"].sum()
+        bbm_prestasi_b3 = data_bbm_ok["prestasi_budget"].sum()
+
+        # Capaian Fisik BBM tergantung kategori: Transportasi pakai KM/Ltr (makin tinggi makin baik),
+        # Alat Berat pakai Ltr/HM (makin rendah makin baik). Kalau data campuran, tentukan dari kategori dominan.
+        kategori_set_bbm3 = set(data_bbm_ok["kategori"].dropna().unique())
+        if kategori_set_bbm3 == {"AB"} or (len(kategori_set_bbm3) > 1 and "ALAT BERAT" in kat_suffix):
+            is_ab_bbm3 = True
+        elif kategori_set_bbm3 == {"TR"} or (len(kategori_set_bbm3) > 1 and "TRANSPORTASI" in kat_suffix):
+            is_ab_bbm3 = False
+        elif len(kategori_set_bbm3) > 1:
+            # Campuran & tidak ada penanda kategori jelas -> pakai kategori dgn kontribusi biaya BBM terbesar
+            kat_biaya = data_bbm_ok.groupby("kategori")["biaya_bbm_realisasi"].sum()
+            is_ab_bbm3 = (not kat_biaya.empty) and (kat_biaya.idxmax() == "AB")
         else:
-            kat_label_suffix_pptx = ""
+            is_ab_bbm3 = False
 
-        def biaya_row_pptx(label, real_col, budget_col, is_bbm=False, raw=False):
-            comp_r = data[real_col].sum(); comp_b = data[budget_col].sum()
-            if raw:
-                rate_b, rate_r, suffix = comp_b, comp_r, ""
-                display_label = label
-            elif is_bbm:
-                rate_b = (comp_b / tot_qty_bbm_b_pptx) if tot_qty_bbm_b_pptx else None
-                rate_r = (comp_r / tot_qty_bbm_r_pptx) if tot_qty_bbm_r_pptx else None
-                suffix = "/Ltr"
-                display_label = f"{label}/Ltr"
-            else:
-                rate_b = (comp_b / tot_prestasi_b_pptx) if tot_prestasi_b_pptx else None
-                rate_r = (comp_r / tot_prestasi_r_pptx) if tot_prestasi_r_pptx else None
-                suffix = ""
-                display_label = f"{label}{kat_label_suffix_pptx}"
-            ach = ach_txt_pct(rate_r, rate_b) if (rate_r is not None and rate_b) else None
-            return display_label, rate_b, rate_r, suffix, ach, label
+        if is_ab_bbm3:
+            # Alat Berat: Liter/HM — makin rendah makin baik
+            rate_r3 = (bbm_qty_r3 / bbm_prestasi_r3) if bbm_prestasi_r3 else None
+            rate_b3 = (bbm_qty_b3 / bbm_prestasi_b3) if bbm_prestasi_b3 else None
+            cap_fisik_bbm3 = (rate_r3 / rate_b3 * 100) if (rate_r3 is not None and rate_b3) else None
+            fisik_bbm_higher_better3 = False
+        else:
+            # Transportasi: KM/Ltr — makin tinggi makin baik
+            rate_r3 = (bbm_prestasi_r3 / bbm_qty_r3) if bbm_qty_r3 else None
+            rate_b3 = (bbm_prestasi_b3 / bbm_qty_b3) if bbm_qty_b3 else None
+            cap_fisik_bbm3 = (rate_r3 / rate_b3 * 100) if (rate_r3 is not None and rate_b3) else None
+            fisik_bbm_higher_better3 = True
 
-        ringkasan_rows_pptx = [
-            biaya_row_pptx("Total Biaya", "total_biaya_realisasi", "total_biaya_budget", raw=True),
-            biaya_row_pptx("Upah Operator", "upah_realisasi", "upah_budget"),
-            biaya_row_pptx("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget", is_bbm=True),
-            biaya_row_pptx("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
-            biaya_row_pptx("Penyusutan", "penyusutan_realisasi", "penyusutan_budget"),
-            biaya_row_pptx("Lainnya", "lainnya_realisasi", "lainnya_budget"),
-            biaya_row_pptx("Biaya Tidak Langsung", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"),
-        ]
-        tbl_rows = []
-        worst_row = None  # (label, ach_row) untuk catatan OVER BUDGET terburuk
-        for label, rb, rr, suffix, ach_row, base_label in ringkasan_rows_pptx:
-            budget_disp = f"{fmt_rp(rb)}{suffix}" if rb is not None else "-"
-            aktual_disp = f"{fmt_rp(rr)}{suffix}" if rr is not None else "-"
-            ach_disp = (f"✓ {ach_row:.1f}%" if ach_row is not None and ach_row <= 100
-                        else (f"✗ {ach_row:.1f}%" if ach_row is not None else "-"))
-            hide_cp = base_label in ("Total Biaya", "Biaya Tidak Langsung")
-            if hide_cp or ach_prestasi_pptx is None:
-                cp_disp = "N/A"
-            else:
-                cp_disp = f"✓ {ach_prestasi_pptx:.1f}%" if ach_prestasi_pptx >= 100 else f"✗ {ach_prestasi_pptx:.1f}%"
-            tbl_rows.append([label, budget_disp, aktual_disp, ach_disp, cp_disp])
-            if base_label != "Total Biaya" and ach_row is not None and ach_row > 100:
-                if worst_row is None or ach_row > worst_row[1]:
-                    worst_row = (label, ach_row)
+        maint_r3 = data["maintenance_realisasi"].sum()
+        maint_b3 = data["maintenance_budget"].sum()
+        cap_maint3 = (maint_r3 / maint_b3 * 100) if maint_b3 else None
 
-        # --- Kartu KPI kecil per komponen Biaya Langsung (gaya sama, dipecah 5 kartu) ---
-        def add_mini_kpi_card(slide, left, top, width, height, icon_txt, icon_color, accent_color,
-                               label, value, sub_text, pill_text, pill_good, sub_text2=None):
-            strip = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(0.05))
-            strip.fill.solid(); strip.fill.fore_color.rgb = accent_color
-            strip.line.fill.background(); strip.shadow.inherit = False
-            card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top + 0.05), Inches(width), Inches(height - 0.05))
-            card.adjustments[0] = 0.06
-            card.fill.solid(); card.fill.fore_color.rgb = WHITE
-            card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
-            card.shadow.inherit = False
-            icon_size = 0.42
-            circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + width / 2 - icon_size / 2), Inches(top + 0.12), Inches(icon_size), Inches(icon_size))
-            circ.fill.solid(); circ.fill.fore_color.rgb = icon_color
-            circ.line.fill.background(); circ.shadow.inherit = False
-            ic_tf = circ.text_frame; ic_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            ic_tf.margin_left = 0; ic_tf.margin_right = 0
-            icp = ic_tf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
-            icr = icp.add_run(); icr.text = icon_txt
-            icr.font.size = Pt(11); icr.font.bold = True; icr.font.color.rgb = WHITE
-            add_textbox(slide, left + 0.05, top + 0.56, width - 0.1, 0.22, label, size=9.5, bold=False, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
-            add_textbox(slide, left + 0.05, top + 0.79, width - 0.1, 0.34, value, size=18, bold=True, color=TEXT_DARK, align=PP_ALIGN.CENTER)
-            if sub_text:
-                add_textbox(slide, left + 0.05, top + 1.12, width - 0.1, 0.2, sub_text, size=8.5, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
-            if sub_text2:
-                add_textbox(slide, left + 0.05, top + 1.31, width - 0.1, 0.2, sub_text2, size=8.5, bold=True, color=TEXT_DARK, align=PP_ALIGN.CENTER)
-            pbg, ptxt = pill_colors(pill_good)
-            pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + 0.1), Inches(top + height - 0.32), Inches(width - 0.2), Inches(0.26))
-            pill.adjustments[0] = 0.5
-            pill.fill.solid(); pill.fill.fore_color.rgb = pbg
-            pill.line.fill.background(); pill.shadow.inherit = False
-            ptf = pill.text_frame; ptf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            pp = ptf.paragraphs[0]; pp.alignment = PP_ALIGN.CENTER
-            pr = pp.add_run(); pr.text = pill_text
-            pr.font.size = Pt(9); pr.font.bold = True; pr.font.color.rgb = ptxt
+        lain_r3 = data["lainnya_realisasi"].sum()
+        lain_b3 = data["lainnya_budget"].sum()
+        cap_lain3 = (lain_r3 / lain_b3 * 100) if lain_b3 else None
 
-        card_w3 = 12.5
-        card_h3 = 1.9
+        def _cap_disp3(v):
+            if v is None or pd.isna(v):
+                return "-"
+            ok = "\u2713" if v <= 100 else "\u2717"
+            vv = ">999%" if v > 999 else f"{v:.1f}%"
+            return f"{ok} {vv}"
 
-        # --- Kartu Total Biaya LANGSUNG saja (lebar penuh) ---
-        tot_bl_r_raw = data["biaya_langsung_realisasi"].sum()
-        tot_bl_b_raw = data["biaya_langsung_budget"].sum()
-        ach_tot_bl = (tot_bl_r_raw / tot_bl_b_raw * 100) if tot_bl_b_raw else None
-        good_tot = ach_tot_bl is not None and ach_tot_bl <= 100
-        tot_card_h = 0.65
-        tot_card_w = card_w3
+        def _fisik_disp3(v, higher_is_better):
+            if v is None or pd.isna(v):
+                return "-"
+            good = (v >= 100) if higher_is_better else (v <= 100)
+            ok = "\u2713" if good else "\u2717"
+            vv = ">999%" if v > 999 else f"{v:.1f}%"
+            return f"{ok} {vv}"
 
-        strip_t = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.4), Inches(0.98), Inches(tot_card_w), Inches(0.06))
-        strip_t.fill.solid(); strip_t.fill.fore_color.rgb = (GREEN if good_tot else RED)
-        strip_t.line.fill.background(); strip_t.shadow.inherit = False
-        card_t = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.4), Inches(1.04), Inches(tot_card_w), Inches(tot_card_h - 0.06))
-        card_t.adjustments[0] = 0.09
-        card_t.fill.solid(); card_t.fill.fore_color.rgb = WHITE
-        card_t.line.color.rgb = BORDER; card_t.line.width = Pt(0.75)
-        card_t.shadow.inherit = False
-        icon_size_t = 0.5
-        circ_t = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.55), Inches(1.04 + (tot_card_h - 0.06) / 2 - icon_size_t / 2), Inches(icon_size_t), Inches(icon_size_t))
-        circ_t.fill.solid(); circ_t.fill.fore_color.rgb = NAVY
-        circ_t.line.fill.background(); circ_t.shadow.inherit = False
-        ictf_t = circ_t.text_frame; ictf_t.vertical_anchor = MSO_ANCHOR.MIDDLE
-        ictf_t.margin_left = 0; ictf_t.margin_right = 0
-        icp_t = ictf_t.paragraphs[0]; icp_t.alignment = PP_ALIGN.CENTER
-        icr_t = icp_t.add_run(); icr_t.text = "🧮"
-        icr_t.font.size = Pt(14); icr_t.font.bold = True; icr_t.font.color.rgb = WHITE
-        add_textbox(s, 1.2, 1.06, card_w3 - 0.85, 0.22, "Total Biaya Langsung — Capaian", size=9, bold=False, color=TEXT_MUTED)
-        pbg_t, ptxt_t = pill_colors(good_tot)
-        pill_w_t = 1.5
-        pill_t = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.2), Inches(1.27), Inches(pill_w_t), Inches(0.34))
-        pill_t.adjustments[0] = 0.5
-        pill_t.fill.solid(); pill_t.fill.fore_color.rgb = pbg_t
-        pill_t.line.fill.background(); pill_t.shadow.inherit = False
-        ptf_t = pill_t.text_frame; ptf_t.vertical_anchor = MSO_ANCHOR.MIDDLE
-        pp_t = ptf_t.paragraphs[0]; pp_t.alignment = PP_ALIGN.CENTER
-        pr_t = pp_t.add_run()
-        pr_t.text = (f"✓ {ach_tot_bl:.1f}%" if good_tot else (f"✗ {ach_tot_bl:.1f}%" if ach_tot_bl is not None else "-"))
-        pr_t.font.size = Pt(10); pr_t.font.bold = True; pr_t.font.color.rgb = ptxt_t
-        add_textbox(s, 1.2 + pill_w_t + 0.15, 1.34, card_w3 - 1.2 - pill_w_t - 0.3, 0.24,
-                    f"{fmt_rp(tot_bl_r_raw)} / {fmt_rp(tot_bl_b_raw)}", size=8.5, color=TEXT_MUTED)
-
-        comp_row_y = 0.98 + tot_card_h + 0.15
-
-        # --- Kartu KPI kecil per komponen Biaya Langsung: capaian = Rupiah Aktual/Budget + % thd Total Biaya Langsung ---
-        COMP_ICON = {"Upah Operator": "👷", "Biaya BBM": "⛽", "Biaya Maintenance": "🔧", "Penyusutan": "📉", "Lainnya": "📦"}
-        COMP_COL = {"Upah Operator": "upah", "Biaya BBM": "biaya_bbm", "Biaya Maintenance": "maintenance",
-                    "Penyusutan": "penyusutan", "Lainnya": "lainnya"}
-        comp_labels = ["Upah Operator", "Biaya BBM", "Biaya Maintenance", "Penyusutan", "Lainnya"]
-        n_comp = len(comp_labels)
-        comp_gap = 0.08
-        comp_w = (card_w3 - (n_comp - 1) * comp_gap) / n_comp
-        for i, base_label in enumerate(comp_labels):
-            col = COMP_COL[base_label]
-            comp_r_raw = data[f"{col}_realisasi"].sum()
-            comp_b_raw = data[f"{col}_budget"].sum()
-            cap_raw = (comp_r_raw / comp_b_raw * 100) if comp_b_raw else None
-            share_bl = (comp_r_raw / tot_bl_r_raw * 100) if tot_bl_r_raw else None
-            good_c = cap_raw is not None and cap_raw <= 100
-            cx = 0.4 + i * (comp_w + comp_gap)
-            add_mini_kpi_card(s, cx, comp_row_y, comp_w, card_h3, COMP_ICON.get(base_label, "💰"), TEAL, GREEN if good_c else RED,
-                               base_label, (f"{cap_raw:.1f}%" if cap_raw is not None else "-"),
-                               f"{fmt_rp(comp_r_raw)} / {fmt_rp(comp_b_raw)}",
-                               ("✓ OK" if good_c else "✗ Over"), good_c,
-                               sub_text2=(f"{share_bl:.1f}% dari Biaya Langsung" if share_bl is not None else None))
-
-        # --- LEFT PANEL: Biaya Langsung per Komponen, Site & Kategori (matrix table, lebar penuh) ---
-        panel_top3 = comp_row_y + card_h3 + 0.15
-        panel_h3 = 7.18 - panel_top3
-        add_card_panel(s, 0.4, panel_top3, 12.5, panel_h3)
-        add_panel_header(s, 0.4, panel_top3, 12.5, "🟢 Biaya Langsung — per Komponen, Site & Kategori", height=0.4)
-
-        site_kat_agg = data.groupby(["lokasi", "kategori"], as_index=False).agg(
-            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
-            qty_bbm_r=("qty_bbm_realisasi", "sum"), qty_bbm_b=("qty_bbm_budget", "sum"),
-            upah_r=("upah_realisasi", "sum"), upah_b=("upah_budget", "sum"),
-            bbm_r=("biaya_bbm_realisasi", "sum"), bbm_b=("biaya_bbm_budget", "sum"),
-            maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
-            peny_r=("penyusutan_realisasi", "sum"), peny_b=("penyusutan_budget", "sum"),
-            lain_r=("lainnya_realisasi", "sum"), lain_b=("lainnya_budget", "sum"),
-            bl_r=("biaya_langsung_realisasi", "sum"), bl_b=("biaya_langsung_budget", "sum"),
-        )
-        site_kat_agg = site_kat_agg[(site_kat_agg["bl_b"] > 0) | (site_kat_agg["bl_r"] > 0)].copy()
-        site_kat_agg["site_short"] = site_kat_agg["lokasi"].map(SITE_ABBR).fillna(site_kat_agg["lokasi"])
-        site_kat_agg["label"] = site_kat_agg["site_short"] + " (" + site_kat_agg["kategori"] + ")"
-        site_kat_agg = site_kat_agg.sort_values(["lokasi", "kategori"])
-        n_bl = max(len(site_kat_agg), 1)
-
-        def fmt_rp_short(x):
-            return fmt_rp(x).replace("Rp ", "")
-
-        # Capaian Prestasi per site+kategori (sama utk semua baris komponen, dihitung sekali)
-        site_kat_agg["prestasi_pct"] = site_kat_agg.apply(
-            lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
-
-        component_defs = [
-            ("Upah Operator", "upah_r", "upah_b", False),
-            ("Biaya BBM", "bbm_r", "bbm_b", True),
-            ("Biaya Maintenance", "maint_r", "maint_b", False),
-            ("Penyusutan", "peny_r", "peny_b", False),
-            ("Lainnya", "lain_r", "lain_b", False),
+        ringkasan3_rows = [
+            ["Total Biaya", fmt_rp(tot_biaya_b3), fmt_rp(tot_biaya_r3), _cap_disp3(cap_biaya3), _fisik_disp3(cap_fisik_biaya3, True)],
+            ["Upah Operator", fmt_rp(upah_b3), fmt_rp(upah_r3), _cap_disp3(cap_upah3), "-"],
+            ["Biaya BBM (Rp/Ltr)",
+             f"Rp {harga_bbm_b3:,.0f}" if harga_bbm_b3 is not None else "-",
+             f"Rp {harga_bbm_r3:,.0f}" if harga_bbm_r3 is not None else "-",
+             _cap_disp3(cap_bbm3), "-"],
+            ["Biaya Maintenance", fmt_rp(maint_b3), fmt_rp(maint_r3), _cap_disp3(cap_maint3), "-"],
+            ["Biaya Lainnya", fmt_rp(lain_b3), fmt_rp(lain_r3), _cap_disp3(cap_lain3), "-"],
         ]
 
-        # --- Matrix: per site+kategori ada 3 sub-kolom: % Ttl Biaya, % Biaya, % Prestasi ---
-        matrix_rows = []
-        for comp_label, rcol, bcol, is_bbm in component_defs:
-            row_cells = [comp_label]
-            for _, grp in site_kat_agg.iterrows():
-                # % Ttl Biaya: porsi komponen ini thd Total Biaya Langsung site+kategori tsb
-                ttl_pct = (grp[rcol] / grp["bl_r"] * 100) if grp["bl_r"] else None
-                row_cells.append(f"{ttl_pct:.1f}%" if ttl_pct is not None and pd.notna(ttl_pct) else "-")
-                # % Biaya: Aktual/Budget komponen ini (rasio Rupiah mentah)
-                cap = (grp[rcol] / grp[bcol] * 100) if grp[bcol] else None
-                if cap is None or pd.isna(cap):
-                    row_cells.append("-")
-                else:
-                    ok = "✓" if cap <= 100 else "✗"
-                    cap_disp = ">999%" if cap > 999 else f"{cap:.0f}%"
-                    row_cells.append(f"{ok}{cap_disp}")
-                # % Prestasi: capaian prestasi site+kategori tsb (sama utk semua baris komponen)
-                pp = grp["prestasi_pct"]
-                if pp is None or pd.isna(pp):
-                    row_cells.append("-")
-                else:
-                    pok = "✓" if pp >= 100 else "✗"
-                    row_cells.append(f"{pok}{pp:.0f}%")
-            matrix_rows.append(row_cells)
+        tbl3_top = 1.4
+        tbl3_h = 3.7
+        add_table(s, 1.9, tbl3_top, 9.5, tbl3_h,
+                  ["Metrik", "Budget", "Aktual", "Capaian", "Capaian Fisik"], ringkasan3_rows,
+                  status_col=[3, 4], col_widths=[2.6, 1.9, 1.9, 1.55, 1.55], font_size=13, header_size=13,
+                  fill_badge=True)
 
-        sub_headers = ["% Ttl Biaya", "% Biaya", "% Prestasi"]
-        headers_bl = ["Komponen"]
-        for _ in site_kat_agg["label"]:
-            headers_bl.extend(sub_headers)
-
-        n_bl3 = n_bl * 3
-        tbl_font_bl = 11 if n_bl <= 3 else (10 if n_bl <= 5 else 8.5)
-        label_w_bl = 1.3
-        sub_col_w = (12.2 - label_w_bl) / n_bl3
-        col_widths_bl = [label_w_bl] + [sub_col_w] * n_bl3
-        # status hanya utk kolom "% Biaya" (yg ke-2 dari tiap grup 3 kolom) dan "% Prestasi" (ke-3)
-        status_cols_bl = []
-        for i in range(n_bl):
-            status_cols_bl.append(1 + i * 3 + 1)  # % Biaya
-            status_cols_bl.append(1 + i * 3 + 2)  # % Prestasi
-
-        group_header_h = 0.28
-        tbl_h_bl = panel_h3 - 0.5 - 0.15 - group_header_h
-
-        # --- Baris header grup (nama site+kategori, membentang di atas 3 sub-kolomnya) ---
-        gx = 0.55 + label_w_bl
-        group_w = sub_col_w * 3
-        for lbl in site_kat_agg["label"]:
-            grp_shp = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(gx), Inches(panel_top3 + 0.5), Inches(group_w), Inches(group_header_h))
-            grp_shp.fill.solid(); grp_shp.fill.fore_color.rgb = RGBColor(0x2E, 0x7D, 0x32)
-            grp_shp.line.color.rgb = WHITE; grp_shp.line.width = Pt(0.5)
-            grp_shp.shadow.inherit = False
-            gtf = grp_shp.text_frame; gtf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            gtf.margin_left = 0; gtf.margin_right = 0; gtf.margin_top = 0; gtf.margin_bottom = 0
-            gp = gtf.paragraphs[0]; gp.alignment = PP_ALIGN.CENTER
-            gr = gp.add_run(); gr.text = lbl
-            gr.font.size = Pt(tbl_font_bl + 0.5); gr.font.bold = True; gr.font.color.rgb = WHITE; gr.font.name = "Calibri"
-            gx += group_w
-        label_hdr = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.55), Inches(panel_top3 + 0.5), Inches(label_w_bl), Inches(group_header_h))
-        label_hdr.fill.solid(); label_hdr.fill.fore_color.rgb = RGBColor(0x2E, 0x7D, 0x32)
-        label_hdr.line.color.rgb = WHITE; label_hdr.line.width = Pt(0.5)
-        label_hdr.shadow.inherit = False
-
-        add_table(s, 0.55, panel_top3 + 0.5 + group_header_h, 12.2, tbl_h_bl, headers_bl, matrix_rows,
-                  status_col=status_cols_bl, col_widths=col_widths_bl,
-                  font_size=tbl_font_bl, header_size=tbl_font_bl - 0.5, fill_badge=False)
+        # --- Catatan otomatis: metrik biaya mana yang paling over budget ---
+        cap_map3 = {"Total Biaya": cap_biaya3, "Upah Operator": cap_upah3, "Biaya BBM (Rp/Ltr)": cap_bbm3,
+                    "Biaya Maintenance": cap_maint3, "Biaya Lainnya": cap_lain3}
+        over_items3 = {k: v for k, v in cap_map3.items() if v is not None and v > 100 and k != "Total Biaya"}
+        note_top3 = tbl3_top + tbl3_h + 0.3
+        if over_items3:
+            worst_label3 = max(over_items3, key=over_items3.get)
+            worst_val3 = over_items3[worst_label3]
+            add_finding_box(s, 1.9, note_top3, 9.5, 0.85, "\U0001F6A9",
+                             f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%) \u2014 perlu efisiensi biaya s/d {period}.",
+                             RED_BG, RED, RED)
+        else:
+            add_finding_box(s, 1.9, note_top3, 9.5, 0.85, "\u2705",
+                             "Seluruh komponen biaya berada dalam/di bawah budget \u2014 tidak ada yang perlu disorot.",
+                             GREEN_BG, GREEN, GREEN)
 
 
         # ================= SLIDE 4: ANALISIS BIAYA MAINTENANCE — per Site & Kategori =================
