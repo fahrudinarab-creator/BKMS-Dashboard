@@ -992,17 +992,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         # --- Chart: % Capaian Utilisasi & % Capaian Prestasi per Site & Jenis Unit (vertikal, lebar penuh) ---
         panel_top = mini_y + mini_h + 0.15
-        panel_h = 6.85 - panel_top
+        panel_h = 7.15 - panel_top
         chart_top = panel_top + 0.5
         n_au = max(len(au_rows), 1)
         add_card_panel(s, 0.45, panel_top, 12.35, panel_h)
         add_panel_header(s, 0.45, panel_top, 12.35, "🟢 Capaian Utilisasi & Prestasi — per Site & Jenis Unit", height=0.4)
+        chart_h_au = 2.55
         if au_rows:
             cd_au = CategoryChartData()
             cd_au.categories = [r["label"] for r in au_rows]
             cd_au.add_series("% Capaian Utilisasi", tuple(round(r["util_cap"], 1) if r["util_cap"] is not None else 0 for r in au_rows))
             cd_au.add_series("% Capaian Prestasi", tuple(round(r["prestasi_cap"], 1) if r["prestasi_cap"] is not None else 0 for r in au_rows))
-            chart_h_au = panel_h - 0.5 - 0.1
             gframe_au = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top), Inches(12.2), Inches(chart_h_au), cd_au)
             chart_au = gframe_au.chart
             chart_au.series[0].format.fill.solid(); chart_au.series[0].format.fill.fore_color.rgb = GOLD
@@ -1023,6 +1023,42 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_au.value_axis.tick_labels.number_format_is_linked = False
         else:
             add_textbox(s, 0.6, chart_top + 0.1, 12.0, 0.6, "Data Sasaran Mutu belum tersedia.", size=11, italic=True, color=TEXT_MUTED)
+
+        # --- Analisa: unit dgn gap pendapatan (realisasi - budget) paling minus, dikaitkan dgn capaian utilisasinya ---
+        note_top_au = chart_top + chart_h_au + 0.15
+        note_h_au = panel_h - (note_top_au - panel_top) - 0.1
+        gap_unit = data.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+            pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"))
+        gap_unit = gap_unit[(gap_unit["pend_r"] > 0) | (gap_unit["pend_b"] > 0)].copy()
+        gap_unit["gap"] = gap_unit["pend_r"] - gap_unit["pend_b"]
+        gap_unit["site_short"] = gap_unit["lokasi"].map(SITE_ABBR).fillna(gap_unit["lokasi"])
+        gap_unit["label"] = gap_unit["site_short"] + " — " + gap_unit["jenis_unit"]
+        util_cap_lookup = {r["label"]: r["util_cap"] for r in au_rows}
+        gap_unit["util_cap"] = gap_unit["label"].map(util_cap_lookup)
+        gap_unit_neg = gap_unit[gap_unit["gap"] < 0].sort_values("gap")
+        # Prioritaskan unit yang gap minusnya memang berkaitan dgn utilisasi rendah (util_cap < 100%);
+        # kalau tidak ada, baru fallback ke gap paling minus secara umum (dgn narasi yang jujur/kondisional)
+        gap_unit_neg_lowutil = gap_unit_neg[gap_unit_neg["util_cap"] < 100]
+        target_row = gap_unit_neg_lowutil.iloc[0] if not gap_unit_neg_lowutil.empty else (gap_unit_neg.iloc[0] if not gap_unit_neg.empty else None)
+        if target_row is not None:
+            wg = target_row
+            wg_util = wg["util_cap"]
+            util_txt = f"{wg_util:.1f}%" if wg_util is not None else "tidak tersedia"
+            if wg_util is not None and wg_util < 100:
+                penyebab_txt = "Rendahnya capaian utilisasi unit ini menjadi salah satu penyebab utama kekurangan pendapatan."
+            elif wg_util is not None:
+                penyebab_txt = "Meski capaian utilisasi sudah tercapai, gap pendapatan tetap terjadi — kemungkinan disebabkan faktor lain (tarif/rate, harga jual, atau komposisi pekerjaan)."
+            else:
+                penyebab_txt = "Data capaian utilisasi unit ini belum tersedia untuk analisis lebih lanjut."
+            add_finding_box(s, 0.6, note_top_au, 12.2, note_h_au, "📌",
+                             f"{wg['label']} adalah unit dengan GAP PENDAPATAN MINUS PALING TINGGI ({fmt_rp(wg['gap'])}) — "
+                             f"Realisasi {fmt_rp(wg['pend_r'])} vs Budget {fmt_rp(wg['pend_b'])}, dengan Capaian Utilisasi {util_txt}. "
+                             f"{penyebab_txt}",
+                             RED_BG, RED, RED)
+        else:
+            add_finding_box(s, 0.6, note_top_au, 12.2, note_h_au, "✅",
+                             "Tidak ada unit dengan gap pendapatan minus — seluruh unit mencapai/melebihi target pendapatan.",
+                             GREEN_BG, GREEN, GREEN)
 
         # ================= SLIDE 2: TREN BULANAN & PRESTASI PER SITE =================
         s = add_content_slide(f"PRESTASI — Tren Bulanan {_now.year}", f"Tren Bulanan · {snum2}{divisi_label}{kat_suffix}")
