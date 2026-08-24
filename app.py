@@ -938,21 +938,44 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", f"Ringkasan Kinerja · {snum1}{divisi_label}{kat_suffix}")
 
         # --- Siapkan data chart: % Capaian Utilisasi & % Capaian Prestasi per Site & Jenis Unit ---
+        # (dipisah jadi Floating Tarif / Tarif Tetap kalau jenis_unit tsb memang punya campuran keduanya)
         au_rows = []
+
+        # Cek jenis_unit mana yang punya campuran Floating Tarif & Tarif Tetap (per lokasi+kategori) — dari data_bkms.csv,
+        # dihitung selalu (tidak bergantung sasaran_mutu_data) krn dipakai juga oleh analisa gap pendapatan di bawah.
+        krit_count_bkms = data.dropna(subset=["kriteria_unit"]).groupby(["lokasi", "kategori", "jenis_unit"])["kriteria_unit"].nunique()
+        mixed_keys = set(krit_count_bkms[krit_count_bkms > 1].index)
+
+        data_k = data.copy()
+        data_k["grp_key"] = data_k.apply(lambda r: (r["lokasi"], r["kategori"], r["jenis_unit"]) in mixed_keys, axis=1)
+        data_k["jenis_unit_disp"] = data_k.apply(
+            lambda r: f"{r['jenis_unit']} ({r['kriteria_unit']})" if r["grp_key"] and pd.notna(r["kriteria_unit"]) else r["jenis_unit"], axis=1)
+
         if not sasaran_mutu_data.empty:
+            kriteria_lookup = data.drop_duplicates("id_unit").set_index("id_unit")["kriteria_unit"].to_dict()
+
             sm_kpi = sasaran_mutu_data.copy()
             sm_kpi = sm_kpi.dropna(subset=["jenis_unit"])
-            au_tbl = sm_kpi.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+            sm_kpi["id_unit"] = sm_kpi["id_unit"].astype(str)
+            sm_kpi["kriteria_unit"] = sm_kpi["id_unit"].map(kriteria_lookup)
+
+            sm_kpi["grp_key"] = sm_kpi.apply(
+                lambda r: (r["lokasi"], r["kategori"], r["jenis_unit"]) in mixed_keys, axis=1)
+            sm_kpi["jenis_unit_disp"] = sm_kpi.apply(
+                lambda r: f"{r['jenis_unit']} ({r['kriteria_unit']})" if r["grp_key"] and pd.notna(r["kriteria_unit"]) else r["jenis_unit"], axis=1)
+
+            au_tbl = sm_kpi.groupby(["lokasi", "kategori", "jenis_unit_disp"], as_index=False).agg(
                 avail_r=("availability_pct", "mean"), avail_t=("availability_target", "mean"),
                 util_r=("utilisasi_pct", "mean"), util_t=("utilisasi_target", "mean"),
             )
+            au_tbl = au_tbl.rename(columns={"jenis_unit_disp": "jenis_unit"})
             au_tbl["site_short"] = au_tbl["lokasi"].map(SITE_ABBR).fillna(au_tbl["lokasi"])
             au_tbl = au_tbl.sort_values(["lokasi", "kategori", "jenis_unit"])
 
-            prestasi_unit = data.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+            prestasi_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit_disp"], as_index=False).agg(
                 prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
             prestasi_unit["cap"] = prestasi_unit.apply(lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
-            prestasi_lookup_unit = {(r["lokasi"], r["kategori"], r["jenis_unit"]): r["cap"] for _, r in prestasi_unit.iterrows()}
+            prestasi_lookup_unit = {(r["lokasi"], r["kategori"], r["jenis_unit_disp"]): r["cap"] for _, r in prestasi_unit.iterrows()}
 
             # Fallback ke level site+kategori kalau kombinasi jenis_unit spesifik tidak ada datanya
             prestasi_sk1 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
@@ -1027,8 +1050,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # --- Analisa: unit dgn gap pendapatan (realisasi - budget) paling minus, dikaitkan dgn capaian utilisasinya ---
         note_top_au = chart_top + chart_h_au + 0.15
         note_h_au = panel_h - (note_top_au - panel_top) - 0.1
-        gap_unit = data.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+        gap_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit_disp"], as_index=False).agg(
             pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"))
+        gap_unit = gap_unit.rename(columns={"jenis_unit_disp": "jenis_unit"})
         gap_unit = gap_unit[(gap_unit["pend_r"] > 0) | (gap_unit["pend_b"] > 0)].copy()
         gap_unit["gap"] = gap_unit["pend_r"] - gap_unit["pend_b"]
         gap_unit["site_short"] = gap_unit["lokasi"].map(SITE_ABBR).fillna(gap_unit["lokasi"])
