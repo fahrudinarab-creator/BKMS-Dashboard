@@ -1585,48 +1585,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_textbox(s, 0.55, panel_top4 + 1.0, 12.1, 0.8, "Data Budget/Realisasi Maintenance belum tersedia untuk periode/filter ini.",
                     size=12, italic=True, color=TEXT_MUTED)
 
-    # ================= SLIDE 5: POPULASI UNIT =================
-    card_w, card_h, gap, cy = 3.75, 2.4, 0.35, 1.25
-    s = add_content_slide("POPULASI UNIT — Target vs Realisasi", f"Populasi Unit · 05{divisi_label}")
-    tp = data.loc[data["pendapatan_budget"] > 0, "nama_unit"].nunique()
-    rp = data.loc[data["pendapatan_realisasi"] > 0, "nama_unit"].nunique()
-    pct_p = (rp / tp * 100) if tp else None
-
-    add_kpi_card(s, 0.55, cy, card_w, card_h, "🏁", RGBColor(0xB8, 0xBE, 0xCC), RGBColor(0xB8, 0xBE, 0xCC),
-                 "Target Populasi", f"{tp:,}", "Unit dengan target Pendapatan", "Baseline", True)
-    add_kpi_card(s, 0.55 + (card_w + gap), cy, card_w, card_h, "✅", GREEN, GREEN,
-                 "Realisasi Populasi", f"{rp:,}", "Unit dengan realisasi Pendapatan", f"vs Target: {tp:,}", True)
-    pct_good = pct_p is not None and pct_p >= 100
-    add_kpi_card(s, 0.55 + 2 * (card_w + gap), cy, card_w, card_h, "📈", GOLD, GREEN if pct_good else RED,
-                 "Capaian Populasi", f"{pct_p:.1f}%" if pct_p is not None else "-", "Realisasi vs Target Populasi",
-                 (f"✓ {pct_p:.1f}% — Tercapai" if pct_good else (f"✗ {pct_p:.1f}% vs Target" if pct_p is not None else "-")), pct_good)
-
-    cd3 = CategoryChartData()
-    pop_kat = data.groupby(["lokasi", "kategori"]).apply(
-        lambda g: pd.Series({
-            "target": g.loc[g["pendapatan_budget"] > 0, "nama_unit"].nunique(),
-            "realisasi": g.loc[g["pendapatan_realisasi"] > 0, "nama_unit"].nunique(),
-        })
-    ).reset_index()
-    pop_kat = pop_kat[(pop_kat["target"] > 0) | (pop_kat["realisasi"] > 0)].copy()
-    pop_kat["site_short"] = pop_kat["lokasi"].map(SITE_ABBR).fillna(pop_kat["lokasi"])
-    pop_kat["label"] = pop_kat["site_short"] + " (" + pop_kat["kategori"] + ")"
-    pop_kat = pop_kat.sort_values(["lokasi", "kategori"])
-    chart3_h = min(3.0, max(2.6, 0.32 * len(pop_kat)))
-    cd3.categories = list(pop_kat["label"])
-    cd3.add_series("Target", tuple(int(v) for v in pop_kat["target"]))
-    cd3.add_series("Realisasi", tuple(int(v) for v in pop_kat["realisasi"]))
-    gframe3 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(2.0), Inches(4.3), Inches(9.5), Inches(chart3_h), cd3)
-    chart3 = gframe3.chart
-    chart3.series[0].format.fill.solid(); chart3.series[0].format.fill.fore_color.rgb = RGBColor(0xB8, 0xBE, 0xCC)
-    chart3.series[1].format.fill.solid(); chart3.series[1].format.fill.fore_color.rgb = GREEN
-    plot3 = chart3.plots[0]
-    plot3.has_data_labels = True
-    dls3 = plot3.data_labels
-    dls3.font.size = Pt(9); dls3.font.bold = True; dls3.font.color.rgb = TEXT_DARK; dls3.font.name = "Calibri"
-    dls3.position = XL_LABEL_POSITION.OUTSIDE_END
-    style_chart_light(chart3)
-
     buf = _io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
@@ -2281,38 +2239,6 @@ else:
         )
         csv_sp = show_sp.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Unduh Rincian Pemakaian Sparepart (CSV)", csv_sp, file_name="rincian_sparepart_bkms.csv", mime="text/csv")
-
-st.markdown("---")
-
-# ---------------------------------------------------------------
-# 5. POPULASI: TARGET VS REALISASI
-# ---------------------------------------------------------------
-st.markdown('<h3 class="section-title">Populasi Unit: Target vs Realisasi</h3>', unsafe_allow_html=True)
-
-populasi_pill, populasi_style = achievement_pill(pct_populasi, higher_is_better=True)
-
-p1, p2, p3 = st.columns(3)
-with p1:
-    st.markdown(kpi_card(
-        icon="🎯", icon_bg=GREY, accent=GREY,
-        label="Target Populasi", value=f"{target_populasi:,}",
-        budget_text="Unit dengan target Pendapatan",
-        pill_text="Baseline", pill_style="kpi-pill-amber",
-    ), unsafe_allow_html=True)
-with p2:
-    st.markdown(kpi_card(
-        icon="✅", icon_bg=CHART_GREEN, accent=CHART_GREEN,
-        label="Realisasi Populasi", value=f"{realisasi_populasi:,}",
-        budget_text="Unit dengan realisasi Pendapatan",
-        pill_text=f"vs Target: {target_populasi:,}", pill_style="kpi-pill-amber",
-    ), unsafe_allow_html=True)
-with p3:
-    st.markdown(kpi_card(
-        icon="📊", icon_bg=GOLD, accent=GOLD,
-        label="Capaian Populasi", value=f"{pct_populasi:.1f}%" if pct_populasi is not None else "-",
-        budget_text="Realisasi vs Target Populasi",
-        pill_text=populasi_pill, pill_style=populasi_style,
-    ), unsafe_allow_html=True)
 
 st.markdown("---")
 
