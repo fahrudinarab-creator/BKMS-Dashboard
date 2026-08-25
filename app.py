@@ -1329,7 +1329,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_m3.has_title = False
             plot_m3 = chart_m3.plots[0]
             plot_m3.gap_width = 50
-            label_font_m3 = 7.5 if n_maint3 <= 12 else (6 if n_maint3 <= 20 else 5)
+            label_font_m3 = 7.5 if n_maint3 <= 12 else (6.5 if n_maint3 <= 20 else 6)
+            from pptx.oxml.ns import qn as _qn
             for i, pt in enumerate(chart_m3.series[0].points):
                 v = maint_su3["cap"].iloc[i]
                 if v > 105:
@@ -1342,10 +1343,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dl.has_text_frame = True
                 if n_maint3 <= 12:
                     dl.text_frame.text = f"{v:.0f}% ({gap_sign}{fmt_rp(abs(gap_val))})"
-                elif n_maint3 <= 20:
-                    dl.text_frame.text = f"{gap_sign}{fmt_rp(abs(gap_val))}"
                 else:
-                    dl.text_frame.text = f"{v:.0f}%"
+                    dl.text_frame.text = f"{v:.0f}% ({gap_sign}{fmt_rp(abs(gap_val))})"
+                    # Kategori banyak: putar teks label vertikal (90 derajat) supaya tidak numpuk horizontal
+                    bodyPr = dl.text_frame._txBody.find(_qn('a:bodyPr'))
+                    if bodyPr is not None:
+                        bodyPr.set('rot', '-5400000')
+                        bodyPr.set('vert', 'horz')
                 r0 = dl.text_frame.paragraphs[0].runs[0]
                 r0.font.size = Pt(label_font_m3); r0.font.bold = True; r0.font.color.rgb = TEXT_DARK; r0.font.name = "Calibri"
             style_chart_light(chart_m3, legend=False)
