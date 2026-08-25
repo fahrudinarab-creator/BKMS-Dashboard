@@ -418,6 +418,28 @@ with st.sidebar:
 
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
 
+    # --- Tombol download file CSV yang sudah ada kolom kategori-nya, untuk di-upload manual ke GitHub ---
+    # (Perlu manual karena aplikasi yang berjalan di server/cloud tidak bisa push otomatis ke repo GitHub.)
+    with st.expander("⬇️ Download data_maintenance.csv / data_sparepart.csv (sudah ada kolom kategori)"):
+        st.caption("Kolom kategori (AB/TR) hanya tersimpan di server tempat aplikasi ini berjalan, "
+                   "**tidak otomatis ter-update di GitHub**. Download file di bawah ini lalu upload manual "
+                   "ke repo GitHub Anda kalau ingin filenya permanen ada kolom kategorinya di sana.")
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
+            if not maint_raw.empty:
+                st.download_button(
+                    "Download data_maintenance.csv",
+                    data=maint_raw.to_csv(index=False).encode("utf-8"),
+                    file_name="data_maintenance.csv", mime="text/csv", use_container_width=True,
+                )
+        with dl_col2:
+            if not sparepart_raw.empty:
+                st.download_button(
+                    "Download data_sparepart.csv",
+                    data=sparepart_raw.to_csv(index=False).encode("utf-8"),
+                    file_name="data_sparepart.csv", mime="text/csv", use_container_width=True,
+                )
+
     st.markdown("---")
     st.markdown("### 🏭 Divisi")
     sel_divisi = st.multiselect("Divisi (Mining / Plantation)", list(DIVISI_MAP.keys()), default=list(DIVISI_MAP.keys()))
