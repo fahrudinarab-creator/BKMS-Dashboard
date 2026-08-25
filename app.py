@@ -418,50 +418,18 @@ with st.sidebar:
 
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
 
-    # --- Tombol download file CSV yang sudah ada kolom kategori-nya, untuk di-upload manual ke GitHub ---
+    # --- Tombol download data maintenance (sudah ada kolom kategori-nya), untuk di-upload manual ke GitHub ---
     # (Perlu manual karena aplikasi yang berjalan di server/cloud tidak bisa push otomatis ke repo GitHub.)
     with st.expander("⬇️ Download CSV + Kolom Kategori"):
         st.caption("Kolom kategori (AB/TR) hanya tersimpan di server tempat aplikasi ini berjalan, "
                    "**tidak otomatis ter-update di GitHub**. Download file di bawah ini lalu upload manual "
                    "ke repo GitHub Anda kalau ingin filenya permanen ada kolom kategorinya di sana.")
-        dl_col1, dl_col2 = st.columns(2)
-        with dl_col1:
-            if not maint_raw.empty:
-                st.download_button(
-                    "Download data_maintenance.csv",
-                    data=maint_raw.to_csv(index=False).encode("utf-8"),
-                    file_name="data_maintenance.csv", mime="text/csv", use_container_width=True,
-                )
-        with dl_col2:
-            if not sparepart_raw.empty:
-                st.download_button(
-                    "Download data_sparepart.csv",
-                    data=sparepart_raw.to_csv(index=False).encode("utf-8"),
-                    file_name="data_sparepart.csv", mime="text/csv", use_container_width=True,
-                )
-        st.markdown("---")
-        st.caption("**Cek unit yang gagal dipetakan ke kategori** (nama_unit tidak ditemukan di data utama, "
-                   "sehingga baris ini otomatis dikecualikan dari perhitungan per kategori):")
-        if not maint_raw.empty and "kategori" in maint_raw.columns:
-            unmatched_maint = maint_raw[maint_raw["kategori"].isna()]
-            if not unmatched_maint.empty:
-                st.warning(f"⚠️ {len(unmatched_maint):,} baris di data Maintenance tidak cocok ({unmatched_maint['nama_unit'].nunique()} nama_unit unik). "
-                           f"Total biaya yang ter-exclude: Rp {unmatched_maint['biaya'].sum():,.0f}")
-                unmatched_summary = (unmatched_maint.groupby("nama_unit", as_index=False)
-                                      .agg(jumlah_baris=("biaya", "count"), total_biaya=("biaya", "sum"))
-                                      .sort_values("total_biaya", ascending=False))
-                st.dataframe(unmatched_summary, use_container_width=True, height=200)
-            else:
-                st.success("✅ Semua nama_unit di data Maintenance berhasil dipetakan ke kategori.")
-        if not sparepart_raw.empty and "kategori" in sparepart_raw.columns:
-            unmatched_sp = sparepart_raw[sparepart_raw["kategori"].isna()]
-            if not unmatched_sp.empty:
-                st.warning(f"⚠️ {len(unmatched_sp):,} baris di data Sparepart tidak cocok ({unmatched_sp['nama_unit'].nunique()} nama_unit unik). "
-                           f"Total biaya yang ter-exclude: Rp {unmatched_sp['biaya'].sum():,.0f}")
-                unmatched_sp_summary = (unmatched_sp.groupby("nama_unit", as_index=False)
-                                         .agg(jumlah_baris=("biaya", "count"), total_biaya=("biaya", "sum"))
-                                         .sort_values("total_biaya", ascending=False))
-                st.dataframe(unmatched_sp_summary, use_container_width=True, height=200)
+        if not maint_raw.empty:
+            st.download_button(
+                "Download Data Maintenance",
+                data=maint_raw.to_csv(index=False).encode("utf-8"),
+                file_name="data_maintenance.csv", mime="text/csv", use_container_width=True,
+            )
 
     st.markdown("---")
     st.markdown("### 🏭 Divisi")
