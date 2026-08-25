@@ -1669,16 +1669,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         # --- Panel kanan: List Sparepart per Kategori (Engine System, Frame Body & Guard System, dst.), diurutkan nilai tertinggi ---
         add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5)
-        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Sparepart per Kategori \u2014 Nilai Tertinggi", height=0.4)
+        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Biaya Maintenance per Kategori \u2014 Nilai Tertinggi", height=0.4)
         sp_list_top5 = panel_top5 + 0.5
-        if sparepart_data is not None and not sparepart_data.empty:
-            sp5 = sparepart_data.copy()
+        if maint_data is not None and not maint_data.empty:
+            sp5 = maint_data.copy()
             if "lokasi" in sp5.columns and site_list:
                 sp5 = sp5[sp5["lokasi"].isin(site_list)]
             if "bulan" in sp5.columns and month_list:
                 sp5 = sp5[sp5["bulan"].isin(month_list)]
             # Filter sesuai kategori (AB/TR) slide yg sedang dirender. Kolom 'kategori' sudah
-            # tersedia langsung di sparepart_data (dicocokkan via nama_unit saat data dimuat);
+            # tersedia langsung di maint_data (dicocokkan via nama_unit saat data dimuat);
             # fallback ke pencocokan nama_unit manual kalau kolom 'kategori' tidak ada (data lama).
             kat_scope5 = set(data["kategori"].dropna().unique())
             if "kategori" in sp5.columns:
@@ -1730,7 +1730,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 bar5.line.fill.background(); bar5.shadow.inherit = False
         else:
             add_textbox(s, right_x5 + 0.15, sp_list_top5 + 0.2, right_w5 - 0.3, 0.8,
-                        "Data Sparepart belum tersedia. Silakan upload data Rincian Pemakaian Sparepart terlebih dahulu.",
+                        "Data Maintenance belum tersedia. Silakan upload data Maintenance (Pemeliharaan) terlebih dahulu.",
                         size=10, italic=True, color=TEXT_MUTED)
 
 
