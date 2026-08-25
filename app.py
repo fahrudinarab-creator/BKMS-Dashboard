@@ -419,6 +419,9 @@ with st.sidebar:
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
 
     st.markdown("---")
+    _download_maint_slot = st.empty()  # diisi belakangan (setelah sel_site dihitung), tapi tampil di atas Divisi
+
+    st.markdown("---")
     st.markdown("### 🏭 Divisi")
     sel_divisi = st.multiselect("Divisi (Mining / Plantation)", list(DIVISI_MAP.keys()), default=list(DIVISI_MAP.keys()))
     sites_allowed_by_divisi = [s for d in sel_divisi for s in DIVISI_MAP.get(d, [])]
@@ -433,11 +436,12 @@ with st.sidebar:
     # --- Tombol download data maintenance (sudah ada kolom kategori-nya), mengikuti filter Site/Divisi di atas ---
     if not maint_raw.empty:
         maint_dl = maint_raw[maint_raw["lokasi"].isin(sel_site)] if (sel_site and "lokasi" in maint_raw.columns) else maint_raw
-        st.download_button(
-            "⬇️ Download Biaya Maintenance",
-            data=maint_dl.to_csv(index=False).encode("utf-8"),
-            file_name="data_maintenance.csv", mime="text/csv", use_container_width=True,
-        )
+        with _download_maint_slot.container():
+            st.download_button(
+                "⬇️ Download Biaya Maintenance",
+                data=maint_dl.to_csv(index=False).encode("utf-8"),
+                file_name="data_maintenance.csv", mime="text/csv", use_container_width=True,
+            )
 
     month_opts = [m for m in MONTH_ORDER if m in df_raw["bulan"].unique()]
     sel_month = st.multiselect("Bulan", month_opts, default=month_opts)
