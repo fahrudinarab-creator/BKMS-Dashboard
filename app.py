@@ -1309,7 +1309,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         maint_su3["site_short"] = maint_su3["lokasi"].map(SITE_ABBR).fillna(maint_su3["lokasi"])
         maint_su3["label"] = maint_su3["site_short"] + " \u2014 " + maint_su3["jenis_unit"]
         maint_su3["cap"] = maint_su3["maint_r"] / maint_su3["maint_b"] * 100
-        maint_su3 = maint_su3.sort_values("cap", ascending=False)
+        maint_su3["gap"] = maint_su3["maint_r"] - maint_su3["maint_b"]
+        maint_su3 = maint_su3.sort_values("gap", ascending=False)
         n_maint3 = max(len(maint_su3), 1)
 
         maint_panel_top3 = max(left_col_bottom3, right_col_bottom3) + 0.15
@@ -1328,17 +1329,21 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_m3.has_title = False
             plot_m3 = chart_m3.plots[0]
             plot_m3.gap_width = 50
-            label_font_m3 = 7 if n_maint3 <= 10 else (5.5 if n_maint3 <= 20 else 4.5)
+            label_font_m3 = 7.5 if n_maint3 <= 12 else (6 if n_maint3 <= 20 else 5)
             for i, pt in enumerate(chart_m3.series[0].points):
                 v = maint_su3["cap"].iloc[i]
                 if v > 105:
                     pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
                 r_val = maint_su3["maint_r"].iloc[i]
                 b_val = maint_su3["maint_b"].iloc[i]
+                gap_val = r_val - b_val
+                gap_sign = "+" if gap_val >= 0 else "-"
                 dl = pt.data_label
                 dl.has_text_frame = True
-                if n_maint3 <= 10:
-                    dl.text_frame.text = f"{v:.0f}% ({fmt_rp(r_val)} / {fmt_rp(b_val)})"
+                if n_maint3 <= 12:
+                    dl.text_frame.text = f"{v:.0f}% ({gap_sign}{fmt_rp(abs(gap_val))})"
+                elif n_maint3 <= 20:
+                    dl.text_frame.text = f"{gap_sign}{fmt_rp(abs(gap_val))}"
                 else:
                     dl.text_frame.text = f"{v:.0f}%"
                 r0 = dl.text_frame.paragraphs[0].runs[0]
