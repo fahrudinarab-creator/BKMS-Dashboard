@@ -418,19 +418,6 @@ with st.sidebar:
 
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
 
-    # --- Tombol download data maintenance (sudah ada kolom kategori-nya), untuk di-upload manual ke GitHub ---
-    # (Perlu manual karena aplikasi yang berjalan di server/cloud tidak bisa push otomatis ke repo GitHub.)
-    with st.expander("⬇️ Download CSV + Kolom Kategori"):
-        st.caption("Kolom kategori (AB/TR) hanya tersimpan di server tempat aplikasi ini berjalan, "
-                   "**tidak otomatis ter-update di GitHub**. Download file di bawah ini lalu upload manual "
-                   "ke repo GitHub Anda kalau ingin filenya permanen ada kolom kategorinya di sana.")
-        if not maint_raw.empty:
-            st.download_button(
-                "Download Data Maintenance",
-                data=maint_raw.to_csv(index=False).encode("utf-8"),
-                file_name="data_maintenance.csv", mime="text/csv", use_container_width=True,
-            )
-
     st.markdown("---")
     st.markdown("### 🏭 Divisi")
     sel_divisi = st.multiselect("Divisi (Mining / Plantation)", list(DIVISI_MAP.keys()), default=list(DIVISI_MAP.keys()))
@@ -442,6 +429,15 @@ with st.sidebar:
     all_sites_raw = sorted(df_raw["lokasi"].dropna().unique().tolist())
     site_opts = [s for s in all_sites_raw if s in sites_allowed_by_divisi] if sel_divisi else []
     sel_site = st.multiselect("Site / Lokasi", site_opts, default=site_opts)
+
+    # --- Tombol download data maintenance (sudah ada kolom kategori-nya), mengikuti filter Site/Divisi di atas ---
+    if not maint_raw.empty:
+        maint_dl = maint_raw[maint_raw["lokasi"].isin(sel_site)] if (sel_site and "lokasi" in maint_raw.columns) else maint_raw
+        st.download_button(
+            "⬇️ Download Biaya Maintenance",
+            data=maint_dl.to_csv(index=False).encode("utf-8"),
+            file_name="data_maintenance.csv", mime="text/csv", use_container_width=True,
+        )
 
     month_opts = [m for m in MONTH_ORDER if m in df_raw["bulan"].unique()]
     sel_month = st.multiselect("Bulan", month_opts, default=month_opts)
