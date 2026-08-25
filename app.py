@@ -1243,30 +1243,112 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             ["Biaya Lainnya", fmt_rp(lain_b3), fmt_rp(lain_r3), _cap_disp3(cap_lain3), "-"],
         ]
 
-        add_textbox(s, 1.9, 1.0, 9.5, 0.35, f"Ringkasan Biaya PT. BKMS (s/d {period})", size=18, bold=True, color=TEXT_DARK)
+        add_textbox(s, 0.4, 0.98, 5.9, 0.3, f"Ringkasan Biaya PT. BKMS (s/d {period})", size=14, bold=True, color=TEXT_DARK)
 
-        tbl3_top = 1.5
-        tbl3_h = 3.7
-        add_table(s, 1.9, tbl3_top, 9.5, tbl3_h,
-                  ["Metrik", "Budget", "Aktual", "Capaian", "Capaian Fisik"], ringkasan3_rows,
-                  status_col=[3, 4], col_widths=[2.6, 1.9, 1.9, 1.55, 1.55], font_size=13, header_size=13,
+        tbl3_top = 1.33
+        tbl3_h = 2.75
+        add_table(s, 0.4, tbl3_top, 5.9, tbl3_h,
+                  ["Metrik", "Budget", "Aktual", "Capaian", "Cap. Fisik"], ringkasan3_rows,
+                  status_col=[3, 4], col_widths=[1.7, 1.15, 1.15, 0.95, 0.95], font_size=10, header_size=10,
                   fill_badge=True)
 
         # --- Catatan otomatis: metrik biaya mana yang paling over budget ---
         cap_map3 = {"Total Biaya": cap_biaya3, "Upah Operator": cap_upah3, "Biaya BBM (Rp/Ltr)": cap_bbm3,
                     "Biaya Maintenance": cap_maint3, "Biaya Lainnya": cap_lain3}
         over_items3 = {k: v for k, v in cap_map3.items() if v is not None and v > 100 and k != "Total Biaya"}
-        note_top3 = tbl3_top + tbl3_h + 0.3
+        note_top3 = tbl3_top + tbl3_h + 0.15
+        note_h3 = 0.75
         if over_items3:
             worst_label3 = max(over_items3, key=over_items3.get)
             worst_val3 = over_items3[worst_label3]
-            add_finding_box(s, 1.9, note_top3, 9.5, 0.85, "\U0001F6A9",
+            add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\U0001F6A9",
                              f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%) \u2014 perlu efisiensi biaya s/d {period}.",
                              RED_BG, RED, RED)
         else:
-            add_finding_box(s, 1.9, note_top3, 9.5, 0.85, "\u2705",
-                             "Seluruh komponen biaya berada dalam/di bawah budget \u2014 tidak ada yang perlu disorot.",
+            add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u2705",
+                             "Seluruh komponen biaya berada dalam/di bawah budget.",
                              GREEN_BG, GREEN, GREEN)
+        left_col_bottom3 = note_top3 + note_h3
+
+        # ================= PANEL KANAN ATAS: BTL per Site & Kategori =================
+        btl_sk3 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
+            btl_r=("biaya_tidak_langsung_realisasi", "sum"), btl_b=("biaya_tidak_langsung_budget", "sum"))
+        btl_sk3 = btl_sk3[(btl_sk3["btl_r"] > 0) | (btl_sk3["btl_b"] > 0)].copy()
+        total_btl_r3 = btl_sk3["btl_r"].sum()
+        btl_sk3["site_short"] = btl_sk3["lokasi"].map(SITE_ABBR).fillna(btl_sk3["lokasi"])
+        btl_sk3["label"] = btl_sk3["site_short"] + " (" + btl_sk3["kategori"] + ")"
+        btl_sk3 = btl_sk3.sort_values("btl_r", ascending=False)
+
+        over_btl_sites3 = []
+        btl3_rows = []
+        for _, r in btl_sk3.iterrows():
+            pct_target = (r["btl_r"] / r["btl_b"] * 100) if r["btl_b"] else None
+            pct_share = (r["btl_r"] / total_btl_r3 * 100) if total_btl_r3 else 0
+            pct_disp = (f"\u2713 {pct_target:.0f}%" if pct_target is not None and pct_target <= 100
+                        else (f"\u2717 {pct_target:.0f}%" if pct_target is not None else "-"))
+            btl3_rows.append([r["label"], fmt_rp(r["btl_b"]), fmt_rp(r["btl_r"]), pct_disp, f"{pct_share:.1f}%"])
+            if pct_target is not None and pct_target > 100:
+                over_btl_sites3.append(r["label"])
+
+        btl_panel_top3 = 0.98
+        btl_panel_h3 = 2.6
+        add_card_panel(s, 6.85, btl_panel_top3, 6.05, btl_panel_h3)
+        if not over_btl_sites3:
+            add_status_banner(s, 7.1, btl_panel_top3 + 0.15, 5.55, 0.45, "\u2705", "BTL \u2014 UNDER BUDGET secara keseluruhan", GREEN_BG, GREEN, GREEN)
+        else:
+            over_txt3 = " & ".join(over_btl_sites3[:3]) + (", dll" if len(over_btl_sites3) > 3 else "")
+            add_status_banner(s, 7.1, btl_panel_top3 + 0.15, 5.55, 0.45, "\u26a0\ufe0f", f"BTL \u2014 UNDER BUDGET, kecuali {over_txt3}", RED_BG, RED, RED)
+        add_table(s, 7.1, btl_panel_top3 + 0.7, 5.55, 1.75, ["Site (Kategori)", "Budget", "Aktual", "% Target", "% BTL"], btl3_rows,
+                  status_col=3, col_widths=[1.55, 1.15, 1.15, 0.85, 0.85], font_size=9.5, header_size=9.5)
+        right_col_bottom3 = btl_panel_top3 + btl_panel_h3
+
+        # ================= PANEL BAWAH (LEBAR PENUH): % Capaian Maintenance per Site & Jenis Unit =================
+        maint_su3 = data.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+            maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"))
+        maint_su3 = maint_su3[maint_su3["maint_b"] > 0].copy()
+        maint_su3["site_short"] = maint_su3["lokasi"].map(SITE_ABBR).fillna(maint_su3["lokasi"])
+        maint_su3["label"] = maint_su3["site_short"] + " \u2014 " + maint_su3["jenis_unit"]
+        maint_su3["cap"] = maint_su3["maint_r"] / maint_su3["maint_b"] * 100
+        maint_su3 = maint_su3.sort_values("cap", ascending=False)
+        n_maint3 = max(len(maint_su3), 1)
+
+        maint_panel_top3 = max(left_col_bottom3, right_col_bottom3) + 0.15
+        maint_panel_h3 = 7.3 - maint_panel_top3
+        add_card_panel(s, 0.4, maint_panel_top3, 12.5, maint_panel_h3)
+        add_panel_header(s, 0.4, maint_panel_top3, 12.5, "\U0001F527 % Capaian Maintenance \u2014 per Site & Jenis Unit", height=0.36)
+        chart_top_m3 = maint_panel_top3 + 0.42
+        chart_h_m3 = maint_panel_h3 - 0.47
+        if not maint_su3.empty:
+            cd_m3 = CategoryChartData()
+            cd_m3.categories = list(maint_su3["label"])
+            cd_m3.add_series("% Capaian Maintenance", tuple(round(v, 1) for v in maint_su3["cap"]))
+            gframe_m3 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_m3), Inches(12.2), Inches(chart_h_m3), cd_m3)
+            chart_m3 = gframe_m3.chart
+            chart_m3.series[0].format.fill.solid(); chart_m3.series[0].format.fill.fore_color.rgb = TEAL
+            chart_m3.has_title = False
+            plot_m3 = chart_m3.plots[0]
+            plot_m3.gap_width = 50
+            label_font_m3 = 7 if n_maint3 <= 10 else (5.5 if n_maint3 <= 20 else 4.5)
+            for i, pt in enumerate(chart_m3.series[0].points):
+                v = maint_su3["cap"].iloc[i]
+                if v > 105:
+                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
+                r_val = maint_su3["maint_r"].iloc[i]
+                b_val = maint_su3["maint_b"].iloc[i]
+                dl = pt.data_label
+                dl.has_text_frame = True
+                if n_maint3 <= 10:
+                    dl.text_frame.text = f"{v:.0f}% ({fmt_rp(r_val)} / {fmt_rp(b_val)})"
+                else:
+                    dl.text_frame.text = f"{v:.0f}%"
+                r0 = dl.text_frame.paragraphs[0].runs[0]
+                r0.font.size = Pt(label_font_m3); r0.font.bold = True; r0.font.color.rgb = TEXT_DARK; r0.font.name = "Calibri"
+            style_chart_light(chart_m3, legend=False)
+            cat_font_m3 = 8 if n_maint3 <= 10 else (6.5 if n_maint3 <= 20 else 5.3)
+            chart_m3.category_axis.tick_labels.font.size = Pt(cat_font_m3)
+            chart_m3.value_axis.tick_labels.font.size = Pt(cat_font_m3)
+        else:
+            add_textbox(s, 0.55, chart_top_m3 + 0.1, 12.0, 0.5, "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
 
         # ================= SLIDE 4: ANALISIS BIAYA MAINTENANCE — per Site & Kategori =================
