@@ -1409,10 +1409,23 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         chart_l4.value_axis.tick_labels.font.size = Pt(9.5)
 
         # ================= PANEL KANAN: % Capaian Konsumsi BBM per Site & Jenis Unit =================
-        # Filter: qty BBM ada tapi Rp BBM tidak ada -> qty tsb tidak dihitung
-        bad_r4b = (data["qty_bbm_realisasi"] > 0) & (data["biaya_bbm_realisasi"].fillna(0) == 0)
-        bad_b4b = (data["qty_bbm_budget"] > 0) & (data["biaya_bbm_budget"].fillna(0) == 0)
-        data_bbm_ok4 = data[~(bad_r4b | bad_b4b)]
+        # Filter (per baris, realisasi & budget dicek terpisah):
+        #  - qty BBM ada tapi Rp BBM tidak ada -> qty & prestasi baris tsb tidak ikut dihitung
+        #  - prestasi ada tapi qty BBM tidak ada -> prestasi & qty baris tsb tidak ikut dihitung
+        #  - qty BBM ada tapi prestasi tidak ada -> qty & prestasi baris tsb tidak ikut dihitung
+        data_bbm_ok4 = data.copy()
+
+        valid_r4 = (data_bbm_ok4["qty_bbm_realisasi"].fillna(0) > 0) & \
+                   (data_bbm_ok4["biaya_bbm_realisasi"].fillna(0) > 0) & \
+                   (data_bbm_ok4["prestasi_realisasi"].fillna(0) > 0)
+        partial_r4 = (~valid_r4) & ((data_bbm_ok4["qty_bbm_realisasi"].fillna(0) > 0) | (data_bbm_ok4["prestasi_realisasi"].fillna(0) > 0))
+        data_bbm_ok4.loc[partial_r4, ["qty_bbm_realisasi", "prestasi_realisasi"]] = 0
+
+        valid_b4 = (data_bbm_ok4["qty_bbm_budget"].fillna(0) > 0) & \
+                   (data_bbm_ok4["biaya_bbm_budget"].fillna(0) > 0) & \
+                   (data_bbm_ok4["prestasi_budget"].fillna(0) > 0)
+        partial_b4 = (~valid_b4) & ((data_bbm_ok4["qty_bbm_budget"].fillna(0) > 0) | (data_bbm_ok4["prestasi_budget"].fillna(0) > 0))
+        data_bbm_ok4.loc[partial_b4, ["qty_bbm_budget", "prestasi_budget"]] = 0
 
         bbm_su4 = data_bbm_ok4.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
             qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum"),
@@ -1420,6 +1433,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         bbm_su4 = bbm_su4[(bbm_su4["qty_r"] > 0) | (bbm_su4["qty_b"] > 0)].copy()
         bbm_su4["site_short"] = bbm_su4["lokasi"].map(SITE_ABBR).fillna(bbm_su4["lokasi"])
         bbm_su4["label"] = bbm_su4["site_short"] + " \u2014 " + bbm_su4["jenis_unit"]
+
+        # Biaya BBM (Rp) per site & jenis unit -> dipakai utk urutan (Rupiah over tertinggi ditampilkan pertama)
+        biaya_bbm_su4 = data.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
+            biaya_r=("biaya_bbm_realisasi", "sum"), biaya_b=("biaya_bbm_budget", "sum"))
+        biaya_bbm_su4["gap_rp"] = biaya_bbm_su4["biaya_r"] - biaya_bbm_su4["biaya_b"]
+        gap_rp_lookup4 = {(r["lokasi"], r["jenis_unit"]): r["gap_rp"] for _, r in biaya_bbm_su4.iterrows()}
+        bbm_su4["gap_rp"] = bbm_su4.apply(lambda r: gap_rp_lookup4.get((r["lokasi"], r["jenis_unit"]), 0), axis=1)
 
         def _bbm_cap4(row):
             if row["kategori"] == "AB":
@@ -1434,13 +1454,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         bbm_su4["cap"] = bbm_su4.apply(_bbm_cap4, axis=1)
         bbm_su4 = bbm_su4.dropna(subset=["cap"])
-        bbm_su4 = bbm_su4.sort_values("cap", ascending=False)
+        bbm_su4 = bbm_su4.sort_values("gap_rp", ascending=False)
         n_bbm4 = max(len(bbm_su4), 1)
 
         add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
         add_panel_header(s, 6.85, panel_top4, 6.05, "\u26fd % Capaian Konsumsi BBM \u2014 per Site & Jenis Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
-        chart_h_r4 = panel_h4 - 0.55
+        note_h_r4 = 1.05
+        chart_h_r4 = panel_h4 - 0.45 - 0.15 - note_h_r4 - 0.1
         if not bbm_su4.empty:
             cd_r4 = CategoryChartData()
             cd_r4.categories = list(bbm_su4["label"])
@@ -1449,23 +1470,26 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4 = gframe_r4.chart
             chart_r4.series[0].format.fill.solid(); chart_r4.series[0].format.fill.fore_color.rgb = TEAL
             chart_r4.has_title = False
+            plot_r4 = chart_r4.plots[0]
+            plot_r4.gap_width = 50
+            label_font_r4 = 7.5 if n_bbm4 <= 12 else 6
+            from pptx.oxml.ns import qn as _qn4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = bbm_su4["cap"].iloc[i]
                 if v < 95 or v > 105:
                     pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
-            plot_r4 = chart_r4.plots[0]
-            plot_r4.gap_width = 50
-            plot_r4.has_data_labels = True
-            dls_r4 = plot_r4.data_labels
-            dls_r4.number_format = '0"%"'; dls_r4.number_format_is_linked = False
-            label_font_r4 = 7.5 if n_bbm4 <= 12 else 6
-            dls_r4.font.size = Pt(label_font_r4); dls_r4.font.bold = True; dls_r4.font.color.rgb = TEXT_DARK; dls_r4.font.name = "Calibri"
-            dls_r4.position = XL_LABEL_POSITION.OUTSIDE_END
-            if n_bbm4 > 12:
-                from pptx.oxml.ns import qn as _qn4
-                for pt in chart_r4.series[0].points:
-                    dl = pt.data_label
-                    dl.has_text_frame = True
+                gap_val4 = bbm_su4["gap_rp"].iloc[i]
+                gap_sign4 = "+" if gap_val4 >= 0 else "-"
+                dl = pt.data_label
+                dl.has_text_frame = True
+                tf = dl.text_frame
+                tf.text = f"{v:.0f}%"
+                p2 = tf.add_paragraph()
+                p2.text = f"({gap_sign4}{fmt_rp(abs(gap_val4))})"
+                for para in tf.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
+                if n_bbm4 > 12:
                     bodyPr = dl.text_frame._txBody.find(_qn4('a:bodyPr'))
                     if bodyPr is not None:
                         bodyPr.set('rot', '-5400000')
@@ -1473,6 +1497,30 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             cat_font_r4 = 8 if n_bbm4 <= 10 else (6.5 if n_bbm4 <= 20 else 5.3)
             chart_r4.category_axis.tick_labels.font.size = Pt(cat_font_r4)
             chart_r4.value_axis.tick_labels.font.size = Pt(cat_font_r4)
+
+            # --- Analisa: kenapa unit #1 (gap Rupiah terbesar) bisa dominan, meski %capaian konsumsinya kecil ---
+            top4 = bbm_su4.iloc[0]
+            unit_rows4 = data[(data["lokasi"] == top4["lokasi"]) & (data["jenis_unit"] == top4["jenis_unit"])]
+            biaya_r_u4 = unit_rows4["biaya_bbm_realisasi"].sum()
+            biaya_b_u4 = unit_rows4["biaya_bbm_budget"].sum()
+            qty_r_u4 = unit_rows4["qty_bbm_realisasi"].sum()
+            qty_b_u4 = unit_rows4["qty_bbm_budget"].sum()
+            harga_r_u4 = (biaya_r_u4 / qty_r_u4) if qty_r_u4 else None
+            harga_b_u4 = (biaya_b_u4 / qty_b_u4) if qty_b_u4 else None
+            harga_pct_u4 = (harga_r_u4 / harga_b_u4 * 100) if (harga_r_u4 is not None and harga_b_u4) else None
+            note_top_r4 = chart_top_r4 + chart_h_r4 + 0.15
+            if harga_pct_u4 is not None:
+                harga_selisih4 = harga_pct_u4 - 100
+                if abs(harga_selisih4) > abs(top4["cap"] - 100):
+                    sebab_txt4 = (f"harga BBM realisasi (Rp {harga_r_u4:,.0f}/Ltr) yang {'lebih tinggi' if harga_selisih4 > 0 else 'lebih rendah'} "
+                                  f"{abs(harga_selisih4):.1f}% dari budget (Rp {harga_b_u4:,.0f}/Ltr) \u2014 bukan konsumsinya.")
+                else:
+                    sebab_txt4 = (f"volume konsumsi BBM yang besar ({qty_r_u4:,.0f} Ltr), sehingga meski capaian konsumsi hanya "
+                                  f"{top4['cap']:.1f}%, dampak Rupiah-nya tetap signifikan.")
+                add_finding_box(s, 7.0, note_top_r4, 5.6, note_h_r4, "\U0001F4A1",
+                                 f"{top4['label']} adalah dampak Rupiah terbesar ({'+' if top4['gap_rp'] >= 0 else '-'}{fmt_rp(abs(top4['gap_rp']))}), "
+                                 f"walau capaian konsumsi hanya {top4['cap']:.1f}% (dari target 100%). Penyebab utamanya adalah {sebab_txt4}",
+                                 GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
         else:
             add_textbox(s, 7.0, chart_top_r4 + 0.1, 5.6, 0.5, "Data konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
