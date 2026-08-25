@@ -897,7 +897,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     _now = _dt.datetime.now()
     tgl_laporan = f"{_bulan_id[_now.month-1]} {_now.year}"
 
-    def render_4_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, kat_suffix):
+    def render_5_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, snum5, kat_suffix):
         r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
         pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
         bl_r_raw = data["biaya_langsung_realisasi"].sum(); bl_b_raw = data["biaya_langsung_budget"].sum()
@@ -1524,6 +1524,140 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         else:
             add_textbox(s, 7.0, chart_top_r4 + 0.1, 5.6, 0.5, "Data konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
+        # ================= SLIDE 5: ANALISIS DOWNTIME & SPAREPART =================
+        s = add_content_slide(f"ANALISIS: Downtime & Sparepart \u2014 s/d {period}", f"Analisis Downtime \u00b7 {snum5}{divisi_label}{kat_suffix}")
+
+        # --- Kartu atas: % Capaian Realisasi Downtime (global) — versi ramping/kompak ---
+        dt_avg_r5 = sasaran_mutu_data["downtime_pct"].mean() if not sasaran_mutu_data.empty else None
+        dt_avg_t5 = sasaran_mutu_data["downtime_target"].mean() if not sasaran_mutu_data.empty else None
+        cap_dt5 = (dt_avg_r5 / dt_avg_t5 * 100) if (dt_avg_r5 is not None and dt_avg_t5) else None
+        good_dt5 = cap_dt5 is not None and cap_dt5 <= 100
+        top_card_h5 = 0.5
+        top_card_w5 = 12.5
+
+        strip_dt5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.4), Inches(0.98), Inches(top_card_w5), Inches(0.05))
+        strip_dt5.fill.solid(); strip_dt5.fill.fore_color.rgb = (GREEN if good_dt5 else RED)
+        strip_dt5.line.fill.background(); strip_dt5.shadow.inherit = False
+        card_dt5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.4), Inches(1.03), Inches(top_card_w5), Inches(top_card_h5 - 0.05))
+        card_dt5.adjustments[0] = 0.14
+        card_dt5.fill.solid(); card_dt5.fill.fore_color.rgb = WHITE
+        card_dt5.line.color.rgb = BORDER; card_dt5.line.width = Pt(0.75)
+        card_dt5.shadow.inherit = False
+        icon_size_dt5 = 0.32
+        circ_dt5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.55), Inches(1.03 + (top_card_h5 - 0.05) / 2 - icon_size_dt5 / 2), Inches(icon_size_dt5), Inches(icon_size_dt5))
+        circ_dt5.fill.solid(); circ_dt5.fill.fore_color.rgb = NAVY
+        circ_dt5.line.fill.background(); circ_dt5.shadow.inherit = False
+        ictf_dt5 = circ_dt5.text_frame; ictf_dt5.vertical_anchor = MSO_ANCHOR.MIDDLE
+        ictf_dt5.margin_left = 0; ictf_dt5.margin_right = 0
+        icp_dt5 = ictf_dt5.paragraphs[0]; icp_dt5.alignment = PP_ALIGN.CENTER
+        icr_dt5 = icp_dt5.add_run(); icr_dt5.text = "\u23f8"
+        icr_dt5.font.size = Pt(9); icr_dt5.font.bold = True; icr_dt5.font.color.rgb = WHITE
+        add_textbox(s, 1.0, 1.03 + (top_card_h5 - 0.05) / 2 - 0.11, 3.1, 0.22, "% Capaian Realisasi Downtime", size=9.5, bold=False, color=TEXT_MUTED)
+        pbg_dt5, ptxt_dt5 = pill_colors(good_dt5)
+        pill_w_dt5 = 1.3
+        pill_dt5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(4.2), Inches(1.03 + (top_card_h5 - 0.05) / 2 - 0.135), Inches(pill_w_dt5), Inches(0.27))
+        pill_dt5.adjustments[0] = 0.5
+        pill_dt5.fill.solid(); pill_dt5.fill.fore_color.rgb = pbg_dt5
+        pill_dt5.line.fill.background(); pill_dt5.shadow.inherit = False
+        ptf_dt5 = pill_dt5.text_frame; ptf_dt5.vertical_anchor = MSO_ANCHOR.MIDDLE
+        pp_dt5 = ptf_dt5.paragraphs[0]; pp_dt5.alignment = PP_ALIGN.CENTER
+        pr_dt5 = pp_dt5.add_run()
+        pr_dt5.text = (f"\u2713 {cap_dt5:.1f}%" if good_dt5 else (f"\u2717 {cap_dt5:.1f}%" if cap_dt5 is not None else "-"))
+        pr_dt5.font.size = Pt(10.5); pr_dt5.font.bold = True; pr_dt5.font.color.rgb = ptxt_dt5
+        dt_r_disp5 = f"{dt_avg_r5:.2f}%" if dt_avg_r5 is not None else "-"
+        dt_t_disp5 = f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-"
+        add_textbox(s, 5.7, 1.03 + (top_card_h5 - 0.05) / 2 - 0.11, top_card_w5 - 5.7 - 0.2, 0.22,
+                    f"Realisasi Downtime: {dt_r_disp5}   |   Target Downtime: {dt_t_disp5}", size=9.5, color=TEXT_MUTED)
+
+        panel_top5 = 0.98 + top_card_h5 + 0.1
+        panel_bottom5 = 7.3
+        panel_h5 = panel_bottom5 - panel_top5
+        left_w5 = 7.3
+        right_x5 = 7.9
+        right_w5 = 5.0
+
+        # --- Panel kiri: % Downtime per Site & Jenis Unit ---
+        add_card_panel(s, 0.4, panel_top5, left_w5, panel_h5)
+        add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Jenis Unit", height=0.4)
+        chart_top5 = panel_top5 + 0.45
+        chart_h5 = panel_h5 - 0.55
+        if not sasaran_mutu_data.empty:
+            dt_su5 = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+                dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
+            dt_su5["site_short"] = dt_su5["lokasi"].map(SITE_ABBR).fillna(dt_su5["lokasi"])
+            dt_su5["label"] = dt_su5["site_short"] + " \u2014 " + dt_su5["jenis_unit"]
+            dt_su5 = dt_su5.sort_values("dt_r", ascending=False)
+            n_dt5 = max(len(dt_su5), 1)
+
+            cd_dt5 = CategoryChartData()
+            cd_dt5.categories = list(dt_su5["label"])
+            cd_dt5.add_series("Realisasi Downtime (%)", tuple(round(v, 2) for v in dt_su5["dt_r"]))
+            cd_dt5.add_series("Target Downtime (%)", tuple(round(v, 2) for v in dt_su5["dt_t"]))
+            gframe_dt5 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top5), Inches(7.0), Inches(chart_h5), cd_dt5)
+            chart_dt5 = gframe_dt5.chart
+            chart_dt5.series[0].format.fill.solid(); chart_dt5.series[0].format.fill.fore_color.rgb = RED
+            chart_dt5.series[1].format.fill.solid(); chart_dt5.series[1].format.fill.fore_color.rgb = RGBColor(0xA9, 0xB8, 0xD4)
+            chart_dt5.has_title = False
+            for i, pt in enumerate(chart_dt5.series[0].points):
+                dt_r_v = dt_su5["dt_r"].iloc[i]
+                dt_t_v = dt_su5["dt_t"].iloc[i]
+                if dt_r_v <= dt_t_v:
+                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = GREEN
+            plot_dt5 = chart_dt5.plots[0]
+            plot_dt5.gap_width = 50
+            plot_dt5.has_data_labels = True
+            dls_dt5 = plot_dt5.data_labels
+            dls_dt5.number_format = '0.0"%"'; dls_dt5.number_format_is_linked = False
+            label_font_dt5 = 7 if n_dt5 <= 12 else 5.5
+            dls_dt5.font.size = Pt(label_font_dt5); dls_dt5.font.bold = True; dls_dt5.font.color.rgb = TEXT_DARK; dls_dt5.font.name = "Calibri"
+            dls_dt5.position = XL_LABEL_POSITION.OUTSIDE_END
+            style_chart_light(chart_dt5, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
+            cat_font_dt5 = 7.5 if n_dt5 <= 10 else (6 if n_dt5 <= 20 else 5)
+            chart_dt5.category_axis.tick_labels.font.size = Pt(cat_font_dt5)
+            chart_dt5.value_axis.tick_labels.font.size = Pt(cat_font_dt5)
+        else:
+            add_textbox(s, 0.55, chart_top5 + 0.1, 6.9, 0.5, "Data Downtime belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+
+        # --- Panel kanan: List Sparepart per Kategori (Engine System, Frame Body & Guard System, dst.), diurutkan nilai tertinggi ---
+        add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5)
+        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Sparepart per Kategori \u2014 Nilai Tertinggi", height=0.4)
+        sp_list_top5 = panel_top5 + 0.5
+        if sparepart_data is not None and not sparepart_data.empty:
+            sp5 = sparepart_data.copy()
+            if "lokasi" in sp5.columns and site_list:
+                sp5 = sp5[sp5["lokasi"].isin(site_list)]
+            if "bulan" in sp5.columns and month_list:
+                sp5 = sp5[sp5["bulan"].isin(month_list)]
+            sp_agg5 = sp5.groupby("kategori_sparepart", as_index=False).agg(total_biaya=("biaya", "sum"))
+            sp_agg5 = sp_agg5.sort_values("total_biaya", ascending=False)
+            max_biaya5 = sp_agg5["total_biaya"].max() if not sp_agg5.empty else 1
+            row_h5 = 0.62
+            max_rows5 = int((panel_h5 - 0.6) / row_h5)
+            for i, (_, r) in enumerate(sp_agg5.head(max_rows5).iterrows()):
+                ry5 = sp_list_top5 + i * row_h5
+                rank_bg5 = GOLD if i == 0 else (RGBColor(0xB0, 0xB0, 0xB0) if i == 1 else (RGBColor(0xCD, 0x7F, 0x32) if i == 2 else RGBColor(0xE0, 0xE4, 0xEC)))
+                rank_txt5 = WHITE if i <= 2 else TEXT_MUTED
+                rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5 + 0.06), Inches(0.32), Inches(0.32))
+                rank_circ5.fill.solid(); rank_circ5.fill.fore_color.rgb = rank_bg5
+                rank_circ5.line.fill.background(); rank_circ5.shadow.inherit = False
+                rtf5 = rank_circ5.text_frame; rtf5.vertical_anchor = MSO_ANCHOR.MIDDLE
+                rtf5.margin_left = 0; rtf5.margin_right = 0
+                rp5 = rtf5.paragraphs[0]; rp5.alignment = PP_ALIGN.CENTER
+                rr5 = rp5.add_run(); rr5.text = str(i + 1)
+                rr5.font.size = Pt(11); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
+                add_textbox(s, right_x5 + 0.58, ry5, right_w5 - 0.75, 0.24, str(r["kategori_sparepart"]), size=9.5, bold=True, color=TEXT_DARK)
+                add_textbox(s, right_x5 + 0.58, ry5 + 0.22, right_w5 - 0.75, 0.22, fmt_rp(r["total_biaya"]), size=9, color=RED)
+                bar_w_max5 = right_w5 - 0.75
+                bar_w5 = max(0.05, bar_w_max5 * (r["total_biaya"] / max_biaya5)) if max_biaya5 else 0.05
+                bar5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 0.58), Inches(ry5 + 0.44), Inches(bar_w5), Inches(0.08))
+                bar5.adjustments[0] = 0.5
+                bar5.fill.solid(); bar5.fill.fore_color.rgb = rank_bg5
+                bar5.line.fill.background(); bar5.shadow.inherit = False
+        else:
+            add_textbox(s, right_x5 + 0.15, sp_list_top5 + 0.2, right_w5 - 0.3, 0.8,
+                        "Data Sparepart belum tersedia. Silakan upload data Rincian Pemakaian Sparepart terlebih dahulu.",
+                        size=10, italic=True, color=TEXT_MUTED)
+
 
 
     # Jika filter kategori mencakup AB & TR sekaligus DAN keduanya benar-benar punya data, pisah jadi 2 blok:
@@ -1537,10 +1671,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         data_ab = data_ab_check.copy()
         sm_tr = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "TR"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
         sm_ab = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "AB"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
-        render_4_slides(data_tr, sm_tr, "01", "02", "03", "04", " · TRANSPORTASI")
-        render_4_slides(data_ab, sm_ab, "05", "06", "07", "08", " · ALAT BERAT")
+        render_5_slides(data_tr, sm_tr, "01", "02", "03", "04", "05", " · TRANSPORTASI")
+        render_5_slides(data_ab, sm_ab, "06", "07", "08", "09", "10", " · ALAT BERAT")
     else:
-        render_4_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "")
+        render_5_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "05", "")
 
     buf = _io.BytesIO()
     prs.save(buf)
