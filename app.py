@@ -1628,28 +1628,50 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 sp5 = sp5[sp5["lokasi"].isin(site_list)]
             if "bulan" in sp5.columns and month_list:
                 sp5 = sp5[sp5["bulan"].isin(month_list)]
+            # Filter sesuai kategori (AB/TR) slide yg sedang dirender: cocokkan nama_unit sparepart
+            # dengan daftar nama_unit yang ada di `data` (yang sudah kategori-spesifik).
+            if "nama_unit" in sp5.columns:
+                valid_units5 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
+                sp5 = sp5[sp5["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units5)]
             sp_agg5 = sp5.groupby("kategori_sparepart", as_index=False).agg(total_biaya=("biaya", "sum"))
             sp_agg5 = sp_agg5.sort_values("total_biaya", ascending=False)
+            sp_agg5 = sp_agg5[sp_agg5["total_biaya"] > 0]
             max_biaya5 = sp_agg5["total_biaya"].max() if not sp_agg5.empty else 1
-            row_h5 = 0.62
-            max_rows5 = int((panel_h5 - 0.6) / row_h5)
-            for i, (_, r) in enumerate(sp_agg5.head(max_rows5).iterrows()):
+            n_sp5 = max(len(sp_agg5), 1)
+            available_h5 = panel_h5 - (sp_list_top5 - panel_top5) - 0.2
+            row_h5 = min(0.62, available_h5 / n_sp5)
+            small5 = row_h5 < 0.42
+            circ_size5 = 0.32 if not small5 else max(0.16, row_h5 * 0.55)
+            font_title5 = 9.5 if not small5 else max(6, row_h5 * 14)
+            font_val5 = 9 if not small5 else max(5.5, row_h5 * 13)
+            font_rank5 = 11 if not small5 else max(6.5, row_h5 * 16)
+            for i, (_, r) in enumerate(sp_agg5.iterrows()):
                 ry5 = sp_list_top5 + i * row_h5
                 rank_bg5 = GOLD if i == 0 else (RGBColor(0xB0, 0xB0, 0xB0) if i == 1 else (RGBColor(0xCD, 0x7F, 0x32) if i == 2 else RGBColor(0xE0, 0xE4, 0xEC)))
                 rank_txt5 = WHITE if i <= 2 else TEXT_MUTED
-                rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5 + 0.06), Inches(0.32), Inches(0.32))
+                rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5 + row_h5 / 2 - circ_size5 / 2), Inches(circ_size5), Inches(circ_size5))
                 rank_circ5.fill.solid(); rank_circ5.fill.fore_color.rgb = rank_bg5
                 rank_circ5.line.fill.background(); rank_circ5.shadow.inherit = False
                 rtf5 = rank_circ5.text_frame; rtf5.vertical_anchor = MSO_ANCHOR.MIDDLE
                 rtf5.margin_left = 0; rtf5.margin_right = 0
                 rp5 = rtf5.paragraphs[0]; rp5.alignment = PP_ALIGN.CENTER
                 rr5 = rp5.add_run(); rr5.text = str(i + 1)
-                rr5.font.size = Pt(11); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
-                add_textbox(s, right_x5 + 0.58, ry5, right_w5 - 0.75, 0.24, str(r["kategori_sparepart"]), size=9.5, bold=True, color=TEXT_DARK)
-                add_textbox(s, right_x5 + 0.58, ry5 + 0.22, right_w5 - 0.75, 0.22, fmt_rp(r["total_biaya"]), size=9, color=RED)
+                rr5.font.size = Pt(font_rank5); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
+                if not small5:
+                    add_textbox(s, right_x5 + 0.58, ry5, right_w5 - 0.75, 0.24, str(r["kategori_sparepart"]), size=font_title5, bold=True, color=TEXT_DARK)
+                    add_textbox(s, right_x5 + 0.58, ry5 + 0.22, right_w5 - 0.75, 0.22, fmt_rp(r["total_biaya"]), size=font_val5, color=RED)
+                    bar_y5 = ry5 + 0.44
+                    bar_h5 = 0.08
+                else:
+                    add_textbox(s, right_x5 + 0.58, ry5 - 0.02, right_w5 - 0.75, row_h5 * 0.55,
+                                f"{r['kategori_sparepart']}", size=font_title5, bold=True, color=TEXT_DARK)
+                    add_textbox(s, right_x5 + 0.58, ry5 + row_h5 * 0.42, right_w5 - 0.75, row_h5 * 0.4,
+                                fmt_rp(r["total_biaya"]), size=font_val5, color=RED)
+                    bar_y5 = ry5 + row_h5 - 0.06
+                    bar_h5 = 0.045
                 bar_w_max5 = right_w5 - 0.75
                 bar_w5 = max(0.05, bar_w_max5 * (r["total_biaya"] / max_biaya5)) if max_biaya5 else 0.05
-                bar5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 0.58), Inches(ry5 + 0.44), Inches(bar_w5), Inches(0.08))
+                bar5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 0.58), Inches(bar_y5), Inches(bar_w5), Inches(bar_h5))
                 bar5.adjustments[0] = 0.5
                 bar5.fill.solid(); bar5.fill.fore_color.rgb = rank_bg5
                 bar5.line.fill.background(); bar5.shadow.inherit = False
