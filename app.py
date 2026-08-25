@@ -1360,186 +1360,122 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             add_textbox(s, 0.55, chart_top_m3 + 0.1, 12.0, 0.5, "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
 
-        # ================= SLIDE 4: ANALISIS BIAYA MAINTENANCE — per Site & Kategori =================
-        s = add_content_slide(f"ANALISIS: Biaya Maintenance — s/d {period}", f"Analisis Maintenance · {snum4}{divisi_label}{kat_suffix}")
+        # ================= SLIDE 4: ANALISIS Capaian Biaya vs Capaian Fisik & Konsumsi BBM =================
+        s = add_content_slide(f"ANALISIS: Capaian Biaya vs Capaian Fisik \u2014 s/d {period}", f"Analisis Biaya \u00b7 {snum4}{divisi_label}{kat_suffix}")
 
-        # --- Kartu atas: Capaian Biaya Maintenance global (lebar penuh, gaya sama dgn Total Biaya Langsung) ---
-        tot_maint_r4 = data["maintenance_realisasi"].sum()
-        tot_maint_b4 = data["maintenance_budget"].sum()
-        ach_maint4 = (tot_maint_r4 / tot_maint_b4 * 100) if tot_maint_b4 else None
-        good_maint4 = ach_maint4 is not None and ach_maint4 <= 100
-        top_card_h4 = 0.85
-        top_card_w4 = 12.5
+        panel_top4 = 1.0
+        panel_bottom4 = 7.3
+        panel_h4 = panel_bottom4 - panel_top4
 
-        strip_m = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.4), Inches(0.98), Inches(top_card_w4), Inches(0.06))
-        strip_m.fill.solid(); strip_m.fill.fore_color.rgb = (GREEN if good_maint4 else RED)
-        strip_m.line.fill.background(); strip_m.shadow.inherit = False
-        card_m = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.4), Inches(1.04), Inches(top_card_w4), Inches(top_card_h4 - 0.06))
-        card_m.adjustments[0] = 0.09
-        card_m.fill.solid(); card_m.fill.fore_color.rgb = WHITE
-        card_m.line.color.rgb = BORDER; card_m.line.width = Pt(0.75)
-        card_m.shadow.inherit = False
-        icon_size_m = 0.5
-        circ_m = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.55), Inches(1.04 + (top_card_h4 - 0.06) / 2 - icon_size_m / 2), Inches(icon_size_m), Inches(icon_size_m))
-        circ_m.fill.solid(); circ_m.fill.fore_color.rgb = NAVY
-        circ_m.line.fill.background(); circ_m.shadow.inherit = False
-        ictf_m = circ_m.text_frame; ictf_m.vertical_anchor = MSO_ANCHOR.MIDDLE
-        ictf_m.margin_left = 0; ictf_m.margin_right = 0
-        icp_m = ictf_m.paragraphs[0]; icp_m.alignment = PP_ALIGN.CENTER
-        icr_m = icp_m.add_run(); icr_m.text = "🔧"
-        icr_m.font.size = Pt(14); icr_m.font.bold = True; icr_m.font.color.rgb = WHITE
-        add_textbox(s, 1.2, 1.09, 5.5, 0.24, "Biaya Maintenance — Capaian Global", size=10.5, bold=False, color=TEXT_MUTED)
-        pbg_m, ptxt_m = pill_colors(good_maint4)
-        pill_w_m = 1.7
-        pill_m = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.2), Inches(1.32), Inches(pill_w_m), Inches(0.38))
-        pill_m.adjustments[0] = 0.5
-        pill_m.fill.solid(); pill_m.fill.fore_color.rgb = pbg_m
-        pill_m.line.fill.background(); pill_m.shadow.inherit = False
-        ptf_m = pill_m.text_frame; ptf_m.vertical_anchor = MSO_ANCHOR.MIDDLE
-        pp_m = ptf_m.paragraphs[0]; pp_m.alignment = PP_ALIGN.CENTER
-        pr_m = pp_m.add_run()
-        pr_m.text = (f"✓ {ach_maint4:.1f}%" if good_maint4 else (f"✗ {ach_maint4:.1f}%" if ach_maint4 is not None else "-"))
-        pr_m.font.size = Pt(12); pr_m.font.bold = True; pr_m.font.color.rgb = ptxt_m
-        add_textbox(s, 1.2 + pill_w_m + 0.2, 1.38, top_card_w4 - 1.2 - pill_w_m - 0.4, 0.26,
-                    f"Aktual: {fmt_rp(tot_maint_r4)}   |   Budget: {fmt_rp(tot_maint_b4)}", size=10.5, color=TEXT_MUTED)
+        # ================= PANEL KIRI: Capaian Biaya (di luar Penyusutan) vs Capaian Prestasi =================
+        prestasi_r4 = data["prestasi_realisasi"].sum()
+        prestasi_b4 = data["prestasi_budget"].sum()
+        cap_prestasi_global4 = (prestasi_r4 / prestasi_b4 * 100) if prestasi_b4 else None
 
-        # --- Data: Biaya Maintenance per Site & Kategori, diurutkan dari yg PALING OVER dulu ---
-        maint_sk4 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
-            maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"),
-            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"),
-        )
-        maint_sk4 = maint_sk4[(maint_sk4["maint_r"] > 0) | (maint_sk4["maint_b"] > 0)].copy()
-        maint_sk4["site_short"] = maint_sk4["lokasi"].map(SITE_ABBR).fillna(maint_sk4["lokasi"])
-        maint_sk4["label"] = maint_sk4["site_short"] + " (" + maint_sk4["kategori"] + ")"
-        maint_sk4["pct"] = maint_sk4.apply(lambda r: (r["maint_r"] / r["maint_b"] * 100) if r["maint_b"] else None, axis=1)
-        maint_sk4["rate_r"] = maint_sk4.apply(lambda r: (r["maint_r"] / r["prestasi_r"]) if r["prestasi_r"] else None, axis=1)
-        maint_sk4 = maint_sk4.sort_values("pct", ascending=False, na_position="last")
-        n_m4 = max(len(maint_sk4), 1)
+        comp_defs4 = [
+            ("Upah Operator", "upah_realisasi", "upah_budget"),
+            ("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"),
+            ("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
+            ("Biaya Lainnya", "lainnya_realisasi", "lainnya_budget"),
+        ]
+        left_rows4 = []
+        for name4, rcol4, bcol4 in comp_defs4:
+            r4 = data[rcol4].sum()
+            b4 = data[bcol4].sum()
+            cap_biaya4 = (r4 / b4 * 100) if b4 else None
+            left_rows4.append({"label": name4, "cap_biaya": cap_biaya4, "cap_prestasi": cap_prestasi_global4})
+        left_rows4 = sorted(left_rows4, key=lambda r: (r["cap_biaya"] if r["cap_biaya"] is not None else -1), reverse=True)
 
-        panel_top4 = 1.98
-        panel_h4 = 7.18 - panel_top4
-        add_card_panel(s, 0.4, panel_top4, 12.5, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 12.5, "🔴 Biaya Maintenance — per Site & Kategori (diurutkan dari paling OVER)", height=0.4)
+        add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
+        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F4B0 Capaian Biaya (di luar Penyusutan) vs Capaian Prestasi", height=0.4)
+        chart_top_l4 = panel_top4 + 0.45
+        chart_h_l4 = panel_h4 - 0.55
+        cd_l4 = CategoryChartData()
+        cd_l4.categories = [r["label"] for r in left_rows4]
+        cd_l4.add_series("% Capaian Biaya", tuple(round(r["cap_biaya"], 1) if r["cap_biaya"] is not None else 0 for r in left_rows4))
+        cd_l4.add_series("% Capaian Prestasi", tuple(round(r["cap_prestasi"], 1) if r["cap_prestasi"] is not None else 0 for r in left_rows4))
+        gframe_l4 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.55), Inches(chart_top_l4), Inches(5.75), Inches(chart_h_l4), cd_l4)
+        chart_l4 = gframe_l4.chart
+        chart_l4.series[0].format.fill.solid(); chart_l4.series[0].format.fill.fore_color.rgb = RED
+        chart_l4.series[1].format.fill.solid(); chart_l4.series[1].format.fill.fore_color.rgb = TEAL
+        chart_l4.has_title = False
+        plot_l4 = chart_l4.plots[0]
+        plot_l4.has_data_labels = True
+        dls_l4 = plot_l4.data_labels
+        dls_l4.number_format = '0.0"%"'; dls_l4.number_format_is_linked = False
+        dls_l4.font.size = Pt(9.5); dls_l4.font.bold = True; dls_l4.font.color.rgb = TEXT_DARK; dls_l4.font.name = "Calibri"
+        style_chart_light(chart_l4, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
+        chart_l4.category_axis.tick_labels.font.size = Pt(10.5)
+        chart_l4.value_axis.tick_labels.font.size = Pt(9.5)
 
-        if not maint_sk4.empty:
-            maint_sk4["prestasi_pct"] = maint_sk4.apply(
-                lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
+        # ================= PANEL KANAN: % Capaian Konsumsi BBM per Site & Jenis Unit =================
+        # Filter: qty BBM ada tapi Rp BBM tidak ada -> qty tsb tidak dihitung
+        bad_r4b = (data["qty_bbm_realisasi"] > 0) & (data["biaya_bbm_realisasi"].fillna(0) == 0)
+        bad_b4b = (data["qty_bbm_budget"] > 0) & (data["biaya_bbm_budget"].fillna(0) == 0)
+        data_bbm_ok4 = data[~(bad_r4b | bad_b4b)]
 
-            chart_h_m4 = 3.35
-            chart_top_m4 = panel_top4 + 0.75
+        bbm_su4 = data_bbm_ok4.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+            qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum"),
+            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
+        bbm_su4 = bbm_su4[(bbm_su4["qty_r"] > 0) | (bbm_su4["qty_b"] > 0)].copy()
+        bbm_su4["site_short"] = bbm_su4["lokasi"].map(SITE_ABBR).fillna(bbm_su4["lokasi"])
+        bbm_su4["label"] = bbm_su4["site_short"] + " \u2014 " + bbm_su4["jenis_unit"]
 
-            # --- Chart KIRI: 2 batang VERTIKAL basis % (Aktual=%capaian biaya, %Prestasi) ---
-            add_textbox(s, 0.55, chart_top_m4 - 0.32, 5.85, 0.28, "Capaian Biaya vs Prestasi (%)", size=10.5, bold=True, color=TEXT_DARK)
-            cd_m4 = CategoryChartData()
-            cd_m4.categories = list(maint_sk4["label"])
-            cd_m4.add_series("Aktual (% Biaya)", tuple(round(v, 1) if v is not None and pd.notna(v) else 0 for v in maint_sk4["pct"]))
-            cd_m4.add_series("% Prestasi", tuple(round(v, 1) if v is not None and pd.notna(v) else 0 for v in maint_sk4["prestasi_pct"]))
-            gframe_m4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_m4), Inches(5.85), Inches(chart_h_m4), cd_m4)
-            chart_m4 = gframe_m4.chart
-            CHART_BUDGET_COLOR = RGBColor(0xA9, 0xB8, 0xD4)
-            CHART_PRESTASI_COLOR = RGBColor(0x7B, 0x5C, 0xE8)
-            GREEN_DARK = RGBColor(0x15, 0x7A, 0x4D)
-            RED_DARK = RGBColor(0xA8, 0x2E, 0x24)
-            PRESTASI_DARK = RGBColor(0x54, 0x3D, 0xA8)
-            BUDGET_DARK = RGBColor(0x7C, 0x8F, 0xB8)
-
-            def _grad_fill(series_obj, top_rgb, bot_rgb):
-                fill_obj = series_obj.format.fill
-                fill_obj.gradient()
-                fill_obj.gradient_stops[0].color.rgb = top_rgb
-                fill_obj.gradient_stops[1].color.rgb = bot_rgb
-                fill_obj.gradient_angle = 90
-
-            _grad_fill(chart_m4.series[0], GREEN, GREEN_DARK)
-            _grad_fill(chart_m4.series[1], CHART_PRESTASI_COLOR, PRESTASI_DARK)
-            chart_m4.has_title = False
-            for i, pt in enumerate(chart_m4.series[0].points):
-                pv = maint_sk4["pct"].iloc[i]
-                if pv is not None and pd.notna(pv) and pv > 105:
-                    _grad_fill(pt, RED, RED_DARK)
-            plot_m4 = chart_m4.plots[0]
-            plot_m4.gap_width = 60
-            plot_m4.has_data_labels = True
-            dls_m4 = plot_m4.data_labels
-            dls_m4.number_format = '0"%"'; dls_m4.number_format_is_linked = False
-            dls_m4.font.size = Pt(7); dls_m4.font.bold = True; dls_m4.font.color.rgb = TEXT_DARK; dls_m4.font.name = "Calibri"
-            dls_m4.position = XL_LABEL_POSITION.OUTSIDE_END
-            style_chart_light(chart_m4, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
-            cat_font_m4 = 8 if n_m4 <= 6 else (6.8 if n_m4 <= 9 else 6)
-            chart_m4.category_axis.tick_labels.font.size = Pt(cat_font_m4)
-            chart_m4.value_axis.tick_labels.font.size = Pt(cat_font_m4)
-            chart_m4.value_axis.tick_labels.number_format = '0"%"'
-            chart_m4.value_axis.tick_labels.number_format_is_linked = False
-
-            # --- Chart KANAN: Total Biaya Maintenance (Rp) vs Target — line chart smooth dgn marker putih-outline, format berbeda supaya lebih menarik ---
-            add_textbox(s, 6.65, chart_top_m4 - 0.32, 5.9, 0.28, "Total Biaya Maintenance (Rp) vs Target", size=10.5, bold=True, color=TEXT_DARK)
-            cd_line = CategoryChartData()
-            cd_line.categories = list(maint_sk4["label"])
-            cd_line.add_series("Target", tuple(maint_sk4["maint_b"]))
-            cd_line.add_series("Aktual", tuple(maint_sk4["maint_r"]))
-            gframe_line = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(6.65), Inches(chart_top_m4), Inches(5.9), Inches(chart_h_m4), cd_line)
-            chart_line = gframe_line.chart
-            chart_line.has_title = False
-            AKTUAL_COLOR = RGBColor(0xF2, 0x76, 0x3C)
-            s_target = chart_line.series[0]
-            s_target.smooth = True
-            s_target.format.line.color.rgb = CHART_BUDGET_COLOR
-            s_target.format.line.width = Pt(2.25)
-            s_target.format.line.dash_style = MSO_LINE_DASH_STYLE.DASH
-            s_target.marker.style = XL_MARKER_STYLE.CIRCLE
-            s_target.marker.size = 8
-            s_target.marker.format.fill.solid(); s_target.marker.format.fill.fore_color.rgb = WHITE
-            s_target.marker.format.line.color.rgb = CHART_BUDGET_COLOR
-            s_target.marker.format.line.width = Pt(1.75)
-            s_aktual = chart_line.series[1]
-            s_aktual.smooth = True
-            s_aktual.format.line.color.rgb = AKTUAL_COLOR
-            s_aktual.format.line.width = Pt(3.5)
-            s_aktual.marker.style = XL_MARKER_STYLE.DIAMOND
-            s_aktual.marker.size = 11
-            s_aktual.marker.format.fill.solid(); s_aktual.marker.format.fill.fore_color.rgb = WHITE
-            s_aktual.marker.format.line.color.rgb = AKTUAL_COLOR
-            s_aktual.marker.format.line.width = Pt(2.25)
-            for i, pt in enumerate(s_target.points):
-                dl = pt.data_label
-                dl.has_text_frame = True
-                dl.text_frame.text = fmt_rp(maint_sk4["maint_b"].iloc[i])
-                r0 = dl.text_frame.paragraphs[0].runs[0]
-                r0.font.size = Pt(6.5); r0.font.bold = True; r0.font.color.rgb = BUDGET_DARK; r0.font.name = "Calibri"
-            for i, pt in enumerate(s_aktual.points):
-                dl = pt.data_label
-                dl.has_text_frame = True
-                dl.text_frame.text = fmt_rp(maint_sk4["maint_r"].iloc[i])
-                r0 = dl.text_frame.paragraphs[0].runs[0]
-                r0.font.size = Pt(6.5); r0.font.bold = True; r0.font.color.rgb = AKTUAL_COLOR; r0.font.name = "Calibri"
-            style_chart_light(chart_line, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
-            chart_line.category_axis.tick_labels.font.size = Pt(cat_font_m4)
-            chart_line.value_axis.tick_labels.font.size = Pt(cat_font_m4)
-            max_val_line = max(maint_sk4["maint_b"].max(), maint_sk4["maint_r"].max())
-            if max_val_line >= 1e9:
-                chart_line.value_axis.tick_labels.number_format = '#,##0.00,,,"M"'
+        def _bbm_cap4(row):
+            if row["kategori"] == "AB":
+                rate_r = (row["qty_r"] / row["prestasi_r"]) if row["prestasi_r"] else None
+                rate_b = (row["qty_b"] / row["prestasi_b"]) if row["prestasi_b"] else None
             else:
-                chart_line.value_axis.tick_labels.number_format = '#,##0.0,,"Jt"'
-            chart_line.value_axis.tick_labels.number_format_is_linked = False
+                rate_r = (row["prestasi_r"] / row["qty_r"]) if row["qty_r"] else None
+                rate_b = (row["prestasi_b"] / row["qty_b"]) if row["qty_b"] else None
+            if rate_r is None or not rate_b:
+                return None
+            return rate_r / rate_b * 100
 
-            over_sk4 = maint_sk4[maint_sk4["pct"] > 100].sort_values("pct", ascending=False)
-            note_top_m4 = chart_top_m4 + chart_h_m4 + 0.15
-            note_h_m4 = panel_h4 - (note_top_m4 - panel_top4) - 0.1
-            if not over_sk4.empty:
-                w4 = over_sk4.iloc[0]
-                other_count = len(over_sk4) - 1
-                other_txt = f", serta {other_count} kombinasi site-kategori lain" if other_count > 0 else ""
-                add_finding_box(s, 0.55, note_top_m4, 12.1, note_h_m4, "📌",
-                                 f"{w4['label']} adalah yang PALING OVER BUDGET maintenance ({w4['pct']:.1f}%) — "
-                                 f"Realisasi {fmt_rp(w4['maint_r'])} vs Budget {fmt_rp(w4['maint_b'])}{other_txt}. Perlu evaluasi & efisiensi biaya maintenance s/d {period}.",
-                                 RED_BG, RED, RED)
-            else:
-                add_finding_box(s, 0.55, note_top_m4, 12.1, note_h_m4, "✅",
-                                 "Seluruh site & kategori memiliki biaya maintenance dalam/di bawah budget — tidak ada yang over.",
-                                 GREEN_BG, GREEN, GREEN)
+        bbm_su4["cap"] = bbm_su4.apply(_bbm_cap4, axis=1)
+        bbm_su4 = bbm_su4.dropna(subset=["cap"])
+        bbm_su4 = bbm_su4.sort_values("cap", ascending=False)
+        n_bbm4 = max(len(bbm_su4), 1)
+
+        add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
+        add_panel_header(s, 6.85, panel_top4, 6.05, "\u26fd % Capaian Konsumsi BBM \u2014 per Site & Jenis Unit", height=0.4)
+        chart_top_r4 = panel_top4 + 0.45
+        chart_h_r4 = panel_h4 - 0.55
+        if not bbm_su4.empty:
+            cd_r4 = CategoryChartData()
+            cd_r4.categories = list(bbm_su4["label"])
+            cd_r4.add_series("% Capaian Konsumsi BBM", tuple(round(v, 1) for v in bbm_su4["cap"]))
+            gframe_r4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.0), Inches(chart_top_r4), Inches(5.75), Inches(chart_h_r4), cd_r4)
+            chart_r4 = gframe_r4.chart
+            chart_r4.series[0].format.fill.solid(); chart_r4.series[0].format.fill.fore_color.rgb = TEAL
+            chart_r4.has_title = False
+            for i, pt in enumerate(chart_r4.series[0].points):
+                v = bbm_su4["cap"].iloc[i]
+                if v < 95 or v > 105:
+                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
+            plot_r4 = chart_r4.plots[0]
+            plot_r4.gap_width = 50
+            plot_r4.has_data_labels = True
+            dls_r4 = plot_r4.data_labels
+            dls_r4.number_format = '0"%"'; dls_r4.number_format_is_linked = False
+            label_font_r4 = 7.5 if n_bbm4 <= 12 else 6
+            dls_r4.font.size = Pt(label_font_r4); dls_r4.font.bold = True; dls_r4.font.color.rgb = TEXT_DARK; dls_r4.font.name = "Calibri"
+            dls_r4.position = XL_LABEL_POSITION.OUTSIDE_END
+            if n_bbm4 > 12:
+                from pptx.oxml.ns import qn as _qn4
+                for pt in chart_r4.series[0].points:
+                    dl = pt.data_label
+                    dl.has_text_frame = True
+                    bodyPr = dl.text_frame._txBody.find(_qn4('a:bodyPr'))
+                    if bodyPr is not None:
+                        bodyPr.set('rot', '-5400000')
+            style_chart_light(chart_r4, legend=False)
+            cat_font_r4 = 8 if n_bbm4 <= 10 else (6.5 if n_bbm4 <= 20 else 5.3)
+            chart_r4.category_axis.tick_labels.font.size = Pt(cat_font_r4)
+            chart_r4.value_axis.tick_labels.font.size = Pt(cat_font_r4)
         else:
-            add_textbox(s, 0.55, panel_top4 + 1.0, 12.1, 0.8, "Data Budget/Realisasi Maintenance belum tersedia untuk periode/filter ini.",
-                        size=12, italic=True, color=TEXT_MUTED)
+            add_textbox(s, 7.0, chart_top_r4 + 0.1, 5.6, 0.5, "Data konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+
 
 
     # Jika filter kategori mencakup AB & TR sekaligus DAN keduanya benar-benar punya data, pisah jadi 2 blok:
