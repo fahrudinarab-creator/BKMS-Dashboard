@@ -389,6 +389,33 @@ with st.sidebar:
     else:
         sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
 
+    # Tambahkan kolom 'kategori' (AB/TR) ke data maintenance & sparepart, dicocokkan lewat nama_unit
+    # terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori. Hasilnya disimpan kembali
+    # ke file CSV-nya (data_maintenance.csv & data_sparepart.csv) supaya kolom kategori permanen di file.
+    if not df_raw.empty and "nama_unit" in df_raw.columns and "kategori" in df_raw.columns:
+        _kategori_lookup = (
+            df_raw.dropna(subset=["nama_unit", "kategori"])
+            .assign(_nama_unit_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
+            .drop_duplicates(subset=["_nama_unit_key"])
+            .set_index("_nama_unit_key")["kategori"]
+        )
+        if not maint_raw.empty and "nama_unit" in maint_raw.columns:
+            maint_raw = maint_raw.copy()
+            maint_raw["kategori"] = maint_raw["nama_unit"].astype(str).str.strip().str.upper().map(_kategori_lookup)
+            try:
+                maint_raw.to_csv(MAINT_DATA_PATH, index=False)
+                load_maintenance_data.clear()
+            except Exception as _e_maint_save:
+                st.warning(f"Kolom kategori berhasil ditambahkan, tapi gagal menyimpan ke {MAINT_DATA_PATH.name}: {_e_maint_save}")
+        if not sparepart_raw.empty and "nama_unit" in sparepart_raw.columns:
+            sparepart_raw = sparepart_raw.copy()
+            sparepart_raw["kategori"] = sparepart_raw["nama_unit"].astype(str).str.strip().str.upper().map(_kategori_lookup)
+            try:
+                sparepart_raw.to_csv(SPAREPART_DATA_PATH, index=False)
+                load_sparepart_data.clear()
+            except Exception as _e_sp_save:
+                st.warning(f"Kolom kategori berhasil ditambahkan, tapi gagal menyimpan ke {SPAREPART_DATA_PATH.name}: {_e_sp_save}")
+
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
 
     st.markdown("---")
@@ -1628,9 +1655,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 sp5 = sp5[sp5["lokasi"].isin(site_list)]
             if "bulan" in sp5.columns and month_list:
                 sp5 = sp5[sp5["bulan"].isin(month_list)]
-            # Filter sesuai kategori (AB/TR) slide yg sedang dirender: cocokkan nama_unit sparepart
-            # dengan daftar nama_unit yang ada di `data` (yang sudah kategori-spesifik).
-            if "nama_unit" in sp5.columns:
+            # Filter sesuai kategori (AB/TR) slide yg sedang dirender. Kolom 'kategori' sudah
+            # tersedia langsung di sparepart_data (dicocokkan via nama_unit saat data dimuat);
+            # fallback ke pencocokan nama_unit manual kalau kolom 'kategori' tidak ada (data lama).
+            kat_scope5 = set(data["kategori"].dropna().unique())
+            if "kategori" in sp5.columns:
+                sp5 = sp5[sp5["kategori"].isin(kat_scope5)]
+            elif "nama_unit" in sp5.columns:
                 valid_units5 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
                 sp5 = sp5[sp5["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units5)]
             sp_agg5 = sp5.groupby("kategori_sparepart", as_index=False).agg(total_biaya=("biaya", "sum"))
