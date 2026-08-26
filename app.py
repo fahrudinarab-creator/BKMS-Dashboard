@@ -937,7 +937,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     _now = _dt.datetime.now()
     tgl_laporan = f"{_bulan_id[_now.month-1]} {_now.year}"
 
-    def render_5_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, snum5, kat_suffix):
+    def render_6_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, snum5, snum6, kat_suffix):
         r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
         pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
         bl_r_raw = data["biaya_langsung_realisasi"].sum(); bl_b_raw = data["biaya_langsung_budget"].sum()
@@ -1724,6 +1724,117 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         "Data Maintenance belum tersedia. Silakan upload data Maintenance (Pemeliharaan) terlebih dahulu.",
                         size=10, italic=True, color=TEXT_MUTED)
 
+        # ================= SLIDE 6: QTY PERGANTIAN SPAREPART & ANALISA DAMPAK PENDAPATAN =================
+        s = add_content_slide(f"MAINTENANCE per Kategori \u2014 Qty Pergantian s/d {period}", f"Analisis Frekuensi \u00b7 {snum6}{divisi_label}{kat_suffix}")
+
+        panel_top6 = 1.0
+        panel_bottom6 = 7.3
+        panel_h6 = panel_bottom6 - panel_top6
+        left_w6 = 6.4
+        right_x6 = 7.0
+        right_w6 = 5.9
+
+        # --- Data: Qty Pergantian (jumlah baris/kejadian maintenance) per kategori_sparepart ---
+        qty_rows6 = []
+        if maint_data is not None and not maint_data.empty:
+            m6 = maint_data.copy()
+            if "lokasi" in m6.columns and site_list:
+                m6 = m6[m6["lokasi"].isin(site_list)]
+            if "bulan" in m6.columns and month_list:
+                m6 = m6[m6["bulan"].isin(month_list)]
+            kat_scope6 = set(data["kategori"].dropna().unique())
+            if "kategori" in m6.columns:
+                m6 = m6[m6["kategori"].isin(kat_scope6)]
+            elif "nama_unit" in m6.columns:
+                valid_units6 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
+                m6 = m6[m6["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units6)]
+            if "kategori_sparepart" in m6.columns:
+                qty_agg6 = m6.groupby("kategori_sparepart", as_index=False).agg(qty=("kategori_sparepart", "count"))
+                qty_agg6 = qty_agg6.sort_values("qty", ascending=False)
+                qty_rows6 = [[str(r["kategori_sparepart"]), f"{int(r['qty']):,}"] for _, r in qty_agg6.iterrows()]
+
+        # --- Panel kiri: Tabel Qty Pergantian per Kategori ---
+        add_card_panel(s, 0.4, panel_top6, left_w6, panel_h6)
+        add_panel_header(s, 0.4, panel_top6, left_w6, "\U0001F504 Qty Pergantian Sparepart per Kategori", height=0.4)
+        if qty_rows6:
+            tbl_font6 = 10 if len(qty_rows6) <= 12 else (8.5 if len(qty_rows6) <= 18 else 7)
+            row_h6 = min(0.35, (panel_h6 - 0.55) / max(len(qty_rows6), 1))
+            add_table(s, 0.55, panel_top6 + 0.5, left_w6 - 0.3, row_h6 * (len(qty_rows6) + 1),
+                      ["Kategori Sparepart", "Qty Pergantian"], qty_rows6,
+                      col_widths=[4.0, 1.6], font_size=tbl_font6, header_size=tbl_font6)
+        else:
+            add_textbox(s, 0.55, panel_top6 + 0.6, left_w6 - 0.3, 0.6,
+                        "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+
+        # --- Panel kanan: Analisa unit paling sering maintenance & dampak ke pendapatan ---
+        add_card_panel(s, right_x6, panel_top6, right_w6, panel_h6)
+        add_panel_header(s, right_x6, panel_top6, right_w6, "\U0001F4C9 Analisa: Unit Paling Sering Maintenance \u2014 Dampak Pendapatan", height=0.4)
+        analisa_top6 = panel_top6 + 0.55
+
+        if maint_data is not None and not maint_data.empty and "nama_unit" in maint_data.columns:
+            m6b = maint_data.copy()
+            if "lokasi" in m6b.columns and site_list:
+                m6b = m6b[m6b["lokasi"].isin(site_list)]
+            if "bulan" in m6b.columns and month_list:
+                m6b = m6b[m6b["bulan"].isin(month_list)]
+            kat_scope6b = set(data["kategori"].dropna().unique())
+            if "kategori" in m6b.columns:
+                m6b = m6b[m6b["kategori"].isin(kat_scope6b)]
+            elif "nama_unit" in m6b.columns:
+                valid_units6b = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
+                m6b = m6b[m6b["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units6b)]
+
+            freq6 = m6b.groupby(["lokasi", "nama_unit"], as_index=False).agg(jumlah_maintenance=("nama_unit", "count"))
+            freq6 = freq6.sort_values("jumlah_maintenance", ascending=False)
+
+            if not freq6.empty:
+                top_unit6 = freq6.iloc[0]
+                site_short6 = SITE_ABBR.get(top_unit6["lokasi"], top_unit6["lokasi"])
+                unit_label6 = f"{site_short6} \u2014 {top_unit6['nama_unit']}"
+
+                # Cari gap pendapatan unit tsb (realisasi - budget) dari data utama
+                unit_pend6 = data[data["nama_unit"].astype(str).str.strip().str.upper() ==
+                                   str(top_unit6["nama_unit"]).strip().upper()]
+                pend_r6 = unit_pend6["pendapatan_realisasi"].sum() if not unit_pend6.empty else None
+                pend_b6 = unit_pend6["pendapatan_budget"].sum() if not unit_pend6.empty else None
+                gap6 = (pend_r6 - pend_b6) if (pend_r6 is not None and pend_b6 is not None) else None
+
+                add_finding_box(s, right_x6 + 0.15, analisa_top6, right_w6 - 0.3, 1.3, "\U0001F6A8",
+                                 f"{unit_label6} adalah unit dengan maintenance PALING SERING "
+                                 f"({int(top_unit6['jumlah_maintenance'])}x kejadian s/d {period}).",
+                                 RED_BG, RED, RED)
+
+                pend_top6 = analisa_top6 + 1.45
+                if gap6 is not None:
+                    gap_sign6 = "minus" if gap6 < 0 else "plus"
+                    add_finding_box(s, right_x6 + 0.15, pend_top6, right_w6 - 0.3, 1.3, "\U0001F4B0",
+                                     f"Dampak Pendapatan: Realisasi {fmt_rp(pend_r6)} vs Budget {fmt_rp(pend_b6)} "
+                                     f"(gap {gap_sign6} {fmt_rp(abs(gap6))}). Seringnya unit ini menjalani maintenance "
+                                     f"menekan waktu operasional, sehingga berkontribusi pada {gap_sign6} pendapatan.",
+                                     GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
+                else:
+                    add_textbox(s, right_x6 + 0.15, pend_top6, right_w6 - 0.3, 0.6,
+                                "Data pendapatan unit ini belum tersedia untuk dianalisis.", size=10, italic=True, color=TEXT_MUTED)
+
+                # --- Tabel ringkas 5 unit teratas paling sering maintenance ---
+                tbl_top6 = pend_top6 + 1.5
+                top5_units6 = freq6.head(5)
+                tbl_rows6 = []
+                for _, r in top5_units6.iterrows():
+                    site_s6 = SITE_ABBR.get(r["lokasi"], r["lokasi"])
+                    tbl_rows6.append([f"{site_s6} \u2014 {r['nama_unit']}", f"{int(r['jumlah_maintenance']):,}x"])
+                add_textbox(s, right_x6 + 0.15, tbl_top6 - 0.05, right_w6 - 0.3, 0.24,
+                            "Top 5 Unit Paling Sering Maintenance:", size=9.5, bold=True, color=TEXT_DARK)
+                add_table(s, right_x6 + 0.15, tbl_top6 + 0.22, right_w6 - 0.3, 1.3,
+                          ["Site \u2014 Unit", "Jumlah"], tbl_rows6,
+                          col_widths=[3.6, 1.2], font_size=9, header_size=9)
+            else:
+                add_textbox(s, right_x6 + 0.15, analisa_top6, right_w6 - 0.3, 0.6,
+                            "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+        else:
+            add_textbox(s, right_x6 + 0.15, analisa_top6, right_w6 - 0.3, 0.6,
+                        "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+
 
 
     # Jika filter kategori mencakup AB & TR sekaligus DAN keduanya benar-benar punya data, pisah jadi 2 blok:
@@ -1737,10 +1848,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         data_ab = data_ab_check.copy()
         sm_tr = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "TR"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
         sm_ab = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "AB"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
-        render_5_slides(data_tr, sm_tr, "01", "02", "03", "04", "05", " · TRANSPORTASI")
-        render_5_slides(data_ab, sm_ab, "06", "07", "08", "09", "10", " · ALAT BERAT")
+        render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", "05", "06", " · TRANSPORTASI")
+        render_6_slides(data_ab, sm_ab, "07", "08", "09", "10", "11", "12", " · ALAT BERAT")
     else:
-        render_5_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "05", "")
+        render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "05", "06", "")
 
     buf = _io.BytesIO()
     prs.save(buf)
