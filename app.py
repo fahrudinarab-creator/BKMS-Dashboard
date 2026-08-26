@@ -722,30 +722,30 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     def add_kpi_card(slide, left, top, width, height, icon_txt, icon_color, accent_color,
                       label, value, sub_text, pill_text, pill_good):
         # accent strip (top border)
-        strip = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(0.06))
+        strip = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(0.07))
         strip.fill.solid(); strip.fill.fore_color.rgb = accent_color
         strip.line.fill.background(); strip.shadow.inherit = False
         # card body
-        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top + 0.05), Inches(width), Inches(height - 0.05))
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top + 0.07), Inches(width), Inches(height - 0.07))
         card.adjustments[0] = 0.045
         card.fill.solid(); card.fill.fore_color.rgb = WHITE
         card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
         card.shadow.inherit = False
-        # icon circle
-        icon_size = 0.5
-        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.25), Inches(top + 0.22), Inches(icon_size), Inches(icon_size))
+        # icon circle (ukuran diperbesar sedikit agar lebih menonjol)
+        icon_size = 0.56
+        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.25), Inches(top + 0.25), Inches(icon_size), Inches(icon_size))
         circ.fill.solid(); circ.fill.fore_color.rgb = icon_color
         circ.line.fill.background(); circ.shadow.inherit = False
         ic_tf = circ.text_frame; ic_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         ic_tf.margin_left = 0; ic_tf.margin_right = 0
         icp = ic_tf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
         icr = icp.add_run(); icr.text = icon_txt
-        icr.font.size = Pt(15); icr.font.bold = True; icr.font.color.rgb = WHITE
+        icr.font.size = Pt(17); icr.font.bold = True; icr.font.color.rgb = WHITE
         # label
-        add_textbox(slide, left + 0.95, top + 0.24, width - 1.1, 0.4, label, size=11.5, bold=False, color=TEXT_MUTED)
+        add_textbox(slide, left + 1.0, top + 0.27, width - 1.15, 0.4, label, size=11.5, bold=True, color=TEXT_MUTED)
         # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
-        value_top = top + 0.62
-        add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=21, bold=True, color=TEXT_DARK)
+        value_top = top + 0.66
+        add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=23, bold=True, color=TEXT_DARK)
         # sub text (target/budget)
         if sub_text:
             add_textbox(slide, left + 0.25, value_top + 0.42, width - 0.5, 0.3, sub_text, size=10, color=TEXT_MUTED)
@@ -916,11 +916,23 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
         bar.fill.solid(); bar.fill.fore_color.rgb = NAVY
         bar.line.fill.background(); bar.shadow.inherit = False
+        # Aksen tipis di bawah header supaya ada pemisah visual halus dgn konten panel
+        accent = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top + height - 0.035), Inches(width), Inches(0.035))
+        accent.fill.solid(); accent.fill.fore_color.rgb = GOLD
+        accent.line.fill.background(); accent.shadow.inherit = False
         tf = bar.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.margin_left = Inches(0.15); tf.margin_right = Inches(0.1)
         p = tf.paragraphs[0]
-        r = p.add_run(); r.text = text
-        r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = "Calibri"
+        # Pisahkan ikon (kata pertama) dari teks, ikon dirender sedikit lebih besar supaya lebih menonjol
+        parts = text.split(" ", 1)
+        if len(parts) == 2 and len(parts[0]) <= 2:
+            r_icon = p.add_run(); r_icon.text = parts[0] + "  "
+            r_icon.font.size = Pt(15); r_icon.font.bold = True; r_icon.font.color.rgb = WHITE; r_icon.font.name = "Calibri"
+            r_txt = p.add_run(); r_txt.text = parts[1]
+            r_txt.font.size = Pt(12.5); r_txt.font.bold = True; r_txt.font.color.rgb = WHITE; r_txt.font.name = "Calibri"
+        else:
+            r = p.add_run(); r.text = text
+            r.font.size = Pt(12.5); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = "Calibri"
         return bar
 
     def ach_txt_pct(real, budget):
@@ -1331,15 +1343,19 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 over_btl_sites3.append(r["label"])
 
         btl_panel_top3 = 0.98
-        btl_panel_h3 = 2.6
+        n_btl3 = max(len(btl3_rows), 1)
+        row_h_btl3 = 0.32 if n_btl3 <= 6 else (0.26 if n_btl3 <= 10 else 0.22)
+        tbl_h_btl3 = row_h_btl3 * (n_btl3 + 1)
+        btl_panel_h3 = 0.15 + 0.45 + 0.1 + tbl_h_btl3 + 0.15
         add_card_panel(s, 6.85, btl_panel_top3, 6.05, btl_panel_h3)
         if not over_btl_sites3:
             add_status_banner(s, 7.1, btl_panel_top3 + 0.15, 5.55, 0.45, "\u2705", "BTL \u2014 UNDER BUDGET secara keseluruhan", GREEN_BG, GREEN, GREEN)
         else:
             over_txt3 = " & ".join(over_btl_sites3[:3]) + (", dll" if len(over_btl_sites3) > 3 else "")
             add_status_banner(s, 7.1, btl_panel_top3 + 0.15, 5.55, 0.45, "\u26a0\ufe0f", f"BTL \u2014 UNDER BUDGET, kecuali {over_txt3}", RED_BG, RED, RED)
-        add_table(s, 7.1, btl_panel_top3 + 0.7, 5.55, 1.75, ["Site (Kategori)", "Budget", "Aktual", "% Target", "% BTL"], btl3_rows,
-                  status_col=3, col_widths=[1.55, 1.15, 1.15, 0.85, 0.85], font_size=9.5, header_size=9.5)
+        font_btl3 = 9.5 if n_btl3 <= 6 else (8.5 if n_btl3 <= 10 else 7.5)
+        add_table(s, 7.1, btl_panel_top3 + 0.7, 5.55, tbl_h_btl3, ["Site (Kategori)", "Budget", "Aktual", "% Target", "% BTL"], btl3_rows,
+                  status_col=3, col_widths=[1.55, 1.15, 1.15, 0.85, 0.85], font_size=font_btl3, header_size=font_btl3)
         right_col_bottom3 = btl_panel_top3 + btl_panel_h3
 
         # ================= PANEL BAWAH (LEBAR PENUH): % Capaian Maintenance per Site & Jenis Unit =================
@@ -1754,22 +1770,63 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 qty_agg6 = qty_agg6.sort_values("qty", ascending=False)
                 qty_rows6 = [[str(r["kategori_sparepart"]), f"{int(r['qty']):,}", fmt_rp(r["total_biaya"])] for _, r in qty_agg6.iterrows()]
 
-        # --- Panel kiri: Tabel Qty Pergantian per Kategori ---
-        add_card_panel(s, 0.4, panel_top6, left_w6, panel_h6)
+        # --- Panel kiri: Chart + Tabel Qty Pergantian per Kategori ---
+        add_card_panel(s, 0.4, panel_top6, left_w6, panel_h6, accent_color=TEAL)
         add_panel_header(s, 0.4, panel_top6, left_w6, "\U0001F504 Qty Pergantian Sparepart per Kategori", height=0.4)
         if qty_rows6:
-            tbl_font6 = 10 if len(qty_rows6) <= 12 else (8.5 if len(qty_rows6) <= 18 else 7)
-            row_h6 = min(0.35, (panel_h6 - 0.55) / max(len(qty_rows6), 1))
-            add_table(s, 0.55, panel_top6 + 0.5, left_w6 - 0.3, row_h6 * (len(qty_rows6) + 1),
-                      ["Kategori Sparepart", "Qty Pergantian", "Total Biaya"], qty_rows6,
-                      col_widths=[2.8, 1.4, 1.7], font_size=tbl_font6, header_size=tbl_font6)
+            n_qty6 = len(qty_rows6)
+            # Chart horizontal bar (top 6 kategori) supaya lebih visual, di atas tabel
+            chart_n6 = min(n_qty6, 6)
+            chart_h6b = 1.9
+            cd6 = CategoryChartData()
+            cd6.categories = [r[0] for r in qty_rows6[:chart_n6]][::-1]
+            cd6.add_series("Qty Pergantian", tuple(int(r[1].replace(",", "")) for r in qty_rows6[:chart_n6])[::-1])
+            gframe6 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.55), Inches(panel_top6 + 0.5), Inches(left_w6 - 0.3), Inches(chart_h6b), cd6)
+            chart6 = gframe6.chart
+            chart6.has_title = False
+            chart6.series[0].format.fill.solid(); chart6.series[0].format.fill.fore_color.rgb = TEAL
+            for i_pt, pt in enumerate(chart6.series[0].points):
+                if i_pt == chart_n6 - 1:  # kategori teratas (paling kanan setelah dibalik)
+                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = GOLD
+            plot6 = chart6.plots[0]
+            plot6.gap_width = 40
+            plot6.has_data_labels = True
+            dls6 = plot6.data_labels
+            dls6.font.size = Pt(9); dls6.font.bold = True; dls6.font.color.rgb = TEXT_DARK; dls6.font.name = "Calibri"
+            dls6.position = XL_LABEL_POSITION.OUTSIDE_END
+            style_chart_light(chart6, legend=False)
+            chart6.category_axis.tick_labels.font.size = Pt(8.5)
+            chart6.value_axis.tick_labels.font.size = Pt(8.5)
+            chart6.value_axis.has_major_gridlines = False
+
+            # Tabel rincian di bawah chart. Kalau kategorinya terlalu banyak utk muat rapi (baris minimum
+            # terbaca ~0.22in), batasi ke yg muat & catat sisanya (digabung ke baris "Lainnya").
+            tbl_top6 = panel_top6 + 0.5 + chart_h6b + 0.15
+            tbl_h6_avail = panel_h6 - (tbl_top6 - panel_top6) - 0.1
+            min_row_h6 = 0.24
+            max_data_rows6 = max(int(tbl_h6_avail / min_row_h6) - 1, 1)  # -1 utk header
+            if n_qty6 > max_data_rows6:
+                shown_rows6 = qty_rows6[:max_data_rows6 - 1]
+                sisa_rows6 = qty_rows6[max_data_rows6 - 1:]
+                sisa_qty6 = sum(int(r[1].replace(",", "")) for r in sisa_rows6)
+                sisa_biaya_val6 = qty_agg6.iloc[max_data_rows6 - 1:]["total_biaya"].sum()
+                tbl_rows_final6 = shown_rows6 + [[f"+ {len(sisa_rows6)} kategori lainnya", f"{sisa_qty6:,}", fmt_rp(sisa_biaya_val6)]]
+            else:
+                tbl_rows_final6 = qty_rows6
+            n_tbl6 = len(tbl_rows_final6)
+            tbl_font6 = 9 if n_tbl6 <= 10 else (7.5 if n_tbl6 <= 14 else 6.5)
+            row_h6 = max(min_row_h6, min(0.3, tbl_h6_avail / max(n_tbl6 + 1, 1)))
+            add_textbox(s, 0.55, tbl_top6 - 0.05, left_w6 - 0.3, 0.22, "Rincian per Kategori:", size=9.5, bold=True, color=TEXT_DARK)
+            add_table(s, 0.55, tbl_top6 + 0.2, left_w6 - 0.3, row_h6 * (n_tbl6 + 1),
+                      ["Kategori Sparepart", "Qty", "Total Biaya"], tbl_rows_final6,
+                      col_widths=[2.8, 1.0, 1.7], font_size=tbl_font6, header_size=tbl_font6)
         else:
             add_textbox(s, 0.55, panel_top6 + 0.6, left_w6 - 0.3, 0.6,
                         "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
         # --- Panel kanan: Analisa unit paling sering maintenance & dampak ke pendapatan ---
-        add_card_panel(s, right_x6, panel_top6, right_w6, panel_h6)
-        add_panel_header(s, right_x6, panel_top6, right_w6, "\U0001F4C9 Analisa: Unit Paling Sering Maintenance \u2014 Dampak Pendapatan", height=0.4)
+        add_card_panel(s, right_x6, panel_top6, right_w6, panel_h6, accent_color=RED)
+        add_panel_header(s, right_x6, panel_top6, right_w6, "\U0001F4C9 Analisa: Unit Paling Sering Maintenance", height=0.4)
         analisa_top6 = panel_top6 + 0.55
 
         if maint_data is not None and not maint_data.empty and "nama_unit" in maint_data.columns:
@@ -1801,33 +1858,58 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 pend_b6 = unit_pend6["pendapatan_budget"].sum() if not unit_pend6.empty else None
                 gap6 = (pend_r6 - pend_b6) if (pend_r6 is not None and pend_b6 is not None) else None
 
-                add_finding_box(s, right_x6 + 0.15, analisa_top6, right_w6 - 0.3, 1.3, "\U0001F6A8",
-                                 f"{unit_label6} adalah unit dengan maintenance PALING SERING "
-                                 f"({int(top_unit6['jumlah_maintenance'])}x kejadian s/d {period}).",
-                                 RED_BG, RED, RED)
+                # --- Kartu statistik besar: 2 kolom (Frekuensi Maintenance | Gap Pendapatan) ---
+                stat_top6 = analisa_top6
+                stat_h6 = 1.55
+                stat_w6 = (right_w6 - 0.3 - 0.2) / 2
+                gap_sign6 = "minus" if (gap6 is not None and gap6 < 0) else "plus"
 
-                pend_top6 = analisa_top6 + 1.45
+                for i_stat, (icon6, big_val6, lbl6, sub6, acc6) in enumerate([
+                    ("\U0001F6A8", f"{int(top_unit6['jumlah_maintenance'])}x", "Frekuensi Maintenance", unit_label6, RED),
+                    ("\U0001F4B0", (fmt_rp(abs(gap6)) if gap6 is not None else "-"),
+                     f"Gap Pendapatan ({gap_sign6})", f"vs Budget {fmt_rp(pend_b6) if pend_b6 is not None else '-'}",
+                     RED if (gap6 is not None and gap6 < 0) else GREEN),
+                ]):
+                    sx6 = right_x6 + 0.15 + i_stat * (stat_w6 + 0.2)
+                    stat_card6 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(sx6), Inches(stat_top6), Inches(stat_w6), Inches(stat_h6))
+                    stat_card6.adjustments[0] = 0.06
+                    stat_card6.fill.solid(); stat_card6.fill.fore_color.rgb = RGBColor(0xFC, 0xFC, 0xFD)
+                    stat_card6.line.color.rgb = acc6; stat_card6.line.width = Pt(1.25)
+                    stat_card6.shadow.inherit = False
+                    icon_sz6 = 0.42
+                    circ6 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(sx6 + 0.18), Inches(stat_top6 + 0.15), Inches(icon_sz6), Inches(icon_sz6))
+                    circ6.fill.solid(); circ6.fill.fore_color.rgb = acc6
+                    circ6.line.fill.background(); circ6.shadow.inherit = False
+                    ictf6 = circ6.text_frame; ictf6.vertical_anchor = MSO_ANCHOR.MIDDLE
+                    ictf6.margin_left = 0; ictf6.margin_right = 0
+                    icp6 = ictf6.paragraphs[0]; icp6.alignment = PP_ALIGN.CENTER
+                    icr6 = icp6.add_run(); icr6.text = icon6
+                    icr6.font.size = Pt(13); icr6.font.color.rgb = WHITE
+                    add_textbox(s, sx6 + 0.15, stat_top6 + 0.62, stat_w6 - 0.3, 0.42, big_val6, size=20, bold=True, color=acc6)
+                    add_textbox(s, sx6 + 0.15, stat_top6 + 1.05, stat_w6 - 0.3, 0.2, lbl6, size=8.5, bold=True, color=TEXT_DARK)
+                    add_textbox(s, sx6 + 0.15, stat_top6 + 1.24, stat_w6 - 0.3, 0.28, sub6, size=7, color=TEXT_MUTED)
+
+                narasi_top6 = stat_top6 + stat_h6 + 0.15
                 if gap6 is not None:
-                    gap_sign6 = "minus" if gap6 < 0 else "plus"
-                    add_finding_box(s, right_x6 + 0.15, pend_top6, right_w6 - 0.3, 1.3, "\U0001F4B0",
-                                     f"Dampak Pendapatan: Realisasi {fmt_rp(pend_r6)} vs Budget {fmt_rp(pend_b6)} "
-                                     f"(gap {gap_sign6} {fmt_rp(abs(gap6))}). Seringnya unit ini menjalani maintenance "
-                                     f"menekan waktu operasional, sehingga berkontribusi pada {gap_sign6} pendapatan.",
+                    add_finding_box(s, right_x6 + 0.15, narasi_top6, right_w6 - 0.3, 0.75, "\U0001F4A1",
+                                     f"Seringnya {unit_label6} menjalani maintenance menekan waktu operasional unit, "
+                                     f"sehingga berkontribusi pada {gap_sign6} pendapatan sebesar {fmt_rp(abs(gap6))} "
+                                     f"(Realisasi {fmt_rp(pend_r6)} vs Budget {fmt_rp(pend_b6)}).",
                                      GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
                 else:
-                    add_textbox(s, right_x6 + 0.15, pend_top6, right_w6 - 0.3, 0.6,
+                    add_textbox(s, right_x6 + 0.15, narasi_top6, right_w6 - 0.3, 0.6,
                                 "Data pendapatan unit ini belum tersedia untuk dianalisis.", size=10, italic=True, color=TEXT_MUTED)
 
                 # --- Tabel ringkas 5 unit teratas paling sering maintenance ---
-                tbl_top6 = pend_top6 + 1.5
+                tbl_top6b = narasi_top6 + 0.9
                 top5_units6 = freq6.head(5)
                 tbl_rows6 = []
                 for _, r in top5_units6.iterrows():
                     site_s6 = SITE_ABBR.get(r["lokasi"], r["lokasi"])
                     tbl_rows6.append([f"{site_s6} \u2014 {r['nama_unit']}", f"{int(r['jumlah_maintenance']):,}x", fmt_rp(r["total_biaya"])])
-                add_textbox(s, right_x6 + 0.15, tbl_top6 - 0.05, right_w6 - 0.3, 0.24,
-                            "Top 5 Unit Paling Sering Maintenance:", size=9.5, bold=True, color=TEXT_DARK)
-                add_table(s, right_x6 + 0.15, tbl_top6 + 0.22, right_w6 - 0.3, 1.3,
+                add_textbox(s, right_x6 + 0.15, tbl_top6b - 0.05, right_w6 - 0.3, 0.24,
+                            "\U0001F3C6 Top 5 Unit Paling Sering Maintenance:", size=9.5, bold=True, color=TEXT_DARK)
+                add_table(s, right_x6 + 0.15, tbl_top6b + 0.22, right_w6 - 0.3, 1.55,
                           ["Site \u2014 Unit", "Jumlah", "Total Biaya"], tbl_rows6,
                           col_widths=[2.7, 0.9, 1.3], font_size=9, header_size=9)
             else:
