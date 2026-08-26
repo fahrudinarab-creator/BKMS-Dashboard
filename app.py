@@ -1633,7 +1633,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         right_w5 = 5.0
 
         # --- Panel kiri: % Downtime per Site & Jenis Unit ---
-        add_card_panel(s, 0.4, panel_top5, left_w5, panel_h5)
+        add_card_panel(s, 0.4, panel_top5, left_w5, panel_h5, accent_color=RED)
         add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Jenis Unit", height=0.4)
         chart_top5 = panel_top5 + 0.45
         chart_h5 = panel_h5 - 0.55
@@ -1674,10 +1674,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         else:
             add_textbox(s, 0.55, chart_top5 + 0.1, 6.9, 0.5, "Data Downtime belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
-        # --- Panel kanan: List Sparepart per Kategori (Engine System, Frame Body & Guard System, dst.), diurutkan nilai tertinggi ---
-        add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5)
-        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Biaya Maintenance per Kategori \u2014 Nilai Tertinggi", height=0.4)
+        # --- Panel kanan: Chart + List Biaya Maintenance per Kategori, diurutkan nilai tertinggi ---
+        add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5, accent_color=GOLD)
+        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Biaya Maintenance per Kategori", height=0.4)
         sp_list_top5 = panel_top5 + 0.5
+        sp_agg5 = pd.DataFrame(columns=["kategori_sparepart", "total_biaya"])
         if maint_data is not None and not maint_data.empty:
             sp5 = maint_data.copy()
             if "lokasi" in sp5.columns and site_list:
@@ -1696,17 +1697,58 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             sp_agg5 = sp5.groupby("kategori_sparepart", as_index=False).agg(total_biaya=("biaya", "sum"))
             sp_agg5 = sp_agg5.sort_values("total_biaya", ascending=False)
             sp_agg5 = sp_agg5[sp_agg5["total_biaya"] > 0]
+
+        if not sp_agg5.empty:
             max_biaya5 = sp_agg5["total_biaya"].max() if not sp_agg5.empty else 1
             n_sp5 = max(len(sp_agg5), 1)
-            available_h5 = panel_h5 - (sp_list_top5 - panel_top5) - 0.2
-            row_h5 = min(0.62, available_h5 / n_sp5)
-            small5 = row_h5 < 0.42
-            circ_size5 = 0.32 if not small5 else max(0.16, row_h5 * 0.55)
-            font_title5 = 9.5 if not small5 else max(6, row_h5 * 14)
-            font_val5 = 9 if not small5 else max(5.5, row_h5 * 13)
-            font_rank5 = 11 if not small5 else max(6.5, row_h5 * 16)
-            for i, (_, r) in enumerate(sp_agg5.iterrows()):
-                ry5 = sp_list_top5 + i * row_h5
+
+            # Chart horizontal bar (top 5) di atas, supaya panel lebih visual & tidak kosong
+            chart_n5 = min(n_sp5, 5)
+            chart_h5b = 1.85
+            cd5b = CategoryChartData()
+            cd5b.categories = [str(r) for r in sp_agg5["kategori_sparepart"].iloc[:chart_n5]][::-1]
+            cd5b.add_series("Biaya", tuple(sp_agg5["total_biaya"].iloc[:chart_n5])[::-1])
+            gframe5b = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(right_x5 + 0.15), Inches(sp_list_top5), Inches(right_w5 - 0.3), Inches(chart_h5b), cd5b)
+            chart5b = gframe5b.chart
+            chart5b.has_title = False
+            chart5b.series[0].format.fill.solid(); chart5b.series[0].format.fill.fore_color.rgb = GOLD
+            for i_pt5, pt5 in enumerate(chart5b.series[0].points):
+                if i_pt5 == chart_n5 - 1:
+                    pt5.format.fill.solid(); pt5.format.fill.fore_color.rgb = RED
+            plot5b = chart5b.plots[0]
+            plot5b.gap_width = 40
+            plot5b.has_data_labels = True
+            dls5b = plot5b.data_labels
+            dls5b.number_format = '#,##0,,"Jt"'; dls5b.number_format_is_linked = False
+            dls5b.font.size = Pt(8); dls5b.font.bold = True; dls5b.font.color.rgb = TEXT_DARK; dls5b.font.name = "Calibri"
+            dls5b.position = XL_LABEL_POSITION.OUTSIDE_END
+            style_chart_light(chart5b, legend=False)
+            chart5b.category_axis.tick_labels.font.size = Pt(7.5)
+            chart5b.value_axis.tick_labels.font.size = Pt(7.5)
+            chart5b.value_axis.has_major_gridlines = False
+
+            # List rincian di bawah chart. Batasi jumlah baris sesuai kapasitas ruang (baris minimum
+            # terbaca ~0.24in); kalau kategorinya lebih banyak, gabungkan sisanya jadi 1 baris "lainnya".
+            list_top5 = sp_list_top5 + chart_h5b + 0.15
+            available_h5 = panel_h5 - (list_top5 - panel_top5) - 0.1
+            min_row_h5 = 0.24
+            max_list_rows5 = max(int(available_h5 / min_row_h5), 1)
+            if n_sp5 > max_list_rows5:
+                sp_agg5_show = sp_agg5.iloc[:max_list_rows5 - 1].copy()
+                sisa5 = sp_agg5.iloc[max_list_rows5 - 1:]
+                sisa_row5 = pd.DataFrame([{"kategori_sparepart": f"+ {len(sisa5)} kategori lainnya", "total_biaya": sisa5["total_biaya"].sum()}])
+                sp_agg5_show = pd.concat([sp_agg5_show, sisa_row5], ignore_index=True)
+            else:
+                sp_agg5_show = sp_agg5
+            n_list5 = len(sp_agg5_show)
+            row_h5 = max(min_row_h5, min(0.5, available_h5 / n_list5))
+            small5 = row_h5 < 0.4
+            circ_size5 = 0.3 if not small5 else max(0.16, row_h5 * 0.6)
+            font_title5 = 9 if not small5 else max(6, row_h5 * 15)
+            font_val5 = 8.5 if not small5 else max(5.5, row_h5 * 13)
+            font_rank5 = 10 if not small5 else max(6.5, row_h5 * 16)
+            for i, (_, r) in enumerate(sp_agg5_show.iterrows()):
+                ry5 = list_top5 + i * row_h5
                 rank_bg5 = GOLD if i == 0 else (RGBColor(0xB0, 0xB0, 0xB0) if i == 1 else (RGBColor(0xCD, 0x7F, 0x32) if i == 2 else RGBColor(0xE0, 0xE4, 0xEC)))
                 rank_txt5 = WHITE if i <= 2 else TEXT_MUTED
                 rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5 + row_h5 / 2 - circ_size5 / 2), Inches(circ_size5), Inches(circ_size5))
@@ -1718,23 +1760,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rr5 = rp5.add_run(); rr5.text = str(i + 1)
                 rr5.font.size = Pt(font_rank5); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
                 if not small5:
-                    add_textbox(s, right_x5 + 0.58, ry5, right_w5 - 0.75, 0.24, str(r["kategori_sparepart"]), size=font_title5, bold=True, color=TEXT_DARK)
-                    add_textbox(s, right_x5 + 0.58, ry5 + 0.22, right_w5 - 0.75, 0.22, fmt_rp(r["total_biaya"]), size=font_val5, color=RED)
-                    bar_y5 = ry5 + 0.44
-                    bar_h5 = 0.08
+                    add_textbox(s, right_x5 + 0.55, ry5 + row_h5 * 0.05, right_w5 - 1.6, row_h5 * 0.55,
+                                str(r["kategori_sparepart"]), size=font_title5, bold=True, color=TEXT_DARK)
                 else:
-                    add_textbox(s, right_x5 + 0.58, ry5 - 0.02, right_w5 - 0.75, row_h5 * 0.55,
-                                f"{r['kategori_sparepart']}", size=font_title5, bold=True, color=TEXT_DARK)
-                    add_textbox(s, right_x5 + 0.58, ry5 + row_h5 * 0.42, right_w5 - 0.75, row_h5 * 0.4,
-                                fmt_rp(r["total_biaya"]), size=font_val5, color=RED)
-                    bar_y5 = ry5 + row_h5 - 0.06
-                    bar_h5 = 0.045
-                bar_w_max5 = right_w5 - 0.75
-                bar_w5 = max(0.05, bar_w_max5 * (r["total_biaya"] / max_biaya5)) if max_biaya5 else 0.05
-                bar5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 0.58), Inches(bar_y5), Inches(bar_w5), Inches(bar_h5))
-                bar5.adjustments[0] = 0.5
-                bar5.fill.solid(); bar5.fill.fore_color.rgb = rank_bg5
-                bar5.line.fill.background(); bar5.shadow.inherit = False
+                    add_textbox(s, right_x5 + 0.55, ry5 + row_h5 * 0.05, right_w5 - 1.6, row_h5 * 0.9,
+                                str(r["kategori_sparepart"]), size=font_title5, bold=True, color=TEXT_DARK)
+                add_textbox(s, right_x5 + right_w5 - 1.35, ry5 + row_h5 * 0.15, 1.2, row_h5 * 0.7,
+                            fmt_rp(r["total_biaya"]), size=font_val5, bold=True, color=RED)
         else:
             add_textbox(s, right_x5 + 0.15, sp_list_top5 + 0.2, right_w5 - 0.3, 0.8,
                         "Data Maintenance belum tersedia. Silakan upload data Maintenance (Pemeliharaan) terlebih dahulu.",
