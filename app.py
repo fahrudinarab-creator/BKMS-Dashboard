@@ -1580,63 +1580,62 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         else:
             add_textbox(s, 7.0, chart_top_r4 + 0.1, 5.6, 0.5, "Data konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
-        # ================= SLIDE 5: ANALISIS DOWNTIME & SPAREPART =================
-        s = add_content_slide(f"ANALISIS: Downtime & Sparepart \u2014 s/d {period}", f"Analisis Downtime \u00b7 {snum5}{divisi_label}{kat_suffix}")
+        # ================= SLIDE 5: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
+        s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum5}{divisi_label}{kat_suffix}")
 
-        # --- Kartu atas: % Capaian Realisasi Downtime (global) — versi ramping/kompak ---
         dt_avg_r5 = sasaran_mutu_data["downtime_pct"].mean() if not sasaran_mutu_data.empty else None
         dt_avg_t5 = sasaran_mutu_data["downtime_target"].mean() if not sasaran_mutu_data.empty else None
         cap_dt5 = (dt_avg_r5 / dt_avg_t5 * 100) if (dt_avg_r5 is not None and dt_avg_t5) else None
-        good_dt5 = cap_dt5 is not None and cap_dt5 <= 100
-        top_card_h5 = 0.5
-        top_card_w5 = 12.5
+        varian_dt5 = (dt_avg_r5 - dt_avg_t5) if (dt_avg_r5 is not None and dt_avg_t5 is not None) else None
+        good_dt5 = varian_dt5 is not None and varian_dt5 <= 0
+        avail_target5 = (100 - dt_avg_t5) if dt_avg_t5 is not None else None
+        avail_aktual5 = (100 - dt_avg_r5) if dt_avg_r5 is not None else None
 
-        strip_dt5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.4), Inches(0.98), Inches(top_card_w5), Inches(0.05))
-        strip_dt5.fill.solid(); strip_dt5.fill.fore_color.rgb = (GREEN if good_dt5 else RED)
-        strip_dt5.line.fill.background(); strip_dt5.shadow.inherit = False
-        card_dt5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.4), Inches(1.03), Inches(top_card_w5), Inches(top_card_h5 - 0.05))
-        card_dt5.adjustments[0] = 0.14
-        card_dt5.fill.solid(); card_dt5.fill.fore_color.rgb = WHITE
-        card_dt5.line.color.rgb = BORDER; card_dt5.line.width = Pt(0.75)
-        card_dt5.shadow.inherit = False
-        icon_size_dt5 = 0.32
-        circ_dt5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.55), Inches(1.03 + (top_card_h5 - 0.05) / 2 - icon_size_dt5 / 2), Inches(icon_size_dt5), Inches(icon_size_dt5))
-        circ_dt5.fill.solid(); circ_dt5.fill.fore_color.rgb = NAVY
-        circ_dt5.line.fill.background(); circ_dt5.shadow.inherit = False
-        ictf_dt5 = circ_dt5.text_frame; ictf_dt5.vertical_anchor = MSO_ANCHOR.MIDDLE
-        ictf_dt5.margin_left = 0; ictf_dt5.margin_right = 0
-        icp_dt5 = ictf_dt5.paragraphs[0]; icp_dt5.alignment = PP_ALIGN.CENTER
-        icr_dt5 = icp_dt5.add_run(); icr_dt5.text = "\u23f8"
-        icr_dt5.font.size = Pt(9); icr_dt5.font.bold = True; icr_dt5.font.color.rgb = WHITE
-        add_textbox(s, 1.0, 1.03 + (top_card_h5 - 0.05) / 2 - 0.11, 3.1, 0.22, "% Capaian Realisasi Downtime", size=9.5, bold=False, color=TEXT_MUTED)
-        pbg_dt5, ptxt_dt5 = pill_colors(good_dt5)
-        pill_w_dt5 = 1.3
-        pill_dt5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(4.2), Inches(1.03 + (top_card_h5 - 0.05) / 2 - 0.135), Inches(pill_w_dt5), Inches(0.27))
-        pill_dt5.adjustments[0] = 0.5
-        pill_dt5.fill.solid(); pill_dt5.fill.fore_color.rgb = pbg_dt5
-        pill_dt5.line.fill.background(); pill_dt5.shadow.inherit = False
-        ptf_dt5 = pill_dt5.text_frame; ptf_dt5.vertical_anchor = MSO_ANCHOR.MIDDLE
-        pp_dt5 = ptf_dt5.paragraphs[0]; pp_dt5.alignment = PP_ALIGN.CENTER
-        pr_dt5 = pp_dt5.add_run()
-        pr_dt5.text = (f"\u2713 {cap_dt5:.1f}%" if good_dt5 else (f"\u2717 {cap_dt5:.1f}%" if cap_dt5 is not None else "-"))
-        pr_dt5.font.size = Pt(10.5); pr_dt5.font.bold = True; pr_dt5.font.color.rgb = ptxt_dt5
-        dt_r_disp5 = f"{dt_avg_r5:.2f}%" if dt_avg_r5 is not None else "-"
-        dt_t_disp5 = f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-"
-        add_textbox(s, 5.7, 1.03 + (top_card_h5 - 0.05) / 2 - 0.11, top_card_w5 - 5.7 - 0.2, 0.22,
-                    f"Realisasi Downtime: {dt_r_disp5}   |   Target Downtime: {dt_t_disp5}", size=9.5, color=TEXT_MUTED)
+        # ================= BARIS ATAS: 3 KARTU KPI =================
+        card_top5 = 0.98
+        card_h5 = 1.85
+        card_gap5 = 0.25
+        card_w5 = (12.5 - 2 * card_gap5) / 3
 
-        panel_top5 = 0.98 + top_card_h5 + 0.1
+        add_kpi_card(s, 0.4, card_top5, card_w5, card_h5, "\u23f8", RED, RED,
+                     "Downtime Aktual (s/d " + period + ")",
+                     (f"{dt_avg_r5:.2f}%" if dt_avg_r5 is not None else "-"),
+                     (f"Target: {dt_avg_t5:.2f}%  |  Varian: {varian_dt5:+.2f}%" if varian_dt5 is not None else "-"),
+                     (f"\u2717 VARIAN {varian_dt5:.2f}% BELUM TERKENDALI" if (varian_dt5 is not None and varian_dt5 > 0)
+                      else (f"\u2713 DALAM TARGET" if varian_dt5 is not None else "Data tidak tersedia")),
+                     good_dt5)
+
+        add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\U0001F6E0", TEAL, TEAL,
+                     "Target Downtime (Diizinkan)",
+                     (f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-"),
+                     (f"Availability Target: {avail_target5:.2f}%" if avail_target5 is not None else "-"),
+                     "BATAS MAKSIMUM DOWNTIME",
+                     True)
+
+        cap_good5 = cap_dt5 is not None and cap_dt5 <= 100
+        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\u2699", GREEN if cap_good5 else RED, GREEN if cap_good5 else RED,
+                     "% Capaian Realisasi Downtime",
+                     (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
+                     (f"Availability Aktual: {avail_aktual5:.2f}%" if avail_aktual5 is not None else "-"),
+                     (f"{cap_dt5:.1f}% \u2014 {'Under' if cap_good5 else 'Over'} Budget" if cap_dt5 is not None else "Data tidak tersedia"),
+                     cap_good5)
+
+        # ================= BARIS BAWAH =================
+        panel_top5 = card_top5 + card_h5 + 0.15
         panel_bottom5 = 7.3
         panel_h5 = panel_bottom5 - panel_top5
         left_w5 = 7.3
         right_x5 = 7.9
         right_w5 = 5.0
 
-        # --- Panel kiri: % Downtime per Site & Jenis Unit ---
+        # --- Panel kiri: % Downtime per Site & Jenis Unit + catatan strategi ---
         add_card_panel(s, 0.4, panel_top5, left_w5, panel_h5, accent_color=RED)
-        add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Jenis Unit (Min Target: " +
+                          (f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-") + ")", height=0.4)
         chart_top5 = panel_top5 + 0.45
-        chart_h5 = panel_h5 - 0.55
+        note_h5 = 0.85
+        chart_h5 = panel_h5 - 0.45 - note_h5 - 0.15
+        dt_su5 = pd.DataFrame()
         if not sasaran_mutu_data.empty:
             dt_su5 = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
                 dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
@@ -1674,103 +1673,86 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         else:
             add_textbox(s, 0.55, chart_top5 + 0.1, 6.9, 0.5, "Data Downtime belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
-        # --- Panel kanan: Chart + List Biaya Maintenance per Kategori, diurutkan nilai tertinggi ---
-        add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5, accent_color=GOLD)
-        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Biaya Maintenance per Kategori", height=0.4)
-        sp_list_top5 = panel_top5 + 0.5
-        sp_agg5 = pd.DataFrame(columns=["kategori_sparepart", "total_biaya"])
-        if maint_data is not None and not maint_data.empty:
-            sp5 = maint_data.copy()
-            if "lokasi" in sp5.columns and site_list:
-                sp5 = sp5[sp5["lokasi"].isin(site_list)]
-            if "bulan" in sp5.columns and month_list:
-                sp5 = sp5[sp5["bulan"].isin(month_list)]
-            # Filter sesuai kategori (AB/TR) slide yg sedang dirender. Kolom 'kategori' sudah
-            # tersedia langsung di maint_data (dicocokkan via nama_unit saat data dimuat);
-            # fallback ke pencocokan nama_unit manual kalau kolom 'kategori' tidak ada (data lama).
-            kat_scope5 = set(data["kategori"].dropna().unique())
-            if "kategori" in sp5.columns:
-                sp5 = sp5[sp5["kategori"].isin(kat_scope5)]
-            elif "nama_unit" in sp5.columns:
-                valid_units5 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
-                sp5 = sp5[sp5["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units5)]
-            sp_agg5 = sp5.groupby("kategori_sparepart", as_index=False).agg(total_biaya=("biaya", "sum"))
-            sp_agg5 = sp_agg5.sort_values("total_biaya", ascending=False)
-            sp_agg5 = sp_agg5[sp_agg5["total_biaya"] > 0]
-
-        if not sp_agg5.empty:
-            max_biaya5 = sp_agg5["total_biaya"].max() if not sp_agg5.empty else 1
-            n_sp5 = max(len(sp_agg5), 1)
-
-            # Chart horizontal bar (top 5) di atas, supaya panel lebih visual & tidak kosong
-            chart_n5 = min(n_sp5, 5)
-            chart_h5b = 1.85
-            cd5b = CategoryChartData()
-            cd5b.categories = [str(r) for r in sp_agg5["kategori_sparepart"].iloc[:chart_n5]][::-1]
-            cd5b.add_series("Biaya", tuple(sp_agg5["total_biaya"].iloc[:chart_n5])[::-1])
-            gframe5b = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(right_x5 + 0.15), Inches(sp_list_top5), Inches(right_w5 - 0.3), Inches(chart_h5b), cd5b)
-            chart5b = gframe5b.chart
-            chart5b.has_title = False
-            chart5b.series[0].format.fill.solid(); chart5b.series[0].format.fill.fore_color.rgb = GOLD
-            for i_pt5, pt5 in enumerate(chart5b.series[0].points):
-                if i_pt5 == chart_n5 - 1:
-                    pt5.format.fill.solid(); pt5.format.fill.fore_color.rgb = RED
-            plot5b = chart5b.plots[0]
-            plot5b.gap_width = 40
-            plot5b.has_data_labels = True
-            dls5b = plot5b.data_labels
-            dls5b.number_format = '#,##0,,"Jt"'; dls5b.number_format_is_linked = False
-            dls5b.font.size = Pt(8); dls5b.font.bold = True; dls5b.font.color.rgb = TEXT_DARK; dls5b.font.name = "Calibri"
-            dls5b.position = XL_LABEL_POSITION.OUTSIDE_END
-            style_chart_light(chart5b, legend=False)
-            chart5b.category_axis.tick_labels.font.size = Pt(7.5)
-            chart5b.value_axis.tick_labels.font.size = Pt(7.5)
-            chart5b.value_axis.has_major_gridlines = False
-
-            # List rincian di bawah chart. Batasi jumlah baris sesuai kapasitas ruang (baris minimum
-            # terbaca ~0.24in); kalau kategorinya lebih banyak, gabungkan sisanya jadi 1 baris "lainnya".
-            list_top5 = sp_list_top5 + chart_h5b + 0.15
-            available_h5 = panel_h5 - (list_top5 - panel_top5) - 0.1
-            min_row_h5 = 0.24
-            max_list_rows5 = max(int(available_h5 / min_row_h5), 1)
-            if n_sp5 > max_list_rows5:
-                sp_agg5_show = sp_agg5.iloc[:max_list_rows5 - 1].copy()
-                sisa5 = sp_agg5.iloc[max_list_rows5 - 1:]
-                sisa_row5 = pd.DataFrame([{"kategori_sparepart": f"+ {len(sisa5)} kategori lainnya", "total_biaya": sisa5["total_biaya"].sum()}])
-                sp_agg5_show = pd.concat([sp_agg5_show, sisa_row5], ignore_index=True)
-            else:
-                sp_agg5_show = sp_agg5
-            n_list5 = len(sp_agg5_show)
-            row_h5 = max(min_row_h5, min(0.5, available_h5 / n_list5))
-            small5 = row_h5 < 0.4
-            circ_size5 = 0.3 if not small5 else max(0.16, row_h5 * 0.6)
-            font_title5 = 9 if not small5 else max(6, row_h5 * 15)
-            font_val5 = 8.5 if not small5 else max(5.5, row_h5 * 13)
-            font_rank5 = 10 if not small5 else max(6.5, row_h5 * 16)
-            for i, (_, r) in enumerate(sp_agg5_show.iterrows()):
-                ry5 = list_top5 + i * row_h5
-                rank_bg5 = GOLD if i == 0 else (RGBColor(0xB0, 0xB0, 0xB0) if i == 1 else (RGBColor(0xCD, 0x7F, 0x32) if i == 2 else RGBColor(0xE0, 0xE4, 0xEC)))
-                rank_txt5 = WHITE if i <= 2 else TEXT_MUTED
-                rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5 + row_h5 / 2 - circ_size5 / 2), Inches(circ_size5), Inches(circ_size5))
-                rank_circ5.fill.solid(); rank_circ5.fill.fore_color.rgb = rank_bg5
-                rank_circ5.line.fill.background(); rank_circ5.shadow.inherit = False
-                rtf5 = rank_circ5.text_frame; rtf5.vertical_anchor = MSO_ANCHOR.MIDDLE
-                rtf5.margin_left = 0; rtf5.margin_right = 0
-                rp5 = rtf5.paragraphs[0]; rp5.alignment = PP_ALIGN.CENTER
-                rr5 = rp5.add_run(); rr5.text = str(i + 1)
-                rr5.font.size = Pt(font_rank5); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
-                if not small5:
-                    add_textbox(s, right_x5 + 0.55, ry5 + row_h5 * 0.05, right_w5 - 1.6, row_h5 * 0.55,
-                                str(r["kategori_sparepart"]), size=font_title5, bold=True, color=TEXT_DARK)
-                else:
-                    add_textbox(s, right_x5 + 0.55, ry5 + row_h5 * 0.05, right_w5 - 1.6, row_h5 * 0.9,
-                                str(r["kategori_sparepart"]), size=font_title5, bold=True, color=TEXT_DARK)
-                add_textbox(s, right_x5 + right_w5 - 1.35, ry5 + row_h5 * 0.15, 1.2, row_h5 * 0.7,
-                            fmt_rp(r["total_biaya"]), size=font_val5, bold=True, color=RED)
+        # --- Catatan strategi: unit paling kritis (gap downtime terbesar) ---
+        note_top5 = chart_top5 + chart_h5 + 0.1
+        if not dt_su5.empty:
+            worst5 = dt_su5.iloc[0]
+            gap_worst5 = worst5["dt_r"] - worst5["dt_t"]
+            add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\U0001F4CC",
+                             f"Strategi Perbaikan: Turunkan Downtime {worst5['label']} dari {worst5['dt_r']:.1f}% \u2192 "
+                             f"\u2264{worst5['dt_t']:.1f}% (satu-satunya/unit paling kritis OVER target, gap {gap_worst5:+.1f}%). "
+                             f"Cek riwayat kerusakan & jadwal preventive maintenance unit ini.",
+                             RED_BG, RED, RED)
         else:
-            add_textbox(s, right_x5 + 0.15, sp_list_top5 + 0.2, right_w5 - 0.3, 0.8,
-                        "Data Maintenance belum tersedia. Silakan upload data Maintenance (Pemeliharaan) terlebih dahulu.",
-                        size=10, italic=True, color=TEXT_MUTED)
+            add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\U0001F4CC",
+                             "Data unit belum tersedia untuk rekomendasi strategi perbaikan.",
+                             GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
+
+        # --- Panel kanan: Downtime Chain (dari Target ke Realisasi) + Strategi ---
+        add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5, accent_color=GOLD)
+        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F517 Downtime Chain \u2014 Dari Target ke Realisasi", height=0.4)
+
+        chain_top5 = panel_top5 + 0.55
+        chain_row_h5 = 0.62
+        chain_rows5 = [
+            ("Target Downtime", (f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-"), RGBColor(0xDD, 0xE7, 0xF7), TEAL,
+             "Batas maksimum yg diizinkan"),
+            ("(+) Downtime Berlebih", (f"{max(0, varian_dt5):.2f}%" if varian_dt5 is not None else "-"), RGBColor(0xFD, 0xE9, 0xD9), GOLD,
+             "Kelebihan dari target"),
+            ("= Realisasi Downtime", (f"{dt_avg_r5:.2f}%" if dt_avg_r5 is not None else "-"), RGBColor(0xE8, 0xE3, 0xF7), RGBColor(0x7B, 0x5C, 0xE8),
+             "Yang benar-benar terjadi"),
+            ("Varian (gap)", (f"{varian_dt5:+.2f}%" if varian_dt5 is not None else "-"), RED_BG, RED,
+             f"Availability turun {(avail_target5 - avail_aktual5):.2f}%" if (avail_target5 is not None and avail_aktual5 is not None) else "-"),
+        ]
+        for i5, (lbl5, val5, bg5, bord5, note5) in enumerate(chain_rows5):
+            ry5c = chain_top5 + i5 * (chain_row_h5 + 0.08)
+            box5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 0.15), Inches(ry5c), Inches(2.1), Inches(chain_row_h5))
+            box5.adjustments[0] = 0.12
+            box5.fill.solid(); box5.fill.fore_color.rgb = bg5
+            box5.line.color.rgb = bord5; box5.line.width = Pt(1)
+            box5.shadow.inherit = False
+            btf5 = box5.text_frame; btf5.word_wrap = True; btf5.vertical_anchor = MSO_ANCHOR.MIDDLE
+            btf5.margin_left = Inches(0.1); btf5.margin_right = Inches(0.05)
+            bp5 = btf5.paragraphs[0]
+            br5 = bp5.add_run(); br5.text = lbl5
+            br5.font.size = Pt(9); br5.font.bold = True; br5.font.color.rgb = bord5; br5.font.name = "Calibri"
+
+            val_box5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 2.35), Inches(ry5c), Inches(1.15), Inches(chain_row_h5))
+            val_box5.adjustments[0] = 0.12
+            val_box5.fill.solid(); val_box5.fill.fore_color.rgb = bg5
+            val_box5.line.color.rgb = bord5; val_box5.line.width = Pt(1)
+            val_box5.shadow.inherit = False
+            vtf5 = val_box5.text_frame; vtf5.vertical_anchor = MSO_ANCHOR.MIDDLE
+            vp5 = vtf5.paragraphs[0]; vp5.alignment = PP_ALIGN.CENTER
+            vr5 = vp5.add_run(); vr5.text = val5
+            vr5.font.size = Pt(13); vr5.font.bold = True; vr5.font.color.rgb = bord5; vr5.font.name = "Calibri"
+
+            add_textbox(s, right_x5 + 3.6, ry5c, right_w5 - 3.75, chain_row_h5, note5, size=7.5, color=TEXT_MUTED)
+
+        # --- Strategi Jangka Pendek & Panjang ---
+        strat_top5 = chain_top5 + 4 * (chain_row_h5 + 0.08) + 0.05
+        strat_h5 = panel_h5 - (strat_top5 - panel_top5) - 0.1
+        strat_box5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x5 + 0.15), Inches(strat_top5), Inches(right_w5 - 0.3), Inches(max(strat_h5, 0.9)))
+        strat_box5.fill.solid(); strat_box5.fill.fore_color.rgb = RED_BG
+        strat_box5.line.color.rgb = RED; strat_box5.line.width = Pt(1)
+        strat_box5.shadow.inherit = False
+        stf5 = strat_box5.text_frame; stf5.word_wrap = True; stf5.margin_left = Inches(0.12); stf5.margin_top = Inches(0.08)
+        sp1_5 = stf5.paragraphs[0]
+        sr1_5 = sp1_5.add_run(); sr1_5.text = "\U0001F4CD Strategi Jangka Pendek:"
+        sr1_5.font.size = Pt(9); sr1_5.font.bold = True; sr1_5.font.color.rgb = RED; sr1_5.font.name = "Calibri"
+        sp2_5 = stf5.add_paragraph()
+        sr2_5 = sp2_5.add_run()
+        sr2_5.text = (f"Fokus perbaikan {dt_su5.iloc[0]['label']}, percepat preventive maintenance & "
+                       f"minimalkan unschedule downtime, target eliminasi varian {varian_dt5:.2f}%." if not dt_su5.empty and varian_dt5 is not None
+                       else "Percepat preventive maintenance & minimalkan unschedule downtime.")
+        sr2_5.font.size = Pt(8.5); sr2_5.font.color.rgb = TEXT_DARK; sr2_5.font.name = "Calibri"
+        sp3_5 = stf5.add_paragraph(); sp3_5.space_before = Pt(6)
+        sr3_5 = sp3_5.add_run(); sr3_5.text = "\U0001F538 Strategi Jangka Panjang:"
+        sr3_5.font.size = Pt(9); sr3_5.font.bold = True; sr3_5.font.color.rgb = RED; sr3_5.font.name = "Calibri"
+        sp4_5 = stf5.add_paragraph()
+        sr4_5 = sp4_5.add_run(); sr4_5.text = "Evaluasi umur teknis unit & percepatan replacement/replanting unit yang tidak produktif."
+        sr4_5.font.size = Pt(8.5); sr4_5.font.color.rgb = TEXT_DARK; sr4_5.font.name = "Calibri"
+
 
         # ================= SLIDE 6: QTY PERGANTIAN SPAREPART & ANALISA DAMPAK PENDAPATAN =================
         s = add_content_slide(f"MAINTENANCE per Kategori \u2014 Qty Pergantian s/d {period}", f"Analisis Frekuensi \u00b7 {snum6}{divisi_label}{kat_suffix}")
