@@ -1774,7 +1774,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             if "kategori_sparepart" in m6.columns:
                 qty_agg6 = m6.groupby("kategori_sparepart", as_index=False).agg(
                     qty=("kategori_sparepart", "count"), total_biaya=("biaya", "sum"))
-                qty_agg6 = qty_agg6.sort_values("total_biaya", ascending=False)
+                qty_agg6 = qty_agg6.sort_values("qty", ascending=False)
 
         panel_top6 = 1.0
         panel_bottom6 = 7.3
@@ -1788,13 +1788,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_textbox(s, 0.55, panel_top6 + 0.08, left_w6 - 0.3, 0.3, f"Biaya Maintenance per Kategori \u2014 s/d {period}", size=13, bold=True, color=NAVY)
 
         tbl_top6 = panel_top6 + 0.45
-        avg_biaya6 = qty_agg6["total_biaya"].mean() if not qty_agg6.empty else 0
+        avg_qty6 = qty_agg6["qty"].mean() if not qty_agg6.empty else 0
         max_rows6 = 9
         qty_rows6 = []
         over_kategori6 = []
         for _, r in qty_agg6.head(max_rows6).iterrows():
-            is_over = r["total_biaya"] > avg_biaya6 * 1.3 if avg_biaya6 else False
-            status_txt = f"\u2717 +{(r['total_biaya']/avg_biaya6*100-100):.0f}%" if (is_over and avg_biaya6) else "\u2713 OK"
+            is_over = r["qty"] > avg_qty6 * 1.3 if avg_qty6 else False
+            status_txt = f"\u2717 +{(r['qty']/avg_qty6*100-100):.0f}%" if (is_over and avg_qty6) else "\u2713 OK"
             qty_rows6.append([str(r["kategori_sparepart"]), f"{int(r['qty']):,}", fmt_rp(r["total_biaya"]), status_txt])
             if is_over:
                 over_kategori6.append(str(r["kategori_sparepart"]))
@@ -1820,7 +1820,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if over_kategori6:
             over_txt6 = ", ".join(over_kategori6[:3]) + (", dll" if len(over_kategori6) > 3 else "")
             add_finding_box(s, 0.55, note_top6, left_w6 - 0.3, note_h6, "\U0001F4CC",
-                             f"Kategori dgn biaya jauh di atas rata-rata: {over_txt6}. Perlu investigasi penyebab tingginya "
+                             f"Kategori dgn frekuensi kejadian jauh di atas rata-rata: {over_txt6}. Perlu investigasi penyebab tingginya "
                              f"frekuensi/biaya perbaikan pada kategori ini.",
                              RED_BG, RED, RED)
         elif qty_rows6:
@@ -1844,12 +1844,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if top_kat6 is not None:
             biaya_per_kejadian6 = top_kat6["total_biaya"] / top_kat6["qty"] if top_kat6["qty"] else 0
             share_pct6 = (top_kat6["total_biaya"] / qty_agg6["total_biaya"].sum() * 100) if qty_agg6["total_biaya"].sum() else 0
+            share_qty6 = (top_kat6["qty"] / qty_agg6["qty"].sum() * 100) if qty_agg6["qty"].sum() else 0
             add_textbox(s, right_x6 + 0.15, box1_top6 + 0.14, right_w6 - 0.3, 0.3,
                         f"Analisis {top_kat6['kategori_sparepart']} ({top_kat6['qty']:.0f}x, {fmt_rp(top_kat6['total_biaya'])})",
                         size=11.5, bold=True, color=RED)
             bullets1_6 = [
-                f"Kategori dengan biaya maintenance TERTINGGI, menyumbang {share_pct6:.1f}% dari total biaya maintenance keseluruhan.",
-                f"Rata-rata biaya per kejadian: {fmt_rp(biaya_per_kejadian6)} — {int(top_kat6['qty'])} kali kejadian s/d {period}.",
+                f"Kategori dengan FREKUENSI KEJADIAN TERTINGGI ({int(top_kat6['qty'])}x), menyumbang {share_qty6:.1f}% dari total kejadian "
+                f"maintenance keseluruhan (biaya: {share_pct6:.1f}% dari total biaya).",
+                f"Rata-rata biaya per kejadian: {fmt_rp(biaya_per_kejadian6)} \u2014 {int(top_kat6['qty'])} kali kejadian s/d {period}.",
                 "Rekomendasi: telusuri riwayat kerusakan & evaluasi kesesuaian spare part dengan spesifikasi standar pabrikan.",
             ]
             bt6 = s.shapes.add_textbox(Inches(right_x6 + 0.15), Inches(box1_top6 + 0.5), Inches(right_w6 - 0.3), Inches(box1_h6 - 0.6))
