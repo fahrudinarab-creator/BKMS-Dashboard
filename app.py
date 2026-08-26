@@ -1749,9 +1749,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 valid_units6 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
                 m6 = m6[m6["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units6)]
             if "kategori_sparepart" in m6.columns:
-                qty_agg6 = m6.groupby("kategori_sparepart", as_index=False).agg(qty=("kategori_sparepart", "count"))
+                qty_agg6 = m6.groupby("kategori_sparepart", as_index=False).agg(
+                    qty=("kategori_sparepart", "count"), total_biaya=("biaya", "sum"))
                 qty_agg6 = qty_agg6.sort_values("qty", ascending=False)
-                qty_rows6 = [[str(r["kategori_sparepart"]), f"{int(r['qty']):,}"] for _, r in qty_agg6.iterrows()]
+                qty_rows6 = [[str(r["kategori_sparepart"]), f"{int(r['qty']):,}", fmt_rp(r["total_biaya"])] for _, r in qty_agg6.iterrows()]
 
         # --- Panel kiri: Tabel Qty Pergantian per Kategori ---
         add_card_panel(s, 0.4, panel_top6, left_w6, panel_h6)
@@ -1760,8 +1761,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             tbl_font6 = 10 if len(qty_rows6) <= 12 else (8.5 if len(qty_rows6) <= 18 else 7)
             row_h6 = min(0.35, (panel_h6 - 0.55) / max(len(qty_rows6), 1))
             add_table(s, 0.55, panel_top6 + 0.5, left_w6 - 0.3, row_h6 * (len(qty_rows6) + 1),
-                      ["Kategori Sparepart", "Qty Pergantian"], qty_rows6,
-                      col_widths=[4.0, 1.6], font_size=tbl_font6, header_size=tbl_font6)
+                      ["Kategori Sparepart", "Qty Pergantian", "Total Biaya"], qty_rows6,
+                      col_widths=[2.8, 1.4, 1.7], font_size=tbl_font6, header_size=tbl_font6)
         else:
             add_textbox(s, 0.55, panel_top6 + 0.6, left_w6 - 0.3, 0.6,
                         "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
@@ -1784,7 +1785,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 valid_units6b = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
                 m6b = m6b[m6b["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units6b)]
 
-            freq6 = m6b.groupby(["lokasi", "nama_unit"], as_index=False).agg(jumlah_maintenance=("nama_unit", "count"))
+            freq6 = m6b.groupby(["lokasi", "nama_unit"], as_index=False).agg(
+                jumlah_maintenance=("nama_unit", "count"), total_biaya=("biaya", "sum"))
             freq6 = freq6.sort_values("jumlah_maintenance", ascending=False)
 
             if not freq6.empty:
@@ -1822,12 +1824,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 tbl_rows6 = []
                 for _, r in top5_units6.iterrows():
                     site_s6 = SITE_ABBR.get(r["lokasi"], r["lokasi"])
-                    tbl_rows6.append([f"{site_s6} \u2014 {r['nama_unit']}", f"{int(r['jumlah_maintenance']):,}x"])
+                    tbl_rows6.append([f"{site_s6} \u2014 {r['nama_unit']}", f"{int(r['jumlah_maintenance']):,}x", fmt_rp(r["total_biaya"])])
                 add_textbox(s, right_x6 + 0.15, tbl_top6 - 0.05, right_w6 - 0.3, 0.24,
                             "Top 5 Unit Paling Sering Maintenance:", size=9.5, bold=True, color=TEXT_DARK)
                 add_table(s, right_x6 + 0.15, tbl_top6 + 0.22, right_w6 - 0.3, 1.3,
-                          ["Site \u2014 Unit", "Jumlah"], tbl_rows6,
-                          col_widths=[3.6, 1.2], font_size=9, header_size=9)
+                          ["Site \u2014 Unit", "Jumlah", "Total Biaya"], tbl_rows6,
+                          col_widths=[2.7, 0.9, 1.3], font_size=9, header_size=9)
             else:
                 add_textbox(s, right_x6 + 0.15, analisa_top6, right_w6 - 0.3, 0.6,
                             "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
