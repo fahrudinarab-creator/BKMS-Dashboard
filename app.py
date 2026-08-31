@@ -1828,7 +1828,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             font6 = 9.5 if n_row6 <= 7 else (8.5 if n_row6 <= 9 else 7.5)
             add_table(s, 0.55, tbl_top6, left_w6 - 0.3, row_h6 * (n_row6 + 1),
                       ["Kategori Sparepart", "Qty", "Total Biaya", "Status"], qty_rows6,
-                      status_col=3, col_widths=[2.5, 0.8, 1.5, 1.1], font_size=font6, header_size=font6, fill_badge=True)
+                      col_widths=[2.5, 0.8, 1.5, 1.1], font_size=font6, header_size=font6)
         else:
             add_textbox(s, 0.55, tbl_top6 + 0.2, left_w6 - 0.3, 0.6, "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
