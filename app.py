@@ -1759,7 +1759,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         sr3_5 = sp3_5.add_run(); sr3_5.text = "\U0001F538 Strategi Jangka Panjang:"
         sr3_5.font.size = Pt(9); sr3_5.font.bold = True; sr3_5.font.color.rgb = RED; sr3_5.font.name = "Calibri"
         sp4_5 = stf5.add_paragraph()
-        sr4_5 = sp4_5.add_run(); sr4_5.text = "Evaluasi umur teknis unit & percepatan replacement/replanting unit yang tidak produktif."
+        sr4_5 = sp4_5.add_run(); sr4_5.text = "Evaluasi umur teknis unit & percepatan replacement unit yang tidak produktif."
         sr4_5.font.size = Pt(8.5); sr4_5.font.color.rgb = TEXT_DARK; sr4_5.font.name = "Calibri"
 
 
