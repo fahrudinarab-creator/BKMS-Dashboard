@@ -1064,9 +1064,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_h_x = height - 0.45
             if rows:
                 n_x = len(rows)
+                # Label satuan Utilisasi menyesuaikan kategori: Transportasi -> Hari, Alat Berat -> HM.
+                # Kalau datanya campuran (AB & TR sekaligus, tidak dipisah), label dikosongkan (netral).
+                kat_set_util = set(data["kategori"].dropna().unique())
+                if kat_set_util == {"TR"}:
+                    util_label_x = "% Capaian Utilisasi (Hari)"
+                elif kat_set_util == {"AB"}:
+                    util_label_x = "% Capaian Utilisasi (HM)"
+                else:
+                    util_label_x = "% Capaian Utilisasi"
                 cd_x = CategoryChartData()
                 cd_x.categories = [r["label"] for r in rows]
-                cd_x.add_series("% Capaian Utilisasi", tuple(round(r["util_cap"], 1) if r["util_cap"] is not None else 0 for r in rows))
+                cd_x.add_series(util_label_x, tuple(round(r["util_cap"], 1) if r["util_cap"] is not None else 0 for r in rows))
                 cd_x.add_series("% Capaian Prestasi", tuple(round(r["prestasi_cap"], 1) if r["prestasi_cap"] is not None else 0 for r in rows))
                 gframe_x = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_x), Inches(12.2), Inches(chart_h_x), cd_x)
                 chart_x = gframe_x.chart
