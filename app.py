@@ -1542,11 +1542,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_r4.gap_width = 50
             label_font_r4 = 8 if n_bbm4 <= 6 else (7.5 if n_bbm4 <= 12 else 6)
             from pptx.oxml.ns import qn as _qn4
+            avg_abs_gap_r4 = bbm_su4["gap_rp"].abs().mean() if not bbm_su4.empty else 0
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = bbm_su4["cap"].iloc[i]
-                if v < 95 or v > 105:
-                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
                 gap_val4 = bbm_su4["gap_rp"].iloc[i]
+                if avg_abs_gap_r4 and gap_val4 > 0 and gap_val4 > avg_abs_gap_r4:
+                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
                 gap_sign4 = "+" if gap_val4 >= 0 else "-"
                 dl = pt.data_label
                 dl.has_text_frame = True
