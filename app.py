@@ -48,6 +48,8 @@ CHART_GREEN = "#3FA772"  # brighter green for readable bars/lines on black
 GOLD = "#C9A227"         # gold accent
 RED = "#E4574C"          # brighter red for readability on black
 GREY = "#9CA3AF"         # lighter grey for readability on black
+EMOJI_FONT = "Segoe UI Emoji"  # font khusus utk karakter emoji, supaya render benar di PowerPoint asli
+                                # (Calibri/font teks biasa tidak punya glyph emoji -> muncul kotak/silang)
 
 DARK_BG = "#000000"
 CARD_BG = "#161B22"
@@ -760,7 +762,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         ic_tf.margin_left = 0; ic_tf.margin_right = 0
         icp = ic_tf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
         icr = icp.add_run(); icr.text = icon_txt
-        icr.font.size = Pt(17); icr.font.bold = True; icr.font.color.rgb = WHITE
+        icr.font.size = Pt(17); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
         # label
         add_textbox(slide, left + 1.0, top + 0.27, width - 1.15, 0.4, label, size=11.5, bold=True, color=TEXT_MUTED)
         # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
@@ -796,7 +798,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         tb = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
         tf = tb.text_frame; tf.word_wrap = True
         p = tf.paragraphs[0]
-        r = p.add_run(); r.text = f"{icon} {text}"
+        r_icon = p.add_run(); r_icon.text = f"{icon} "
+        r_icon.font.size = Pt(size); r_icon.font.bold = True; r_icon.font.color.rgb = text_color; r_icon.font.name = EMOJI_FONT
+        r = p.add_run(); r.text = text
         r.font.size = Pt(size); r.font.bold = True; r.font.italic = True
         r.font.color.rgb = text_color; r.font.name = "Calibri"
         return tb
@@ -817,7 +821,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         ictf.margin_left = 0; ictf.margin_right = 0
         icp = ictf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
         icr = icp.add_run(); icr.text = icon
-        icr.font.size = Pt(max(10, icon_d * 22)); icr.font.color.rgb = WHITE
+        icr.font.size = Pt(max(10, icon_d * 22)); icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
         text_left = left + 0.14 + icon_d + 0.14
         tf = slide.shapes.add_textbox(Inches(text_left), Inches(top), Inches(width - (text_left - left) - 0.15), Inches(height)).text_frame
         tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -839,7 +843,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         tf = box.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.margin_left = Inches(0.2)
         p = tf.paragraphs[0]
-        r = p.add_run(); r.text = f"{icon}  {text}"
+        r_icon = p.add_run(); r_icon.text = f"{icon}  "
+        r_icon.font.size = Pt(12.5); r_icon.font.bold = True; r_icon.font.color.rgb = text_color; r_icon.font.name = EMOJI_FONT
+        r = p.add_run(); r.text = text
         r.font.size = Pt(12.5); r.font.bold = True; r.font.color.rgb = text_color; r.font.name = "Calibri"
         return box
 
@@ -961,7 +967,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         parts = text.split(" ", 1)
         if len(parts) == 2 and len(parts[0]) <= 2:
             r_icon = p.add_run(); r_icon.text = parts[0] + "  "
-            r_icon.font.size = Pt(15); r_icon.font.bold = True; r_icon.font.color.rgb = WHITE; r_icon.font.name = "Calibri"
+            r_icon.font.size = Pt(15); r_icon.font.bold = True; r_icon.font.color.rgb = WHITE; r_icon.font.name = EMOJI_FONT
             r_txt = p.add_run(); r_txt.text = parts[1]
             r_txt.font.size = Pt(12.5); r_txt.font.bold = True; r_txt.font.color.rgb = WHITE; r_txt.font.name = "Calibri"
         else:
@@ -1165,7 +1171,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 penyebab_txt = "Meski capaian utilisasi sudah tercapai, gap pendapatan tetap terjadi — kemungkinan disebabkan faktor lain (tarif/rate, harga jual, atau komposisi pekerjaan)."
             else:
                 penyebab_txt = "Data capaian utilisasi unit ini belum tersedia untuk analisis lebih lanjut."
-            add_finding_box(s, 0.6, note_top_au, 12.2, note_h_au, "📌",
+            add_finding_box(s, 0.6, note_top_au, 12.2, note_h_au, "⚠",
                              f"{wg['label']} adalah unit dengan GAP PENDAPATAN MINUS PALING TINGGI ({fmt_rp(wg['gap'])}) — "
                              f"Realisasi {fmt_rp(wg['pend_r'])} vs Budget {fmt_rp(wg['pend_b'])}, dengan Capaian Utilisasi {util_txt}. "
                              f"{penyebab_txt}",
@@ -1356,7 +1362,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if over_items3:
             worst_label3 = max(over_items3, key=over_items3.get)
             worst_val3 = over_items3[worst_label3]
-            add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\U0001F6A9",
+            add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u26A0",
                              f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%) \u2014 perlu efisiensi biaya s/d {period}.",
                              RED_BG, RED, RED)
         else:
@@ -1418,7 +1424,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         maint_panel_top3 = max(left_col_bottom3, right_col_bottom3) + 0.15
         maint_panel_h3 = 7.3 - maint_panel_top3
         add_card_panel(s, 0.4, maint_panel_top3, 12.5, maint_panel_h3)
-        add_panel_header(s, 0.4, maint_panel_top3, 12.5, "\U0001F527 % Capaian Maintenance \u2014 per Site & Jenis Unit", height=0.36)
+        add_panel_header(s, 0.4, maint_panel_top3, 12.5, "\u2699 % Capaian Maintenance \u2014 per Site & Jenis Unit", height=0.36)
         chart_top_m3 = maint_panel_top3 + 0.42
         chart_h_m3 = maint_panel_h3 - 0.47
         if not maint_su3.empty:
@@ -1489,7 +1495,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         left_rows4 = sorted(left_rows4, key=lambda r: (r["cap_biaya"] if r["cap_biaya"] is not None else -1), reverse=True)
 
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F4B0 Capaian Biaya (di luar Penyusutan) vs Capaian Prestasi", height=0.4)
+        add_panel_header(s, 0.4, panel_top4, 6.05, "$ Capaian Biaya (di luar Penyusutan) vs Capaian Prestasi", height=0.4)
         chart_top_l4 = panel_top4 + 0.45
         chart_h_l4 = panel_h4 - 0.55
         cd_l4 = CategoryChartData()
@@ -1620,7 +1626,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 else:
                     sebab_txt4 = (f"volume konsumsi BBM yang besar ({qty_r_u4:,.0f} Ltr), sehingga meski capaian konsumsi hanya "
                                   f"{top4['cap']:.1f}%, dampak Rupiah-nya tetap signifikan.")
-                add_finding_box(s, 7.0, note_top_r4, 5.6, note_h_r4, "\U0001F4A1",
+                add_finding_box(s, 7.0, note_top_r4, 5.6, note_h_r4, "\u2731",
                                  f"{top4['label']} adalah dampak Rupiah terbesar ({'+' if top4['gap_rp'] >= 0 else '-'}{fmt_rp(abs(top4['gap_rp']))}), "
                                  f"walau capaian konsumsi hanya {top4['cap']:.1f}% (dari target 100%). Penyebab utamanya adalah {sebab_txt4}",
                                  GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
@@ -1652,7 +1658,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                       else (f"\u2713 DALAM TARGET" if varian_dt5 is not None else "Data tidak tersedia")),
                      good_dt5)
 
-        add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\U0001F6E0", TEAL, TEAL,
+        add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\u2699", TEAL, TEAL,
                      "Target Downtime (Diizinkan)",
                      (f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-"),
                      (f"Availability Target: {avail_target5:.2f}%" if avail_target5 is not None else "-"),
@@ -1660,7 +1666,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                      True)
 
         cap_good5 = cap_dt5 is not None and cap_dt5 <= 100
-        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\u2699", GREEN if cap_good5 else RED, GREEN if cap_good5 else RED,
+        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\u25CE", GREEN if cap_good5 else RED, GREEN if cap_good5 else RED,
                      "% Capaian Realisasi Downtime",
                      (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
                      (f"Availability Aktual: {avail_aktual5:.2f}%" if avail_aktual5 is not None else "-"),
@@ -1727,19 +1733,19 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if not dt_su5.empty:
             worst5 = dt_su5.iloc[0]
             gap_worst5 = worst5["dt_r"] - worst5["dt_t"]
-            add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\U0001F4CC",
+            add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\u26A0",
                              f"Strategi Perbaikan: Turunkan Downtime {worst5['label']} dari {worst5['dt_r']:.1f}% \u2192 "
                              f"\u2264{worst5['dt_t']:.1f}% (satu-satunya/unit paling kritis OVER target, gap {gap_worst5:+.1f}%). "
                              f"Cek riwayat kerusakan & jadwal preventive maintenance unit ini.",
                              RED_BG, RED, RED)
         else:
-            add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\U0001F4CC",
+            add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\u26A0",
                              "Data unit belum tersedia untuk rekomendasi strategi perbaikan.",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
         # --- Panel kanan: Downtime Chain (dari Target ke Realisasi) + Strategi ---
         add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5, accent_color=GOLD)
-        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F517 Downtime Chain \u2014 Dari Target ke Realisasi", height=0.4)
+        add_panel_header(s, right_x5, panel_top5, right_w5, "\u26D3 Downtime Chain \u2014 Dari Target ke Realisasi", height=0.4)
 
         chain_top5 = panel_top5 + 0.55
         chain_row_h5 = 0.62
@@ -1787,7 +1793,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         strat_box5.shadow.inherit = False
         stf5 = strat_box5.text_frame; stf5.word_wrap = True; stf5.margin_left = Inches(0.12); stf5.margin_top = Inches(0.08)
         sp1_5 = stf5.paragraphs[0]
-        sr1_5 = sp1_5.add_run(); sr1_5.text = "\U0001F4CD Strategi Jangka Pendek:"
+        sr1_5 = sp1_5.add_run(); sr1_5.text = "\u26A0 Strategi Jangka Pendek:"
         sr1_5.font.size = Pt(9); sr1_5.font.bold = True; sr1_5.font.color.rgb = RED; sr1_5.font.name = "Calibri"
         sp2_5 = stf5.add_paragraph()
         sr2_5 = sp2_5.add_run()
@@ -1796,7 +1802,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                        else "Percepat preventive maintenance & minimalkan unschedule downtime.")
         sr2_5.font.size = Pt(8.5); sr2_5.font.color.rgb = TEXT_DARK; sr2_5.font.name = "Calibri"
         sp3_5 = stf5.add_paragraph(); sp3_5.space_before = Pt(6)
-        sr3_5 = sp3_5.add_run(); sr3_5.text = "\U0001F538 Strategi Jangka Panjang:"
+        sr3_5 = sp3_5.add_run(); sr3_5.text = "\u25C6 Strategi Jangka Panjang:"
         sr3_5.font.size = Pt(9); sr3_5.font.bold = True; sr3_5.font.color.rgb = RED; sr3_5.font.name = "Calibri"
         sp4_5 = stf5.add_paragraph()
         sr4_5 = sp4_5.add_run(); sr4_5.text = "Evaluasi umur teknis unit & percepatan replacement unit yang tidak produktif."
@@ -1870,7 +1876,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         note_top6 = panel_bottom6 - note_h6 - 0.15
         if over_kategori6:
             over_txt6 = ", ".join(over_kategori6[:3]) + (", dll" if len(over_kategori6) > 3 else "")
-            add_finding_box(s, 0.55, note_top6, left_w6 - 0.3, note_h6, "\U0001F4CC",
+            add_finding_box(s, 0.55, note_top6, left_w6 - 0.3, note_h6, "\u26A0",
                              f"Kategori dgn kontribusi biaya jauh di atas porsi wajar (rata-rata {fair_share6:.1f}% per kategori): {over_txt6}. "
                              f"Perlu investigasi penyebab tingginya "
                              f"frekuensi/biaya perbaikan pada kategori ini.",
