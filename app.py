@@ -719,6 +719,25 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     def pill_colors(is_good):
         return (GREEN_BG, GREEN) if is_good else (RED_BG, RED)
 
+    def add_soft_shadow(shape, blur=90000, dist=22000, alpha=22000):
+        """Tambahkan efek bayangan lembut (drop shadow) custom via manipulasi XML,
+        karena python-pptx tidak menyediakan API tingkat tinggi untuk ini."""
+        from pptx.oxml.ns import qn as _qn_shadow
+        spPr = shape._element.spPr
+        existing = spPr.find(_qn_shadow('a:effectLst'))
+        if existing is not None:
+            spPr.remove(existing)
+        effectLst = spPr.makeelement(_qn_shadow('a:effectLst'), {})
+        outerShdw = spPr.makeelement(_qn_shadow('a:outerShdw'), {
+            'blurRad': str(blur), 'dist': str(dist), 'dir': '5400000', 'rotWithShape': '0'
+        })
+        srgbClr = spPr.makeelement(_qn_shadow('a:srgbClr'), {'val': '1A2744'})
+        alpha_el = spPr.makeelement(_qn_shadow('a:alpha'), {'val': str(alpha)})
+        srgbClr.append(alpha_el)
+        outerShdw.append(srgbClr)
+        effectLst.append(outerShdw)
+        spPr.append(effectLst)
+
     def add_kpi_card(slide, left, top, width, height, icon_txt, icon_color, accent_color,
                       label, value, sub_text, pill_text, pill_good):
         # accent strip (top border)
@@ -731,6 +750,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         card.fill.solid(); card.fill.fore_color.rgb = WHITE
         card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
         card.shadow.inherit = False
+        add_soft_shadow(card)
         # icon circle (ukuran diperbesar sedikit agar lebih menonjol)
         icon_size = 0.56
         circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.25), Inches(top + 0.25), Inches(icon_size), Inches(icon_size))
@@ -765,6 +785,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         card.fill.solid(); card.fill.fore_color.rgb = WHITE
         card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
         card.shadow.inherit = False
+        add_soft_shadow(card, blur=70000, dist=18000, alpha=18000)
         if accent_color:
             strip = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(0.06))
             strip.fill.solid(); strip.fill.fore_color.rgb = accent_color
@@ -781,14 +802,27 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         return tb
 
     def add_finding_box(slide, left, top, width, height, icon, text, bg_color, border_color, text_color):
-        box = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+        box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+        box.adjustments[0] = min(0.12, 0.35 / height)
         box.fill.solid(); box.fill.fore_color.rgb = bg_color
-        box.line.color.rgb = border_color; box.line.width = Pt(1)
+        box.line.color.rgb = border_color; box.line.width = Pt(1.25)
         box.shadow.inherit = False
-        tf = box.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.margin_left = Inches(0.15); tf.margin_right = Inches(0.15)
+        # Ikon dalam lingkaran (badge) di kiri, konsisten dgn elemen lain, supaya lebih menonjol
+        icon_d = min(0.42, height - 0.16)
+        icon_y = top + height / 2 - icon_d / 2
+        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.14), Inches(icon_y), Inches(icon_d), Inches(icon_d))
+        circ.fill.solid(); circ.fill.fore_color.rgb = border_color
+        circ.line.fill.background(); circ.shadow.inherit = False
+        ictf = circ.text_frame; ictf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        ictf.margin_left = 0; ictf.margin_right = 0
+        icp = ictf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
+        icr = icp.add_run(); icr.text = icon
+        icr.font.size = Pt(max(10, icon_d * 22)); icr.font.color.rgb = WHITE
+        text_left = left + 0.14 + icon_d + 0.14
+        tf = slide.shapes.add_textbox(Inches(text_left), Inches(top), Inches(width - (text_left - left) - 0.15), Inches(height)).text_frame
+        tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         p = tf.paragraphs[0]
-        r = p.add_run(); r.text = f"{icon} {text}"
+        r = p.add_run(); r.text = text
         r.font.size = Pt(10.5); r.font.bold = True; r.font.color.rgb = text_color; r.font.name = "Calibri"
         return box
 
