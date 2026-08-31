@@ -1355,7 +1355,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         n_btl3 = max(len(btl3_rows), 1)
         row_h_btl3 = 0.32 if n_btl3 <= 6 else (0.26 if n_btl3 <= 10 else 0.22)
         tbl_h_btl3 = row_h_btl3 * (n_btl3 + 1)
-        btl_panel_h3 = 0.15 + 0.45 + 0.1 + tbl_h_btl3 + 0.15
+        btl_content_h3 = 0.15 + 0.45 + 0.1 + tbl_h_btl3 + 0.15
+        # Regangkan tinggi card BTL supaya sejajar dgn panel kiri (Ringkasan Biaya), tidak menyisakan
+        # celah kosong sebelum panel Maintenance di bawahnya. Konten (banner+tabel) tetap di posisi natural.
+        btl_panel_h3 = max(btl_content_h3, left_col_bottom3 - btl_panel_top3)
         add_card_panel(s, 6.85, btl_panel_top3, 6.05, btl_panel_h3)
         if not over_btl_sites3:
             add_status_banner(s, 7.1, btl_panel_top3 + 0.15, 5.55, 0.45, "\u2705", "BTL \u2014 UNDER BUDGET secara keseluruhan", GREEN_BG, GREEN, GREEN)
@@ -1537,7 +1540,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
-            label_font_r4 = 7.5 if n_bbm4 <= 12 else 6
+            label_font_r4 = 8 if n_bbm4 <= 6 else (7.5 if n_bbm4 <= 12 else 6)
             from pptx.oxml.ns import qn as _qn4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = bbm_su4["cap"].iloc[i]
@@ -1554,7 +1557,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
-                if n_bbm4 > 12:
+                if n_bbm4 > 6:
                     bodyPr = dl.text_frame._txBody.find(_qn4('a:bodyPr'))
                     if bodyPr is not None:
                         bodyPr.set('rot', '-5400000')
@@ -1672,13 +1675,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_dt5.has_data_labels = True
             dls_dt5 = plot_dt5.data_labels
             dls_dt5.number_format = '0.0"%"'; dls_dt5.number_format_is_linked = False
-            label_font_dt5 = 7 if n_dt5 <= 12 else 5.5
+            label_font_dt5 = 7 if n_dt5 <= 12 else (5.5 if n_dt5 <= 25 else 4.3)
             dls_dt5.font.size = Pt(label_font_dt5); dls_dt5.font.bold = True; dls_dt5.font.color.rgb = TEXT_DARK; dls_dt5.font.name = "Calibri"
             dls_dt5.position = XL_LABEL_POSITION.OUTSIDE_END
             style_chart_light(chart_dt5, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
-            cat_font_dt5 = 7.5 if n_dt5 <= 10 else (6 if n_dt5 <= 20 else 5)
+            cat_font_dt5 = 7.5 if n_dt5 <= 10 else (6 if n_dt5 <= 20 else (5 if n_dt5 <= 30 else 4.2))
             chart_dt5.category_axis.tick_labels.font.size = Pt(cat_font_dt5)
             chart_dt5.value_axis.tick_labels.font.size = Pt(cat_font_dt5)
+            if n_dt5 > 20:
+                plot_dt5.gap_width = 30
         else:
             add_textbox(s, 0.55, chart_top5 + 0.1, 6.9, 0.5, "Data Downtime belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
@@ -1863,8 +1868,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 f"Kategori dengan KONTRIBUSI BIAYA TERTINGGI, menyumbang {share_pct6:.1f}% dari total biaya maintenance keseluruhan "
                 f"(porsi wajar rata-rata: {fair_share6:.1f}% per kategori).",
                 f"Rata-rata biaya per kejadian: {fmt_rp(biaya_per_kejadian6)} \u2014 {int(top_kat6['qty'])} kali kejadian s/d {period}.",
-                "Rekomendasi: telusuri riwayat kerusakan & evaluasi kesesuaian spare part dengan spesifikasi standar pabrikan.",
             ]
+            if len(qty_agg6) > 1:
+                kat2_6 = qty_agg6.iloc[1]
+                selisih_kat6 = top_kat6["total_biaya"] - kat2_6["total_biaya"]
+                bullets1_6.append(
+                    f"Selisih dengan kategori tertinggi ke-2 ({kat2_6['kategori_sparepart']}, {fmt_rp(kat2_6['total_biaya'])}): "
+                    f"{fmt_rp(selisih_kat6)} \u2014 menunjukkan kesenjangan yang perlu diperhatikan."
+                )
+            bullets1_6.append("Rekomendasi: telusuri riwayat kerusakan & evaluasi kesesuaian spare part dengan spesifikasi standar pabrikan.")
             bt6 = s.shapes.add_textbox(Inches(right_x6 + 0.15), Inches(box1_top6 + 0.5), Inches(right_w6 - 0.3), Inches(box1_h6 - 0.6))
             btf6 = bt6.text_frame; btf6.word_wrap = True
             for bi6, btxt6 in enumerate(bullets1_6):
@@ -1912,6 +1924,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             bullets2_6 = [f"Total Biaya Maintenance (semua kategori): {fmt_rp(total_biaya_all6)} s/d {period}."]
             if top_kat6 is not None:
                 bullets2_6.append(f"{top_kat6['kategori_sparepart']}: {fmt_rp(top_kat6['total_biaya'])} ({share_pct6:.1f}% dari total).")
+            top3_kat6 = qty_agg6.head(3)
+            top3_share6 = (top3_kat6["total_biaya"].sum() / total_biaya_all6 * 100) if total_biaya_all6 else 0
+            top3_names6 = ", ".join(top3_kat6["kategori_sparepart"].tolist())
+            bullets2_6.append(f"Top 3 kategori ({top3_names6}) menyumbang {top3_share6:.1f}% dari total biaya maintenance keseluruhan.")
             if not freq6.empty:
                 top_unit6b = freq6.iloc[0]
                 site_s6b = SITE_ABBR.get(top_unit6b["lokasi"], top_unit6b["lokasi"])
