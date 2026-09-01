@@ -1214,7 +1214,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              GREEN_BG, GREEN, GREEN)
 
         # ================= SLIDE 2: AVAILABILITY — REALISASI VS BUDGET & CAPAIAN VS UTILISASI =================
-        s = add_content_slide(f"AVAILABILITY — Realisasi vs Budget & Capaian s/d {period}", f"Tren Bulanan · {snum2}{divisi_label}{kat_suffix}")
+        s = add_content_slide(f"UTILISASI & AVAILABILITY — Analisis Capaian s/d {period}", f"Tren Bulanan · {snum2}{divisi_label}{kat_suffix}")
 
         avail_rows = []
         if not sasaran_mutu_data.empty:
@@ -1236,8 +1236,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         panel_top2 = 1.05
         panel_bottom2 = 7.3
         total_h2 = panel_bottom2 - panel_top2
-        h_chart1 = total_h2 * 0.48
-        h_chart2 = total_h2 * 0.48
 
         def _draw_avail_chart(slide, rows, top, height, title, series1_name, series1_key, series1_color,
                                series2_name, series2_key, series2_color, num_fmt):
@@ -1261,10 +1259,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 plot_y.has_data_labels = True
                 dls_y = plot_y.data_labels
                 dls_y.number_format = num_fmt; dls_y.number_format_is_linked = False
-                dls_y.font.size = Pt(6.5); dls_y.font.bold = True; dls_y.font.color.rgb = TEXT_DARK; dls_y.font.name = "Calibri"
+                dls_y.font.size = Pt(7.5); dls_y.font.bold = True; dls_y.font.color.rgb = TEXT_DARK; dls_y.font.name = "Calibri"
                 dls_y.position = XL_LABEL_POSITION.OUTSIDE_END
                 style_chart_light(chart_y, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
-                cat_font_y = 8.5 if n_y <= 8 else (7 if n_y <= 14 else (6 if n_y <= 22 else 5.3))
+                cat_font_y = 9 if n_y <= 8 else (7.5 if n_y <= 14 else (6.5 if n_y <= 22 else 5.5))
                 chart_y.category_axis.tick_labels.font.size = Pt(cat_font_y)
                 chart_y.value_axis.tick_labels.font.size = Pt(cat_font_y)
                 chart_y.value_axis.tick_labels.number_format = num_fmt
@@ -1272,15 +1270,34 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             else:
                 add_textbox(slide, 0.6, chart_top_y + 0.1, 12.0, 0.4, "Data Sasaran Mutu belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
-        _draw_avail_chart(s, avail_rows, panel_top2, h_chart1,
-                           "🟢 Realisasi Availability vs Budget Availability — per Site & Jenis Unit",
-                           "Budget Availability", "avail_t", RGBColor(0xA9, 0xB8, 0xD4),
-                           "Realisasi Availability", "avail_r", TEAL, '0"%"')
-        top_chart2 = panel_top2 + h_chart1 + 0.1
-        _draw_avail_chart(s, avail_rows, top_chart2, h_chart2,
-                           "🔵 % Capaian Availability vs % Capaian Utilisasi — per Site & Jenis Unit",
-                           "% Capaian Availability", "avail_cap", TEAL,
-                           "% Capaian Utilisasi", "util_cap", GOLD, '0"%"')
+        # Chart tunggal (dinaikkan ke atas, diperbesar): urutan Utilisasi dulu baru Availability
+        h_chart2 = total_h2 * 0.74
+        _draw_avail_chart(s, avail_rows, panel_top2, h_chart2,
+                           "🟡 % Capaian Utilisasi vs % Capaian Availability — per Site & Jenis Unit",
+                           "% Capaian Utilisasi", "util_cap", GOLD,
+                           "% Capaian Availability", "avail_cap", TEAL, '0"%"')
+
+        # --- Analisa: cari unit dengan kesenjangan (gap) Utilisasi vs Availability paling besar ---
+        note_top2 = panel_top2 + h_chart2 + 0.15
+        note_h2 = panel_bottom2 - note_top2
+        gap_rows2 = [r for r in avail_rows if r["util_cap"] is not None and r["avail_cap"] is not None]
+        if gap_rows2:
+            for r in gap_rows2:
+                r["gap_au"] = r["avail_cap"] - r["util_cap"]
+            worst2 = max(gap_rows2, key=lambda r: abs(r["gap_au"]))
+            if worst2["gap_au"] > 0:
+                narasi2 = (f"{worst2['label']} memiliki Availability Capaian ({worst2['avail_cap']:.0f}%) jauh lebih tinggi dari Utilisasi Capaian "
+                           f"({worst2['util_cap']:.0f}%), selisih {worst2['gap_au']:.0f} poin — unit ini SIAP BEROPERASI namun tidak dimanfaatkan "
+                           f"secara maksimal (idle/menganggur), berpotensi jadi peluang peningkatan produktivitas.")
+            else:
+                narasi2 = (f"{worst2['label']} memiliki Utilisasi Capaian ({worst2['util_cap']:.0f}%) jauh lebih tinggi dari Availability Capaian "
+                           f"({worst2['avail_cap']:.0f}%), selisih {abs(worst2['gap_au']):.0f} poin — unit ini DIPAKSAKAN BEROPERASI melebihi "
+                           f"kesiapan/keandalannya, berisiko mempercepat kerusakan & menambah downtime ke depan.")
+            add_finding_box(s, 0.6, note_top2, 12.2, note_h2, "💡", narasi2, GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
+        else:
+            add_finding_box(s, 0.6, note_top2, 12.2, note_h2, "ℹ️",
+                             "Data Capaian Utilisasi/Availability belum cukup untuk analisis kesenjangan.",
+                             GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
         # ================= SLIDE 3: BIAYA OPERASIONAL — Ringkasan Biaya vs Fisik =================
         s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional \u00b7 {snum3}{divisi_label}{kat_suffix}")
