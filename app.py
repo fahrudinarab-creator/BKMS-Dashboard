@@ -1598,11 +1598,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # --- Insight otomatis: unit #1 (dampak Rupiah terbesar) & penyebab dominannya ---
             top1_3 = chart_src3.sort_values("abs_gap", ascending=False).iloc[0]
             gap_sign3 = "membengkak" if top1_3["gap"] > 0 else "hemat"
+            cap_prestasi_txt3 = f"{top1_3['cap_prestasi']:.0f}%" if top1_3["cap_prestasi"] is not None else "data tidak tersedia"
+            cap_harga_txt3 = f"{top1_3['cap_harga']:.0f}%" if top1_3["cap_harga"] is not None else "data tidak tersedia"
             note_top3b = chart_top_m3b + chart_h_m3b + 0.12
             add_finding_box(s, 0.55, note_top3b, 12.2, note_h3b, "\U0001F4A1",
                              f"{top1_3['label']} adalah unit dengan dampak Rupiah biaya BBM terbesar ({fmt_rp(top1_3['abs_gap'])} {gap_sign3}) \u2014 "
-                             f"penyebab dominannya: {top1_3['penyebab']} (Cap. Prestasi {top1_3['cap_prestasi']:.0f}%, "
-                             f"Cap. Konsumsi {top1_3['cap']:.0f}%, Cap. Harga {top1_3['cap_harga']:.0f}% jika tersedia).",
+                             f"penyebab dominannya: {top1_3['penyebab']} (Cap. Prestasi {cap_prestasi_txt3}, "
+                             f"Cap. Konsumsi {top1_3['cap']:.0f}%, Cap. Harga BBM {cap_harga_txt3}).",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
         else:
             add_textbox(s, 0.55, chart_top_m3b + 0.1, 12.0, 0.5, "Data Konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
