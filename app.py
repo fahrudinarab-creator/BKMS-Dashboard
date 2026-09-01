@@ -1463,27 +1463,73 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                   status_col=3, col_widths=[1.55, 1.15, 1.15, 0.85, 0.85], font_size=font_btl3, header_size=font_btl3)
         right_col_bottom3 = btl_panel_top3 + btl_panel_h3
 
-        # ================= PANEL BAWAH (LEBAR PENUH): % Capaian Maintenance per Site & Jenis Unit =================
-        maint_su3 = data.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-            maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"))
-        maint_su3 = maint_su3[maint_su3["maint_b"] > 0].copy()
+        # ================= PANEL BAWAH (LEBAR PENUH): % Capaian Konsumsi BBM per Site & Jenis Unit =================
+        # Transportasi: KM/Ltr (Realisasi dibagi Budget). Alat Berat: Ltr/HM (Realisasi dibagi Budget).
+        # Filter (per baris, realisasi & budget dicek terpisah): qty/biaya/prestasi harus lengkap ketiganya,
+        # kalau ada yg tidak lengkap maka qty & prestasi baris tsb tidak ikut dihitung.
+        data_bbm_ok3 = data.copy()
+
+        valid_r3 = (data_bbm_ok3["qty_bbm_realisasi"].fillna(0) > 0) & \
+                   (data_bbm_ok3["biaya_bbm_realisasi"].fillna(0) > 0) & \
+                   (data_bbm_ok3["prestasi_realisasi"].fillna(0) > 0)
+        partial_r3 = (~valid_r3) & ((data_bbm_ok3["qty_bbm_realisasi"].fillna(0) > 0) | (data_bbm_ok3["prestasi_realisasi"].fillna(0) > 0))
+        data_bbm_ok3.loc[partial_r3, ["qty_bbm_realisasi", "prestasi_realisasi"]] = 0
+
+        valid_b3 = (data_bbm_ok3["qty_bbm_budget"].fillna(0) > 0) & \
+                   (data_bbm_ok3["biaya_bbm_budget"].fillna(0) > 0) & \
+                   (data_bbm_ok3["prestasi_budget"].fillna(0) > 0)
+        partial_b3 = (~valid_b3) & ((data_bbm_ok3["qty_bbm_budget"].fillna(0) > 0) | (data_bbm_ok3["prestasi_budget"].fillna(0) > 0))
+        data_bbm_ok3.loc[partial_b3, ["qty_bbm_budget", "prestasi_budget"]] = 0
+
+        maint_su3 = data_bbm_ok3.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+            qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum"),
+            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
+        maint_su3 = maint_su3[(maint_su3["qty_r"] > 0) | (maint_su3["qty_b"] > 0)].copy()
         maint_su3["site_short"] = maint_su3["lokasi"].map(SITE_ABBR).fillna(maint_su3["lokasi"])
         maint_su3["label"] = maint_su3["site_short"] + " \u2014 " + maint_su3["jenis_unit"]
-        maint_su3["cap"] = maint_su3["maint_r"] / maint_su3["maint_b"] * 100
-        maint_su3["gap"] = maint_su3["maint_r"] - maint_su3["maint_b"]
+
+        # Biaya BBM (Rp) per site & jenis unit -> dipakai utk urutan (Rupiah over tertinggi ditampilkan pertama)
+        biaya_bbm_su3 = data.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
+            biaya_r=("biaya_bbm_realisasi", "sum"), biaya_b=("biaya_bbm_budget", "sum"))
+        biaya_bbm_su3["gap_rp"] = biaya_bbm_su3["biaya_r"] - biaya_bbm_su3["biaya_b"]
+        gap_rp_lookup3 = {(r["lokasi"], r["jenis_unit"]): r["gap_rp"] for _, r in biaya_bbm_su3.iterrows()}
+        maint_su3["gap"] = maint_su3.apply(lambda r: gap_rp_lookup3.get((r["lokasi"], r["jenis_unit"]), 0), axis=1)
+
+        # Harga BBM aktual (Rp/Ltr) per site & jenis unit -> ditampilkan di label chart (bukan lagi gap Rupiah)
+        harga_bbm_su3 = data_bbm_ok.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
+            biaya_r=("biaya_bbm_realisasi", "sum"), qty_r=("qty_bbm_realisasi", "sum"))
+        harga_bbm_su3["harga_r"] = harga_bbm_su3.apply(lambda r: (r["biaya_r"] / r["qty_r"]) if r["qty_r"] else None, axis=1)
+        harga_bbm_lookup3 = {(r["lokasi"], r["jenis_unit"]): r["harga_r"] for _, r in harga_bbm_su3.iterrows()}
+        maint_su3["harga_r"] = maint_su3.apply(lambda r: harga_bbm_lookup3.get((r["lokasi"], r["jenis_unit"])), axis=1)
+
+        def _bbm_cap3(row):
+            if row["kategori"] == "AB":
+                # Alat Berat: konsumsi Ltr/HM
+                rate_r = (row["qty_r"] / row["prestasi_r"]) if row["prestasi_r"] else None
+                rate_b = (row["qty_b"] / row["prestasi_b"]) if row["prestasi_b"] else None
+            else:
+                # Transportasi: konsumsi KM/Ltr
+                rate_r = (row["prestasi_r"] / row["qty_r"]) if row["qty_r"] else None
+                rate_b = (row["prestasi_b"] / row["qty_b"]) if row["qty_b"] else None
+            if rate_r is None or not rate_b:
+                return None
+            return rate_r / rate_b * 100
+
+        maint_su3["cap"] = maint_su3.apply(_bbm_cap3, axis=1)
+        maint_su3 = maint_su3.dropna(subset=["cap"])
         maint_su3 = maint_su3.sort_values("gap", ascending=False)
         n_maint3 = max(len(maint_su3), 1)
 
         maint_panel_top3 = max(left_col_bottom3, right_col_bottom3) + 0.15
         maint_panel_h3 = 7.3 - maint_panel_top3
         add_card_panel(s, 0.4, maint_panel_top3, 12.5, maint_panel_h3)
-        add_panel_header(s, 0.4, maint_panel_top3, 12.5, "\u2699 % Capaian Maintenance \u2014 per Site & Jenis Unit", height=0.36)
+        add_panel_header(s, 0.4, maint_panel_top3, 12.5, "\u26fd % Capaian Konsumsi BBM \u2014 per Site & Jenis Unit", height=0.36)
         chart_top_m3 = maint_panel_top3 + 0.42
         chart_h_m3 = maint_panel_h3 - 0.47
         if not maint_su3.empty:
             cd_m3 = CategoryChartData()
             cd_m3.categories = list(maint_su3["label"])
-            cd_m3.add_series("% Capaian Maintenance", tuple(round(v, 1) for v in maint_su3["cap"]))
+            cd_m3.add_series("% Capaian Konsumsi BBM", tuple(round(v, 1) for v in maint_su3["cap"]))
             gframe_m3 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_m3), Inches(12.2), Inches(chart_h_m3), cd_m3)
             chart_m3 = gframe_m3.chart
             chart_m3.series[0].format.fill.solid(); chart_m3.series[0].format.fill.fore_color.rgb = TEAL
@@ -1494,18 +1540,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             from pptx.oxml.ns import qn as _qn
             for i, pt in enumerate(chart_m3.series[0].points):
                 v = maint_su3["cap"].iloc[i]
-                if v > 105:
+                gap_val = maint_su3["gap"].iloc[i]
+                if gap_val > 0:
                     pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
-                r_val = maint_su3["maint_r"].iloc[i]
-                b_val = maint_su3["maint_b"].iloc[i]
-                gap_val = r_val - b_val
                 gap_sign = "+" if gap_val >= 0 else "-"
                 dl = pt.data_label
                 dl.has_text_frame = True
-                if n_maint3 <= 12:
-                    dl.text_frame.text = f"{v:.0f}% ({gap_sign}{fmt_rp(abs(gap_val))})"
-                else:
-                    dl.text_frame.text = f"{v:.0f}% ({gap_sign}{fmt_rp(abs(gap_val))})"
+                harga_r_val = maint_su3["harga_r"].iloc[i]
+                harga_txt = f"Rp {harga_r_val:,.0f}/Ltr" if harga_r_val is not None else "-"
+                dl.text_frame.text = f"{v:.0f}% ({harga_txt})"
+                if n_maint3 > 12:
                     # Kategori banyak: putar teks label vertikal (90 derajat) supaya tidak numpuk horizontal
                     bodyPr = dl.text_frame._txBody.find(_qn('a:bodyPr'))
                     if bodyPr is not None:
@@ -1518,7 +1562,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_m3.category_axis.tick_labels.font.size = Pt(cat_font_m3)
             chart_m3.value_axis.tick_labels.font.size = Pt(cat_font_m3)
         else:
-            add_textbox(s, 0.55, chart_top_m3 + 0.1, 12.0, 0.5, "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+            add_textbox(s, 0.55, chart_top_m3 + 0.1, 12.0, 0.5, "Data Konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
 
         # ================= SLIDE 4: ANALISIS Capaian Biaya vs Capaian Fisik & Konsumsi BBM =================
