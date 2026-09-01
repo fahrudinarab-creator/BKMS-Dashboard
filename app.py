@@ -1904,13 +1904,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         for _, r in qty_agg6.head(max_rows6).iterrows():
             share_pct_row6 = (r["total_biaya"] / total_biaya_grand6 * 100) if total_biaya_grand6 else 0
             is_over = share_pct_row6 > fair_share6 * 1.3 if fair_share6 else False
-            status_txt = f"\u2717 {share_pct_row6:.1f}%" if is_over else f"\u2713 {share_pct_row6:.1f}%"
-            qty_rows6.append([str(r["kategori_sparepart"]), f"{int(r['qty']):,}", fmt_rp(r["total_biaya"]), status_txt])
+            status_txt = f"{share_pct_row6:.1f}%"
+            qty_rows6.append([str(r["kategori_sparepart"]), fmt_rp(r["total_biaya"]), status_txt])
             if is_over:
                 over_kategori6.append(str(r["kategori_sparepart"]))
         if len(qty_agg6) > max_rows6:
             sisa6 = qty_agg6.iloc[max_rows6:]
-            qty_rows6.append([f"+ {len(sisa6)} kategori lainnya", f"{int(sisa6['qty'].sum()):,}", fmt_rp(sisa6["total_biaya"].sum()), "-"])
+            sisa_share6 = (sisa6["total_biaya"].sum() / total_biaya_grand6 * 100) if total_biaya_grand6 else 0
+            qty_rows6.append([f"+ {len(sisa6)} kategori lainnya", fmt_rp(sisa6["total_biaya"].sum()), f"{sisa_share6:.1f}%"])
 
         # Reservasi ruang tetap utk kotak catatan di bawah dulu, baru tabel mengisi sisa ruang yg ada
         note_h6 = 0.7
@@ -1920,8 +1921,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             row_h6 = max(0.22, min(0.4, tbl_h6_avail / (n_row6 + 1)))
             font6 = 9.5 if n_row6 <= 7 else (8.5 if n_row6 <= 9 else 7.5)
             add_table(s, 0.55, tbl_top6, left_w6 - 0.3, row_h6 * (n_row6 + 1),
-                      ["Kategori Sparepart", "Qty", "Total Biaya", "Status"], qty_rows6,
-                      col_widths=[2.5, 0.8, 1.5, 1.1], font_size=font6, header_size=font6)
+                      ["Kategori Sparepart", "Total Biaya", "Proporsi Biaya"], qty_rows6,
+                      col_widths=[3.1, 1.7, 1.1], font_size=font6, header_size=font6)
         else:
             add_textbox(s, 0.55, tbl_top6 + 0.2, left_w6 - 0.3, 0.6, "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
