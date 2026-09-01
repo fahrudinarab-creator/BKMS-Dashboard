@@ -1325,10 +1325,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         bbm_biaya_b3 = data_bbm_ok["biaya_bbm_budget"].sum()
         bbm_qty_r3 = data_bbm_ok["qty_bbm_realisasi"].sum()
         bbm_qty_b3 = data_bbm_ok["qty_bbm_budget"].sum()
-        # Rp/Ltr = Total Biaya BBM dibagi Total Qty BBM
+        # Capaian Biaya BBM = Total Biaya BBM Realisasi dibanding Total Budget Biaya BBM (bukan lagi Rp/Ltr)
+        cap_bbm3 = (bbm_biaya_r3 / bbm_biaya_b3 * 100) if bbm_biaya_b3 else None
+        # Rp/Ltr tetap dihitung, dipakai sbg info pendukung (bukan basis Capaian lagi)
         harga_bbm_r3 = (bbm_biaya_r3 / bbm_qty_r3) if bbm_qty_r3 else None
         harga_bbm_b3 = (bbm_biaya_b3 / bbm_qty_b3) if bbm_qty_b3 else None
-        cap_bbm3 = (harga_bbm_r3 / harga_bbm_b3 * 100) if (harga_bbm_r3 is not None and harga_bbm_b3) else None
         bbm_prestasi_r3 = data_bbm_ok["prestasi_realisasi"].sum()
         bbm_prestasi_b3 = data_bbm_ok["prestasi_budget"].sum()
 
@@ -1382,16 +1383,19 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             vv = ">999%" if v > 999 else f"{v:.1f}%"
             return f"{ok} {vv}"
 
-        ringkasan3_rows = [
-            ["Total Biaya", fmt_rp(tot_biaya_b3), fmt_rp(tot_biaya_r3), _cap_disp3(cap_biaya3), _fisik_disp3(cap_fisik_biaya3, True)],
-            ["Upah Operator", fmt_rp(upah_b3), fmt_rp(upah_r3), _cap_disp3(cap_upah3), "-"],
-            ["Biaya BBM (Rp/Ltr)",
-             f"Rp {harga_bbm_b3:,.0f}" if harga_bbm_b3 is not None else "-",
-             f"Rp {harga_bbm_r3:,.0f}" if harga_bbm_r3 is not None else "-",
-             _cap_disp3(cap_bbm3), "-"],
-            ["Biaya Maintenance", fmt_rp(maint_b3), fmt_rp(maint_r3), _cap_disp3(cap_maint3), "-"],
-            ["Biaya Lainnya", fmt_rp(lain_b3), fmt_rp(lain_r3), _cap_disp3(cap_lain3), "-"],
+        total_row3 = ["Total Biaya", fmt_rp(tot_biaya_b3), fmt_rp(tot_biaya_r3), _cap_disp3(cap_biaya3), _fisik_disp3(cap_fisik_biaya3, True)]
+        other_rows3 = [
+            (cap_upah3, ["Upah Operator", fmt_rp(upah_b3), fmt_rp(upah_r3), _cap_disp3(cap_upah3), "-"]),
+            (cap_bbm3, ["Biaya BBM",
+                        fmt_rp(bbm_biaya_b3),
+                        fmt_rp(bbm_biaya_r3),
+                        _cap_disp3(cap_bbm3), "-"]),
+            (cap_maint3, ["Biaya Maintenance", fmt_rp(maint_b3), fmt_rp(maint_r3), _cap_disp3(cap_maint3), "-"]),
+            (cap_lain3, ["Biaya Lainnya", fmt_rp(lain_b3), fmt_rp(lain_r3), _cap_disp3(cap_lain3), "-"]),
         ]
+        # Urutkan 4 baris selain Total Biaya berdasarkan Capaian paling OVER (tertinggi) dulu; nilai kosong (None) di paling bawah
+        other_rows3_sorted = sorted(other_rows3, key=lambda x: (x[0] is None, -(x[0] if x[0] is not None else 0)))
+        ringkasan3_rows = [total_row3] + [r[1] for r in other_rows3_sorted]
 
         add_textbox(s, 0.4, 0.98, 5.9, 0.3, f"Ringkasan Biaya PT. BKMS (s/d {period})", size=14, bold=True, color=TEXT_DARK)
 
@@ -1403,7 +1407,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                   fill_badge=True)
 
         # --- Catatan otomatis: metrik biaya mana yang paling over budget ---
-        cap_map3 = {"Total Biaya": cap_biaya3, "Upah Operator": cap_upah3, "Biaya BBM (Rp/Ltr)": cap_bbm3,
+        cap_map3 = {"Total Biaya": cap_biaya3, "Upah Operator": cap_upah3, "Biaya BBM": cap_bbm3,
                     "Biaya Maintenance": cap_maint3, "Biaya Lainnya": cap_lain3}
         over_items3 = {k: v for k, v in cap_map3.items() if v is not None and v > 100 and k != "Total Biaya"}
         note_top3 = tbl3_top + tbl3_h + 0.15
