@@ -753,24 +753,33 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
         card.shadow.inherit = False
         add_soft_shadow(card)
-        # icon circle (ukuran diperbesar sedikit agar lebih menonjol)
-        icon_size = 0.56
-        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.25), Inches(top + 0.25), Inches(icon_size), Inches(icon_size))
+        # icon circle (ukuran diperbesar sedikit agar lebih menonjol; sedikit lebih kecil kalau kartu sempit)
+        narrow_pre = width < 2.6
+        icon_size = 0.46 if narrow_pre else 0.56
+        icon_left = left + 0.2 if narrow_pre else left + 0.25
+        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(icon_left), Inches(top + 0.25), Inches(icon_size), Inches(icon_size))
         circ.fill.solid(); circ.fill.fore_color.rgb = icon_color
         circ.line.fill.background(); circ.shadow.inherit = False
         ic_tf = circ.text_frame; ic_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         ic_tf.margin_left = 0; ic_tf.margin_right = 0
         icp = ic_tf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
         icr = icp.add_run(); icr.text = icon_txt
-        icr.font.size = Pt(17); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
+        icr.font.size = Pt(14 if narrow_pre else 17); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
+        # Skala ukuran font & posisi menyesuaikan lebar kartu (supaya tetap muat kalau kartu dibuat sempit, mis. 5 kartu sejajar)
+        narrow = narrow_pre
+        label_size = 9.5 if narrow else 11.5
+        value_size = 19 if narrow else 23
+        sub_size = 8.5 if narrow else 10
+        pill_size = 9 if narrow else 10.5
+        label_h = 0.55 if narrow else 0.4
         # label
-        add_textbox(slide, left + 1.0, top + 0.27, width - 1.15, 0.4, label, size=11.5, bold=True, color=TEXT_MUTED)
+        add_textbox(slide, left + 1.0, top + 0.24, width - 1.15, label_h, label, size=label_size, bold=True, color=TEXT_MUTED)
         # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
-        value_top = top + 0.66
-        add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=23, bold=True, color=TEXT_DARK)
+        value_top = top + (0.78 if narrow else 0.66)
+        add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=value_size, bold=True, color=TEXT_DARK)
         # sub text (target/budget)
         if sub_text:
-            add_textbox(slide, left + 0.25, value_top + 0.42, width - 0.5, 0.3, sub_text, size=10, color=TEXT_MUTED)
+            add_textbox(slide, left + 0.25, value_top + (0.38 if narrow else 0.42), width - 0.5, 0.3, sub_text, size=sub_size, color=TEXT_MUTED)
         # pill (selalu menempel ke bawah kartu)
         pbg, ptxt = pill_colors(pill_good)
         pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + 0.25), Inches(top + height - 0.5), Inches(width - 0.5), Inches(0.35))
@@ -780,7 +789,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         ptf = pill.text_frame; ptf.vertical_anchor = MSO_ANCHOR.MIDDLE
         pp = ptf.paragraphs[0]; pp.alignment = PP_ALIGN.CENTER
         pr = pp.add_run(); pr.text = pill_text
-        pr.font.size = Pt(10.5); pr.font.bold = True; pr.font.color.rgb = ptxt
+        pr.font.size = Pt(pill_size); pr.font.bold = True; pr.font.color.rgb = ptxt
 
     def add_card_panel(slide, left, top, width, height, accent_color=None):
         card = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
@@ -1025,6 +1034,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         avg_util_t = sasaran_mutu_data["utilisasi_target"].mean() if not sasaran_mutu_data.empty else None
         ach_avail = ach_txt_pct(avg_avail_r, avg_avail_t) if (avg_avail_r is not None and avg_avail_t) else None
         ach_util = ach_txt_pct(avg_util_r, avg_util_t) if (avg_util_r is not None and avg_util_t) else None
+        prestasi_r_kpi = data["prestasi_realisasi"].sum() if "prestasi_realisasi" in data.columns else None
+        prestasi_b_kpi = data["prestasi_budget"].sum() if "prestasi_budget" in data.columns else None
+        ach_prestasi_kpi = ach_txt_pct(prestasi_r_kpi, prestasi_b_kpi) if (prestasi_r_kpi is not None and prestasi_b_kpi) else None
 
         # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
         s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", f"Ringkasan Kinerja · {snum1}{divisi_label}{kat_suffix}")
@@ -1075,24 +1087,29 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         au_rows_floating = au_rows_floating + au_rows_other  # unit tanpa info kriteria digabung ke Floating (default)
 
         # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
-        mini_w, mini_h, mini_gap, mini_y = 2.85, 1.95, 0.25, 1.05
-        add_kpi_card(s, 0.55, mini_y, mini_w, mini_h, "🎯", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
+        mini_w, mini_h, mini_gap, mini_y = 2.32, 1.95, 0.19, 1.05
+        add_kpi_card(s, 0.4, mini_y, mini_w, mini_h, "📈", RGBColor(0x2E, 0x6D, 0xB4), GREEN if (ach_prestasi_kpi is not None and ach_prestasi_kpi >= 100) else RED,
+                     "Capaian Prestasi", (f"{ach_prestasi_kpi:.1f}%" if ach_prestasi_kpi is not None else "-"),
+                     "Target: 100.0%" if prestasi_r_kpi is not None else "Data tidak tersedia",
+                     (f"✓ {ach_prestasi_kpi:.1f}% — Tercapai" if ach_prestasi_kpi is not None and ach_prestasi_kpi >= 100 else (f"✗ {ach_prestasi_kpi:.1f}% — Belum Tercapai" if ach_prestasi_kpi is not None else "Data tidak tersedia")),
+                     ach_prestasi_kpi is not None and ach_prestasi_kpi >= 100)
+        add_kpi_card(s, 0.4 + (mini_w + mini_gap), mini_y, mini_w, mini_h, "🎯", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
                      "Avg Utilisasi", (f"{avg_util_r:.1f}%" if avg_util_r is not None else "-"),
                      f"Target: {avg_util_t:.1f}%" if avg_util_t is not None else "Target: -",
                      (f"✓ {ach_util:.1f}% dari Target" if ach_util is not None and ach_util >= 100 else (f"✗ {ach_util:.1f}% dari Target" if ach_util is not None else "Data tidak tersedia")),
                      ach_util is not None and ach_util >= 100)
-        add_kpi_card(s, 0.55 + (mini_w + mini_gap), mini_y, mini_w, mini_h, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
+        add_kpi_card(s, 0.4 + 2 * (mini_w + mini_gap), mini_y, mini_w, mini_h, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
                      "Avg Availability", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
                      f"Target: {avg_avail_t:.1f}%" if avg_avail_t is not None else "Target: -",
                      (f"✓ {ach_avail:.1f}% dari Target" if ach_avail is not None and ach_avail >= 100 else (f"✗ {ach_avail:.1f}% dari Target" if ach_avail is not None else "Data tidak tersedia")),
                      ach_avail is not None and ach_avail >= 100)
-        add_kpi_card(s, 0.55 + 2 * (mini_w + mini_gap), mini_y, mini_w, mini_h, "💰", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
-                     "Biaya Langsung/Prestasi", (fmt_rp(bl_r) if bl_r is not None else "-"),
+        add_kpi_card(s, 0.4 + 3 * (mini_w + mini_gap), mini_y, mini_w, mini_h, "💰", GREEN, GREEN if (ach_bl is not None and ach_bl <= 100) else RED,
+                     "Biaya Langsung / Prestasi", (fmt_rp(bl_r) if bl_r is not None else "-"),
                      f"Budget: {fmt_rp(bl_b)}" if bl_b is not None else "Budget: -",
                      (f"✓ {ach_bl:.1f}% — Under Budget" if ach_bl is not None and ach_bl <= 100 else (f"✗ {ach_bl:.1f}% — Over Budget" if ach_bl is not None else "Target = 0")),
                      ach_bl is not None and ach_bl <= 100)
-        add_kpi_card(s, 0.55 + 3 * (mini_w + mini_gap), mini_y, mini_w, mini_h, "🧾", RGBColor(0x8E, 0x6B, 0xC9), GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
-                     "Biaya T.Langsung/Prestasi", (fmt_rp(btl_r) if btl_r is not None else "-"),
+        add_kpi_card(s, 0.4 + 4 * (mini_w + mini_gap), mini_y, mini_w, mini_h, "🧾", RGBColor(0x8E, 0x6B, 0xC9), GREEN if (ach_btl is not None and ach_btl <= 100) else RED,
+                     "Biaya T.Langsung / Prestasi", (fmt_rp(btl_r) if btl_r is not None else "-"),
                      f"Budget: {fmt_rp(btl_b)}" if btl_b is not None else "Budget: -",
                      (f"✓ {ach_btl:.1f}% — Under Budget" if ach_btl is not None and ach_btl <= 100 else (f"✗ {ach_btl:.1f}% — Over Budget" if ach_btl is not None else "Target = 0")),
                      ach_btl is not None and ach_btl <= 100)
@@ -1115,12 +1132,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     util_label_x = "% Capaian Utilisasi"
                 cd_x = CategoryChartData()
                 cd_x.categories = [r["label"] for r in rows]
-                cd_x.add_series(util_label_x, tuple(round(r["util_cap"], 1) if r["util_cap"] is not None else 0 for r in rows))
                 cd_x.add_series("% Capaian Prestasi", tuple(round(r["prestasi_cap"], 1) if r["prestasi_cap"] is not None else 0 for r in rows))
+                cd_x.add_series(util_label_x, tuple(round(r["util_cap"], 1) if r["util_cap"] is not None else 0 for r in rows))
                 gframe_x = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_x), Inches(12.2), Inches(chart_h_x), cd_x)
                 chart_x = gframe_x.chart
-                chart_x.series[0].format.fill.solid(); chart_x.series[0].format.fill.fore_color.rgb = GOLD
-                chart_x.series[1].format.fill.solid(); chart_x.series[1].format.fill.fore_color.rgb = TEAL
+                PRESTASI_COLOR = RGBColor(0x2E, 0x6D, 0xB4)  # disamakan dgn warna ikon kartu KPI "Capaian Prestasi"
+                chart_x.series[0].format.fill.solid(); chart_x.series[0].format.fill.fore_color.rgb = PRESTASI_COLOR
+                chart_x.series[1].format.fill.solid(); chart_x.series[1].format.fill.fore_color.rgb = GOLD
                 chart_x.has_title = False
                 plot_x = chart_x.plots[0]
                 plot_x.gap_width = 60
@@ -1129,6 +1147,20 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dls_x.number_format = '0"%"'; dls_x.number_format_is_linked = False
                 dls_x.font.size = Pt(6.5); dls_x.font.bold = True; dls_x.font.color.rgb = TEXT_DARK; dls_x.font.name = "Calibri"
                 dls_x.position = XL_LABEL_POSITION.OUTSIDE_END
+                # Label angka Prestasi ditampilkan utk SEMUA nilai (termasuk yg >=100%), diwarnai merah kalau <100%
+                for i_pt_x, pt_x in enumerate(chart_x.series[0].points):
+                    prestasi_val_x = rows[i_pt_x]["prestasi_cap"]
+                    dl_x = pt_x.data_label
+                    dl_x.has_text_frame = True
+                    if prestasi_val_x is not None:
+                        dl_x.text_frame.text = f"{prestasi_val_x:.0f}%"
+                        r0_x = dl_x.text_frame.paragraphs[0].runs[0]
+                        r0_x.font.size = Pt(6.5); r0_x.font.bold = True; r0_x.font.name = "Calibri"
+                        r0_x.font.color.rgb = RED if prestasi_val_x < 100 else TEXT_DARK
+                    else:
+                        dl_x.text_frame.text = "-"
+                        r0_x = dl_x.text_frame.paragraphs[0].runs[0]
+                        r0_x.font.size = Pt(6.5); r0_x.font.bold = True; r0_x.font.name = "Calibri"; r0_x.font.color.rgb = TEXT_MUTED
                 style_chart_light(chart_x, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
                 cat_font_x = 8.5 if n_x <= 8 else (7 if n_x <= 14 else (6 if n_x <= 22 else 5.3))
                 chart_x.category_axis.tick_labels.font.size = Pt(cat_font_x)
@@ -1156,24 +1188,24 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         gap_unit["gap"] = gap_unit["pend_r"] - gap_unit["pend_b"]
         gap_unit["site_short"] = gap_unit["lokasi"].map(SITE_ABBR).fillna(gap_unit["lokasi"])
         gap_unit["label"] = gap_unit["site_short"] + " — " + gap_unit["jenis_unit"]
-        util_cap_lookup = {r["label"]: r["util_cap"] for r in au_rows}
-        gap_unit["util_cap"] = gap_unit["label"].map(util_cap_lookup)
+        util_cap_lookup = {r["label"]: r["prestasi_cap"] for r in au_rows}
+        gap_unit["prestasi_cap"] = gap_unit["label"].map(util_cap_lookup)
         gap_unit_neg = gap_unit[gap_unit["gap"] < 0].sort_values("gap")
-        # Cari unit dgn gap pendapatan paling minus secara keseluruhan (tanpa filter prioritas utilisasi)
+        # Cari unit dgn gap pendapatan paling minus secara keseluruhan (tanpa filter prioritas prestasi)
         target_row = gap_unit_neg.iloc[0] if not gap_unit_neg.empty else None
         if target_row is not None:
             wg = target_row
-            wg_util = wg["util_cap"]
-            util_txt = f"{wg_util:.1f}%" if wg_util is not None else "tidak tersedia"
-            if wg_util is not None and wg_util < 100:
-                penyebab_txt = "Rendahnya capaian utilisasi unit ini menjadi salah satu penyebab utama kekurangan pendapatan."
-            elif wg_util is not None:
-                penyebab_txt = "Meski capaian utilisasi sudah tercapai, gap pendapatan tetap terjadi — kemungkinan disebabkan faktor lain (tarif/rate, harga jual, atau komposisi pekerjaan)."
+            wg_prestasi = wg["prestasi_cap"]
+            prestasi_txt = f"{wg_prestasi:.1f}%" if wg_prestasi is not None else "tidak tersedia"
+            if wg_prestasi is not None and wg_prestasi < 100:
+                penyebab_txt = "Rendahnya capaian prestasi unit ini menjadi salah satu penyebab utama kekurangan pendapatan."
+            elif wg_prestasi is not None:
+                penyebab_txt = "Meski capaian prestasi sudah tercapai, gap pendapatan tetap terjadi — kemungkinan disebabkan faktor lain (tarif/rate, harga jual, atau komposisi pekerjaan)."
             else:
-                penyebab_txt = "Data capaian utilisasi unit ini belum tersedia untuk analisis lebih lanjut."
+                penyebab_txt = "Data capaian prestasi unit ini belum tersedia untuk analisis lebih lanjut."
             add_finding_box(s, 0.6, note_top_au, 12.2, note_h_au, "⚠",
                              f"{wg['label']} adalah unit dengan GAP PENDAPATAN MINUS PALING TINGGI ({fmt_rp(wg['gap'])}) — "
-                             f"Realisasi {fmt_rp(wg['pend_r'])} vs Budget {fmt_rp(wg['pend_b'])}, dengan Capaian Utilisasi {util_txt}. "
+                             f"Realisasi {fmt_rp(wg['pend_r'])} vs Budget {fmt_rp(wg['pend_b'])}, dengan Capaian Prestasi {prestasi_txt}. "
                              f"{penyebab_txt}",
                              RED_BG, RED, RED)
         else:
