@@ -1610,125 +1610,45 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             add_textbox(s, 0.55, chart_top_m3b + 0.1, 12.0, 0.5, "Data Konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
 
-        # ================= SLIDE 4: ANALISIS Capaian Biaya vs Capaian Fisik & Konsumsi BBM =================
-        s = add_content_slide(f"ANALISIS: Capaian Biaya vs Capaian Fisik \u2014 s/d {period}", f"Analisis Biaya \u00b7 {snum4}{divisi_label}{kat_suffix}")
+        # ================= SLIDE 4: ANALISIS Biaya Maintenance & Maintenance Rutin/Non-Rutin =================
+        s = add_content_slide(f"ANALISIS: Biaya Maintenance & Rutin/Non-Rutin \u2014 s/d {period}", f"Analisis Biaya \u00b7 {snum4}{divisi_label}{kat_suffix}")
 
         panel_top4 = 1.0
         panel_bottom4 = 7.3
         panel_h4 = panel_bottom4 - panel_top4
 
-        # ================= PANEL KIRI: Capaian Biaya (di luar Penyusutan) vs Capaian Prestasi =================
-        prestasi_r4 = data["prestasi_realisasi"].sum()
-        prestasi_b4 = data["prestasi_budget"].sum()
-        cap_prestasi_global4 = (prestasi_r4 / prestasi_b4 * 100) if prestasi_b4 else None
-
-        comp_defs4 = [
-            ("Upah Operator", "upah_realisasi", "upah_budget"),
-            ("Biaya BBM", "biaya_bbm_realisasi", "biaya_bbm_budget"),
-            ("Biaya Maintenance", "maintenance_realisasi", "maintenance_budget"),
-            ("Biaya Lainnya", "lainnya_realisasi", "lainnya_budget"),
-        ]
-        left_rows4 = []
-        for name4, rcol4, bcol4 in comp_defs4:
-            r4 = data[rcol4].sum()
-            b4 = data[bcol4].sum()
-            cap_biaya4 = (r4 / b4 * 100) if b4 else None
-            left_rows4.append({"label": name4, "cap_biaya": cap_biaya4, "cap_prestasi": cap_prestasi_global4})
-        left_rows4 = sorted(left_rows4, key=lambda r: (r["cap_biaya"] if r["cap_biaya"] is not None else -1), reverse=True)
+        # ================= PANEL KIRI: % Capaian Biaya Maintenance per Site & Jenis Unit =================
+        maint_su4 = data.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
+            maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"))
+        maint_su4 = maint_su4[maint_su4["maint_b"] > 0].copy()
+        maint_su4["site_short"] = maint_su4["lokasi"].map(SITE_ABBR).fillna(maint_su4["lokasi"])
+        maint_su4["label"] = maint_su4["site_short"] + " \u2014 " + maint_su4["jenis_unit"]
+        maint_su4["cap"] = maint_su4["maint_r"] / maint_su4["maint_b"] * 100
+        maint_su4["gap_rp"] = maint_su4["maint_r"] - maint_su4["maint_b"]
+        # Diurutkan dari gap Rupiah (over) paling tinggi dulu
+        maint_su4 = maint_su4.sort_values("gap_rp", ascending=False)
+        n_maint4 = max(len(maint_su4), 1)
 
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "$ Capaian Biaya (di luar Penyusutan) vs Capaian Prestasi", height=0.4)
-        chart_top_l4 = panel_top4 + 0.45
-        chart_h_l4 = panel_h4 - 0.55
-        cd_l4 = CategoryChartData()
-        cd_l4.categories = [r["label"] for r in left_rows4]
-        cd_l4.add_series("% Capaian Biaya", tuple(round(r["cap_biaya"], 1) if r["cap_biaya"] is not None else 0 for r in left_rows4))
-        cd_l4.add_series("% Capaian Prestasi", tuple(round(r["cap_prestasi"], 1) if r["cap_prestasi"] is not None else 0 for r in left_rows4))
-        gframe_l4 = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(0.55), Inches(chart_top_l4), Inches(5.75), Inches(chart_h_l4), cd_l4)
-        chart_l4 = gframe_l4.chart
-        chart_l4.series[0].format.fill.solid(); chart_l4.series[0].format.fill.fore_color.rgb = RED
-        chart_l4.series[1].format.fill.solid(); chart_l4.series[1].format.fill.fore_color.rgb = TEAL
-        chart_l4.has_title = False
-        plot_l4 = chart_l4.plots[0]
-        plot_l4.has_data_labels = True
-        dls_l4 = plot_l4.data_labels
-        dls_l4.number_format = '0.0"%"'; dls_l4.number_format_is_linked = False
-        dls_l4.font.size = Pt(9.5); dls_l4.font.bold = True; dls_l4.font.color.rgb = TEXT_DARK; dls_l4.font.name = "Calibri"
-        style_chart_light(chart_l4, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
-        chart_l4.category_axis.tick_labels.font.size = Pt(10.5)
-        chart_l4.value_axis.tick_labels.font.size = Pt(9.5)
-
-        # ================= PANEL KANAN: % Capaian Konsumsi BBM per Site & Jenis Unit =================
-        # Filter (per baris, realisasi & budget dicek terpisah):
-        #  - qty BBM ada tapi Rp BBM tidak ada -> qty & prestasi baris tsb tidak ikut dihitung
-        #  - prestasi ada tapi qty BBM tidak ada -> prestasi & qty baris tsb tidak ikut dihitung
-        #  - qty BBM ada tapi prestasi tidak ada -> qty & prestasi baris tsb tidak ikut dihitung
-        data_bbm_ok4 = data.copy()
-
-        valid_r4 = (data_bbm_ok4["qty_bbm_realisasi"].fillna(0) > 0) & \
-                   (data_bbm_ok4["biaya_bbm_realisasi"].fillna(0) > 0) & \
-                   (data_bbm_ok4["prestasi_realisasi"].fillna(0) > 0)
-        partial_r4 = (~valid_r4) & ((data_bbm_ok4["qty_bbm_realisasi"].fillna(0) > 0) | (data_bbm_ok4["prestasi_realisasi"].fillna(0) > 0))
-        data_bbm_ok4.loc[partial_r4, ["qty_bbm_realisasi", "prestasi_realisasi"]] = 0
-
-        valid_b4 = (data_bbm_ok4["qty_bbm_budget"].fillna(0) > 0) & \
-                   (data_bbm_ok4["biaya_bbm_budget"].fillna(0) > 0) & \
-                   (data_bbm_ok4["prestasi_budget"].fillna(0) > 0)
-        partial_b4 = (~valid_b4) & ((data_bbm_ok4["qty_bbm_budget"].fillna(0) > 0) | (data_bbm_ok4["prestasi_budget"].fillna(0) > 0))
-        data_bbm_ok4.loc[partial_b4, ["qty_bbm_budget", "prestasi_budget"]] = 0
-
-        bbm_su4 = data_bbm_ok4.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-            qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum"),
-            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
-        bbm_su4 = bbm_su4[(bbm_su4["qty_r"] > 0) | (bbm_su4["qty_b"] > 0)].copy()
-        bbm_su4["site_short"] = bbm_su4["lokasi"].map(SITE_ABBR).fillna(bbm_su4["lokasi"])
-        bbm_su4["label"] = bbm_su4["site_short"] + " \u2014 " + bbm_su4["jenis_unit"]
-
-        # Biaya BBM (Rp) per site & jenis unit -> dipakai utk urutan (Rupiah over tertinggi ditampilkan pertama)
-        biaya_bbm_su4 = data.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
-            biaya_r=("biaya_bbm_realisasi", "sum"), biaya_b=("biaya_bbm_budget", "sum"))
-        biaya_bbm_su4["gap_rp"] = biaya_bbm_su4["biaya_r"] - biaya_bbm_su4["biaya_b"]
-        gap_rp_lookup4 = {(r["lokasi"], r["jenis_unit"]): r["gap_rp"] for _, r in biaya_bbm_su4.iterrows()}
-        bbm_su4["gap_rp"] = bbm_su4.apply(lambda r: gap_rp_lookup4.get((r["lokasi"], r["jenis_unit"]), 0), axis=1)
-
-        def _bbm_cap4(row):
-            if row["kategori"] == "AB":
-                rate_r = (row["qty_r"] / row["prestasi_r"]) if row["prestasi_r"] else None
-                rate_b = (row["qty_b"] / row["prestasi_b"]) if row["prestasi_b"] else None
-            else:
-                rate_r = (row["prestasi_r"] / row["qty_r"]) if row["qty_r"] else None
-                rate_b = (row["prestasi_b"] / row["qty_b"]) if row["qty_b"] else None
-            if rate_r is None or not rate_b:
-                return None
-            return rate_r / rate_b * 100
-
-        bbm_su4["cap"] = bbm_su4.apply(_bbm_cap4, axis=1)
-        bbm_su4 = bbm_su4.dropna(subset=["cap"])
-        bbm_su4 = bbm_su4.sort_values("gap_rp", ascending=False)
-        n_bbm4 = max(len(bbm_su4), 1)
-
-        add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 6.85, panel_top4, 6.05, "\u26fd % Capaian Konsumsi BBM \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 % Capaian Biaya Maintenance \u2014 per Site & Jenis Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
-        note_h_r4 = 1.05
-        chart_h_r4 = panel_h4 - 0.45 - 0.15 - note_h_r4 - 0.1
-        if not bbm_su4.empty:
+        chart_h_r4 = panel_h4 - 0.55
+        if not maint_su4.empty:
             cd_r4 = CategoryChartData()
-            cd_r4.categories = list(bbm_su4["label"])
-            cd_r4.add_series("% Capaian Konsumsi BBM", tuple(round(v, 1) for v in bbm_su4["cap"]))
-            gframe_r4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(7.0), Inches(chart_top_r4), Inches(5.75), Inches(chart_h_r4), cd_r4)
+            cd_r4.categories = list(maint_su4["label"])
+            cd_r4.add_series("% Capaian Biaya Maintenance", tuple(round(v, 1) for v in maint_su4["cap"]))
+            gframe_r4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_r4), Inches(5.75), Inches(chart_h_r4), cd_r4)
             chart_r4 = gframe_r4.chart
             chart_r4.series[0].format.fill.solid(); chart_r4.series[0].format.fill.fore_color.rgb = TEAL
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
-            label_font_r4 = 8 if n_bbm4 <= 6 else (7.5 if n_bbm4 <= 12 else 6)
+            label_font_r4 = 8 if n_maint4 <= 6 else (7.5 if n_maint4 <= 12 else 6)
             from pptx.oxml.ns import qn as _qn4
-            avg_abs_gap_r4 = bbm_su4["gap_rp"].abs().mean() if not bbm_su4.empty else 0
             for i, pt in enumerate(chart_r4.series[0].points):
-                v = bbm_su4["cap"].iloc[i]
-                gap_val4 = bbm_su4["gap_rp"].iloc[i]
-                if avg_abs_gap_r4 and gap_val4 > 0 and gap_val4 > avg_abs_gap_r4:
+                v = maint_su4["cap"].iloc[i]
+                gap_val4 = maint_su4["gap_rp"].iloc[i]
+                if gap_val4 > 0:
                     pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
                 gap_sign4 = "+" if gap_val4 >= 0 else "-"
                 dl = pt.data_label
@@ -1740,40 +1660,86 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
-                if n_bbm4 > 6:
+                if n_maint4 > 6:
                     bodyPr = dl.text_frame._txBody.find(_qn4('a:bodyPr'))
                     if bodyPr is not None:
                         bodyPr.set('rot', '-5400000')
             style_chart_light(chart_r4, legend=False)
-            cat_font_r4 = 8 if n_bbm4 <= 10 else (6.5 if n_bbm4 <= 20 else 5.3)
+            cat_font_r4 = 8 if n_maint4 <= 10 else (6.5 if n_maint4 <= 20 else 5.3)
             chart_r4.category_axis.tick_labels.font.size = Pt(cat_font_r4)
             chart_r4.value_axis.tick_labels.font.size = Pt(cat_font_r4)
-
-            # --- Analisa: kenapa unit #1 (gap Rupiah terbesar) bisa dominan, meski %capaian konsumsinya kecil ---
-            top4 = bbm_su4.iloc[0]
-            unit_rows4 = data[(data["lokasi"] == top4["lokasi"]) & (data["jenis_unit"] == top4["jenis_unit"])]
-            biaya_r_u4 = unit_rows4["biaya_bbm_realisasi"].sum()
-            biaya_b_u4 = unit_rows4["biaya_bbm_budget"].sum()
-            qty_r_u4 = unit_rows4["qty_bbm_realisasi"].sum()
-            qty_b_u4 = unit_rows4["qty_bbm_budget"].sum()
-            harga_r_u4 = (biaya_r_u4 / qty_r_u4) if qty_r_u4 else None
-            harga_b_u4 = (biaya_b_u4 / qty_b_u4) if qty_b_u4 else None
-            harga_pct_u4 = (harga_r_u4 / harga_b_u4 * 100) if (harga_r_u4 is not None and harga_b_u4) else None
-            note_top_r4 = chart_top_r4 + chart_h_r4 + 0.15
-            if harga_pct_u4 is not None:
-                harga_selisih4 = harga_pct_u4 - 100
-                if abs(harga_selisih4) > abs(top4["cap"] - 100):
-                    sebab_txt4 = (f"harga BBM realisasi (Rp {harga_r_u4:,.0f}/Ltr) yang {'lebih tinggi' if harga_selisih4 > 0 else 'lebih rendah'} "
-                                  f"{abs(harga_selisih4):.1f}% dari budget (Rp {harga_b_u4:,.0f}/Ltr) \u2014 bukan konsumsinya.")
-                else:
-                    sebab_txt4 = (f"volume konsumsi BBM yang besar ({qty_r_u4:,.0f} Ltr), sehingga meski capaian konsumsi hanya "
-                                  f"{top4['cap']:.1f}%, dampak Rupiah-nya tetap signifikan.")
-                add_finding_box(s, 7.0, note_top_r4, 5.6, note_h_r4, "\u2731",
-                                 f"{top4['label']} adalah dampak Rupiah terbesar ({'+' if top4['gap_rp'] >= 0 else '-'}{fmt_rp(abs(top4['gap_rp']))}), "
-                                 f"walau capaian konsumsi hanya {top4['cap']:.1f}% (dari target 100%). Penyebab utamanya adalah {sebab_txt4}",
-                                 GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
         else:
-            add_textbox(s, 7.0, chart_top_r4 + 0.1, 5.6, 0.5, "Data konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+            add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+
+        # ================= PANEL KANAN: Rekap Maintenance Rutin vs Non-Rutin per Site & Jenis Unit =================
+        add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
+        add_panel_header(s, 6.85, panel_top4, 6.05, "\U0001F527 Rekap Maintenance Rutin vs Non-Rutin \u2014 per Site & Jenis Unit", height=0.4)
+        chart_top_m4 = panel_top4 + 0.45
+        chart_h_m4 = panel_h4 - 0.55
+        rutin_pivot4 = pd.DataFrame()
+        if maint_data is not None and not maint_data.empty and "jenis_pemeliharaan" in maint_data.columns:
+            m4 = maint_data.copy()
+            if "lokasi" in m4.columns and site_list:
+                m4 = m4[m4["lokasi"].isin(site_list)]
+            if "bulan" in m4.columns and month_list:
+                m4 = m4[m4["bulan"].isin(month_list)]
+            kat_scope4 = set(data["kategori"].dropna().unique())
+            if "kategori" in m4.columns:
+                m4 = m4[m4["kategori"].isin(kat_scope4)]
+            elif "nama_unit" in m4.columns:
+                valid_units4 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
+                m4 = m4[m4["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units4)]
+            # Lookup jenis_unit via nama_unit (maint_data tdk punya kolom jenis_unit langsung)
+            unit_lookup4 = (data.dropna(subset=["nama_unit", "jenis_unit"])
+                             .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
+                             .drop_duplicates("_key").set_index("_key")["jenis_unit"])
+            m4["jenis_unit"] = m4["nama_unit"].astype(str).str.strip().str.upper().map(unit_lookup4)
+            m4 = m4.dropna(subset=["jenis_unit"])
+            if not m4.empty:
+                rutin_su4 = m4.groupby(["lokasi", "jenis_unit", "jenis_pemeliharaan"], as_index=False).agg(biaya=("biaya", "sum"))
+                rutin_pivot4 = rutin_su4.pivot_table(index=["lokasi", "jenis_unit"], columns="jenis_pemeliharaan", values="biaya", fill_value=0).reset_index()
+                if "RUTIN" not in rutin_pivot4.columns:
+                    rutin_pivot4["RUTIN"] = 0
+                if "NON RUTIN" not in rutin_pivot4.columns:
+                    rutin_pivot4["NON RUTIN"] = 0
+                rutin_pivot4["total"] = rutin_pivot4["RUTIN"] + rutin_pivot4["NON RUTIN"]
+                rutin_pivot4 = rutin_pivot4[rutin_pivot4["total"] > 0].copy()
+                rutin_pivot4["pct_rutin"] = rutin_pivot4["RUTIN"] / rutin_pivot4["total"] * 100
+                rutin_pivot4["pct_nonrutin"] = rutin_pivot4["NON RUTIN"] / rutin_pivot4["total"] * 100
+                rutin_pivot4["site_short"] = rutin_pivot4["lokasi"].map(SITE_ABBR).fillna(rutin_pivot4["lokasi"])
+                rutin_pivot4["label"] = rutin_pivot4["site_short"] + " \u2014 " + rutin_pivot4["jenis_unit"]
+                rutin_pivot4 = rutin_pivot4.sort_values("total", ascending=False)
+
+        if not rutin_pivot4.empty:
+            max_rows4 = 14
+            rutin_shown4 = rutin_pivot4.head(max_rows4).sort_values("total", ascending=True)  # ascending: biar batang terbesar di ATAS pada bar chart horizontal
+            cd_m4 = CategoryChartData()
+            cd_m4.categories = list(rutin_shown4["label"])
+            cd_m4.add_series("Rutin", tuple(round(v, 1) for v in rutin_shown4["pct_rutin"]))
+            cd_m4.add_series("Non Rutin", tuple(round(v, 1) for v in rutin_shown4["pct_nonrutin"]))
+            gframe_m4 = s.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED_100, Inches(7.0), Inches(chart_top_m4), Inches(5.75), Inches(chart_h_m4), cd_m4)
+            chart_m4 = gframe_m4.chart
+            chart_m4.series[0].format.fill.solid(); chart_m4.series[0].format.fill.fore_color.rgb = TEAL
+            chart_m4.series[1].format.fill.solid(); chart_m4.series[1].format.fill.fore_color.rgb = GOLD
+            chart_m4.has_title = False
+            plot_m4 = chart_m4.plots[0]
+            plot_m4.gap_width = 45
+            plot_m4.has_data_labels = True
+            dls_m4 = plot_m4.data_labels
+            dls_m4.number_format = '0"%"'; dls_m4.number_format_is_linked = False
+            n_rows4 = len(rutin_shown4)
+            label_font_m4 = 8 if n_rows4 <= 8 else (7 if n_rows4 <= 12 else 6)
+            dls_m4.font.size = Pt(label_font_m4); dls_m4.font.bold = True; dls_m4.font.color.rgb = WHITE; dls_m4.font.name = "Calibri"
+            style_chart_light(chart_m4, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
+            cat_font_m4 = 8 if n_rows4 <= 8 else (7 if n_rows4 <= 12 else 6)
+            chart_m4.category_axis.tick_labels.font.size = Pt(cat_font_m4)
+            chart_m4.value_axis.tick_labels.font.size = Pt(cat_font_m4)
+            chart_m4.value_axis.has_major_gridlines = False
+            chart_m4.value_axis.visible = False
+        else:
+            add_textbox(s, 7.0, chart_top_m4 + 0.1, 5.6, 0.6,
+                        "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
+                        size=10, italic=True, color=TEXT_MUTED)
 
         # ================= SLIDE 5: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
         s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum5}{divisi_label}{kat_suffix}")
