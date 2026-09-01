@@ -998,7 +998,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     _now = _dt.datetime.now()
     tgl_laporan = f"{_bulan_id[_now.month-1]} {_now.year}"
 
-    def render_6_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, snum5, snum6, kat_suffix):
+    def render_6_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, snum5, kat_suffix):
         r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
         pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
         bl_r_raw = data["biaya_langsung_realisasi"].sum(); bl_b_raw = data["biaya_langsung_budget"].sum()
@@ -1786,13 +1786,36 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                      "BATAS MAKSIMUM DOWNTIME",
                      True)
 
-        n_over_good5 = n_over5 == 0
-        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\u26a0", GREEN if n_over_good5 else RED, GREEN if n_over_good5 else RED,
-                     "Unit Melebihi Target Downtime",
-                     (f"{n_over5} / {n_dt5}" if not dt_su5.empty else "-"),
+        # --- Hitung % Maintenance Rutin vs Non-Rutin (dari total biaya maintenance), utk Kartu KPI 3 ---
+        pct_rutin5 = None
+        pct_nonrutin5 = None
+        if maint_data is not None and not maint_data.empty and "jenis_pemeliharaan" in maint_data.columns:
+            m5kpi = maint_data.copy()
+            if "lokasi" in m5kpi.columns and site_list:
+                m5kpi = m5kpi[m5kpi["lokasi"].isin(site_list)]
+            if "bulan" in m5kpi.columns and month_list:
+                m5kpi = m5kpi[m5kpi["bulan"].isin(month_list)]
+            kat_scope5kpi = set(data["kategori"].dropna().unique())
+            if "kategori" in m5kpi.columns:
+                m5kpi = m5kpi[m5kpi["kategori"].isin(kat_scope5kpi)]
+            elif "nama_unit" in m5kpi.columns:
+                valid_units5kpi = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
+                m5kpi = m5kpi[m5kpi["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units5kpi)]
+            if not m5kpi.empty:
+                total_maint5kpi = m5kpi["biaya"].sum()
+                rutin_biaya5kpi = m5kpi.loc[m5kpi["jenis_pemeliharaan"] == "RUTIN", "biaya"].sum()
+                nonrutin_biaya5kpi = m5kpi.loc[m5kpi["jenis_pemeliharaan"] == "NON RUTIN", "biaya"].sum()
+                if total_maint5kpi:
+                    pct_rutin5 = rutin_biaya5kpi / total_maint5kpi * 100
+                    pct_nonrutin5 = nonrutin_biaya5kpi / total_maint5kpi * 100
+
+        rutin_good5 = pct_rutin5 is not None and pct_rutin5 >= 50
+        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\U0001F527", GREEN if rutin_good5 else GOLD, GREEN if rutin_good5 else GOLD,
+                     "Maintenance Rutin vs Non-Rutin",
+                     (f"{pct_rutin5:.0f}% / {pct_nonrutin5:.0f}%" if pct_rutin5 is not None else "-"),
                      "",
-                     (f"\u2717 {n_over5} UNIT PERLU TINDAK LANJUT" if (not dt_su5.empty and n_over5 > 0) else (f"\u2713 SEMUA UNIT DALAM TARGET" if not dt_su5.empty else "Data tidak tersedia")),
-                     n_over_good5)
+                     (f"\u2713 RUTIN {pct_rutin5:.0f}%" if (pct_rutin5 is not None and rutin_good5) else (f"\u2717 NON-RUTIN {pct_nonrutin5:.0f}% DOMINAN" if pct_rutin5 is not None else "Data tidak tersedia")),
+                     rutin_good5)
 
         # ================= BARIS BAWAH =================
         panel_top5 = card_top5 + card_h5 + 0.15
@@ -1858,18 +1881,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              "Data unit belum tersedia untuk rekomendasi strategi perbaikan.",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
-        # --- Panel kanan: Kategori Sparepart & Nilai Rupiah (keseluruhan divisi ini) + Strategi ---
+        # --- Panel kanan: Kategori Sparepart & Nilai Rupiah (keseluruhan divisi ini) ---
         add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5, accent_color=GOLD)
         add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Kategori Sparepart \u2014 Nilai Tertinggi", height=0.4)
 
-        chain_top5 = panel_top5 + 0.55
-        chain_row_h5 = 0.62
-        RANK_COLORS5 = [
-            (RGBColor(0xFC, 0xE4, 0xE1), RED),
-            (RGBColor(0xFD, 0xE9, 0xD9), GOLD),
-            (RGBColor(0xE8, 0xE3, 0xF7), RGBColor(0x7B, 0x5C, 0xE8)),
-            (RGBColor(0xDD, 0xE7, 0xF7), TEAL),
-        ]
+        list_top5 = panel_top5 + 0.5
+        list_avail5 = panel_h5 - 0.5 - 0.15
         # Agregat kategori_sparepart & total biaya utk keseluruhan site/kategori yg sedang dirender di slide ini
         kat_agg5 = pd.DataFrame()
         if maint_data is not None and not maint_data.empty and "kategori_sparepart" in maint_data.columns:
@@ -1886,244 +1903,36 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 m5 = m5[m5["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units5b)]
             if not m5.empty:
                 kat_agg5 = m5.groupby("kategori_sparepart", as_index=False).agg(biaya=("biaya", "sum"))
-                kat_agg5 = kat_agg5.sort_values("biaya", ascending=False).head(4)
+                kat_agg5 = kat_agg5.sort_values("biaya", ascending=False).head(10)
 
-        for i5, (_, r5) in enumerate(kat_agg5.iterrows()):
-            bg5, bord5 = RANK_COLORS5[i5 % len(RANK_COLORS5)]
-            ry5c = chain_top5 + i5 * (chain_row_h5 + 0.08)
-            box5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 0.15), Inches(ry5c), Inches(2.6), Inches(chain_row_h5))
-            box5.adjustments[0] = 0.12
-            box5.fill.solid(); box5.fill.fore_color.rgb = bg5
-            box5.line.color.rgb = bord5; box5.line.width = Pt(1)
-            box5.shadow.inherit = False
-            btf5 = box5.text_frame; btf5.word_wrap = True; btf5.vertical_anchor = MSO_ANCHOR.MIDDLE
-            btf5.margin_left = Inches(0.1); btf5.margin_right = Inches(0.05)
-            bp5 = btf5.paragraphs[0]
-            br5 = bp5.add_run(); br5.text = f"#{i5+1}  {r5['kategori_sparepart']}"
-            br5.font.size = Pt(9); br5.font.bold = True; br5.font.color.rgb = bord5; br5.font.name = "Calibri"
-
-            val_box5 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(right_x5 + 2.85), Inches(ry5c), Inches(2.1), Inches(chain_row_h5))
-            val_box5.adjustments[0] = 0.12
-            val_box5.fill.solid(); val_box5.fill.fore_color.rgb = bg5
-            val_box5.line.color.rgb = bord5; val_box5.line.width = Pt(1)
-            val_box5.shadow.inherit = False
-            vtf5 = val_box5.text_frame; vtf5.word_wrap = True; vtf5.vertical_anchor = MSO_ANCHOR.MIDDLE
-            vtf5.margin_left = Inches(0.08); vtf5.margin_right = Inches(0.08)
-            vp5 = vtf5.paragraphs[0]; vp5.alignment = PP_ALIGN.CENTER
-            vr5 = vp5.add_run(); vr5.text = fmt_rp(r5["biaya"])
-            vr5.font.size = Pt(11); vr5.font.bold = True; vr5.font.color.rgb = bord5; vr5.font.name = "Calibri"
-        if kat_agg5.empty:
-            add_textbox(s, right_x5 + 0.15, chain_top5, right_w5 - 0.3, 0.5, "Data Maintenance belum tersedia.", size=9, italic=True, color=TEXT_MUTED)
-
-        # --- Strategi Jangka Pendek & Panjang ---
-        strat_top5 = chain_top5 + 4 * (chain_row_h5 + 0.08) + 0.05
-        strat_h5 = panel_h5 - (strat_top5 - panel_top5) - 0.1
-        strat_box5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x5 + 0.15), Inches(strat_top5), Inches(right_w5 - 0.3), Inches(max(strat_h5, 0.9)))
-        strat_box5.fill.solid(); strat_box5.fill.fore_color.rgb = RED_BG
-        strat_box5.line.color.rgb = RED; strat_box5.line.width = Pt(1)
-        strat_box5.shadow.inherit = False
-        stf5 = strat_box5.text_frame; stf5.word_wrap = True; stf5.margin_left = Inches(0.12); stf5.margin_top = Inches(0.08)
-        sp1_5 = stf5.paragraphs[0]
-        sr1_5 = sp1_5.add_run(); sr1_5.text = "\u26A0 Strategi Jangka Pendek:"
-        sr1_5.font.size = Pt(9); sr1_5.font.bold = True; sr1_5.font.color.rgb = RED; sr1_5.font.name = "Calibri"
-        sp2_5 = stf5.add_paragraph()
-        sr2_5 = sp2_5.add_run()
-        sr2_5.text = (f"Fokus perbaikan {dt_su5.iloc[0]['label']}, percepat preventive maintenance & "
-                       f"minimalkan unschedule downtime, target eliminasi varian {varian_dt5:.2f}%." if not dt_su5.empty and varian_dt5 is not None
-                       else "Percepat preventive maintenance & minimalkan unschedule downtime.")
-        sr2_5.font.size = Pt(8.5); sr2_5.font.color.rgb = TEXT_DARK; sr2_5.font.name = "Calibri"
-        sp3_5 = stf5.add_paragraph(); sp3_5.space_before = Pt(6)
-        sr3_5 = sp3_5.add_run(); sr3_5.text = "\u25C6 Strategi Jangka Panjang:"
-        sr3_5.font.size = Pt(9); sr3_5.font.bold = True; sr3_5.font.color.rgb = RED; sr3_5.font.name = "Calibri"
-        sp4_5 = stf5.add_paragraph()
-        sr4_5 = sp4_5.add_run(); sr4_5.text = "Evaluasi umur teknis unit & percepatan replacement unit yang tidak produktif."
-        sr4_5.font.size = Pt(8.5); sr4_5.font.color.rgb = TEXT_DARK; sr4_5.font.name = "Calibri"
-
-
-        # ================= SLIDE 6: KEY INSIGHTS \u2014 MAINTENANCE PER KATEGORI & DAMPAK BIAYA =================
-        s = add_content_slide(f"KEY INSIGHTS \u2014 Maintenance per Kategori & Dampak Biaya s/d {period}", f"Analisis Frekuensi \u00b7 {snum6}{divisi_label}{kat_suffix}")
-
-        # --- Data: Qty Pergantian & Total Biaya per kategori_sparepart ---
-        qty_agg6 = pd.DataFrame(columns=["kategori_sparepart", "qty", "total_biaya"])
-        if maint_data is not None and not maint_data.empty:
-            m6 = maint_data.copy()
-            if "lokasi" in m6.columns and site_list:
-                m6 = m6[m6["lokasi"].isin(site_list)]
-            if "bulan" in m6.columns and month_list:
-                m6 = m6[m6["bulan"].isin(month_list)]
-            kat_scope6 = set(data["kategori"].dropna().unique())
-            if "kategori" in m6.columns:
-                m6 = m6[m6["kategori"].isin(kat_scope6)]
-            elif "nama_unit" in m6.columns:
-                valid_units6 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
-                m6 = m6[m6["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units6)]
-            if "kategori_sparepart" in m6.columns:
-                qty_agg6 = m6.groupby("kategori_sparepart", as_index=False).agg(
-                    qty=("kategori_sparepart", "count"), total_biaya=("biaya", "sum"))
-                qty_agg6 = qty_agg6.sort_values("total_biaya", ascending=False)
-
-        panel_top6 = 1.0
-        panel_bottom6 = 7.3
-        panel_h6 = panel_bottom6 - panel_top6
-        left_w6 = 6.4
-        right_x6 = 7.0
-        right_w6 = 5.9
-
-        # ================= PANEL KIRI: TABEL Qty Pergantian per Kategori (dgn Status) =================
-        add_card_panel(s, 0.4, panel_top6, left_w6, panel_h6, accent_color=NAVY)
-        add_textbox(s, 0.55, panel_top6 + 0.08, left_w6 - 0.3, 0.3, f"Biaya Maintenance per Kategori \u2014 s/d {period}", size=13, bold=True, color=NAVY)
-
-        tbl_top6 = panel_top6 + 0.45
-        total_biaya_grand6 = qty_agg6["total_biaya"].sum() if not qty_agg6.empty else 0
-        fair_share6 = (100 / len(qty_agg6)) if len(qty_agg6) else 0
-        max_rows6 = 9
-        qty_rows6 = []
-        over_kategori6 = []
-        for _, r in qty_agg6.head(max_rows6).iterrows():
-            share_pct_row6 = (r["total_biaya"] / total_biaya_grand6 * 100) if total_biaya_grand6 else 0
-            is_over = share_pct_row6 > fair_share6 * 1.3 if fair_share6 else False
-            status_txt = f"{share_pct_row6:.1f}%"
-            qty_rows6.append([str(r["kategori_sparepart"]), fmt_rp(r["total_biaya"]), status_txt])
-            if is_over:
-                over_kategori6.append(str(r["kategori_sparepart"]))
-        if len(qty_agg6) > max_rows6:
-            sisa6 = qty_agg6.iloc[max_rows6:]
-            sisa_share6 = (sisa6["total_biaya"].sum() / total_biaya_grand6 * 100) if total_biaya_grand6 else 0
-            qty_rows6.append([f"+ {len(sisa6)} kategori lainnya", fmt_rp(sisa6["total_biaya"].sum()), f"{sisa_share6:.1f}%"])
-
-        # Reservasi ruang tetap utk kotak catatan di bawah dulu, baru tabel mengisi sisa ruang yg ada
-        note_h6 = 0.7
-        tbl_h6_avail = panel_h6 - 0.45 - note_h6 - 0.25
-        if qty_rows6:
-            n_row6 = len(qty_rows6)
-            row_h6 = max(0.22, min(0.4, tbl_h6_avail / (n_row6 + 1)))
-            font6 = 9.5 if n_row6 <= 7 else (8.5 if n_row6 <= 9 else 7.5)
-            add_table(s, 0.55, tbl_top6, left_w6 - 0.3, row_h6 * (n_row6 + 1),
-                      ["Kategori Sparepart", "Total Biaya", "Proporsi Biaya"], qty_rows6,
-                      col_widths=[3.1, 1.7, 1.1], font_size=font6, header_size=font6)
+        if not kat_agg5.empty:
+            n_kat5 = len(kat_agg5)
+            row_h5b = min(0.42, list_avail5 / n_kat5)
+            max_biaya5 = kat_agg5["biaya"].max()
+            for i5, (_, r5) in enumerate(kat_agg5.iterrows()):
+                ry5c = list_top5 + i5 * row_h5b
+                rank_bg5 = GOLD if i5 == 0 else (RGBColor(0xB0, 0xB0, 0xB0) if i5 == 1 else (RGBColor(0xCD, 0x7F, 0x32) if i5 == 2 else RGBColor(0xE0, 0xE4, 0xEC)))
+                rank_txt5 = WHITE if i5 <= 2 else TEXT_MUTED
+                circ_size5 = min(0.3, row_h5b * 0.7)
+                rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5c + row_h5b / 2 - circ_size5 / 2), Inches(circ_size5), Inches(circ_size5))
+                rank_circ5.fill.solid(); rank_circ5.fill.fore_color.rgb = rank_bg5
+                rank_circ5.line.fill.background(); rank_circ5.shadow.inherit = False
+                rtf5 = rank_circ5.text_frame; rtf5.vertical_anchor = MSO_ANCHOR.MIDDLE
+                rtf5.margin_left = 0; rtf5.margin_right = 0
+                rp5 = rtf5.paragraphs[0]; rp5.alignment = PP_ALIGN.CENTER
+                rr5 = rp5.add_run(); rr5.text = str(i5 + 1)
+                rr5.font.size = Pt(min(9, circ_size5 * 22)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
+                font_row5 = 9 if n_kat5 <= 6 else (8 if n_kat5 <= 10 else 7)
+                add_textbox(s, right_x5 + 0.55, ry5c, right_w5 - 1.9, row_h5b, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
+                add_textbox(s, right_x5 + right_w5 - 1.4, ry5c, 1.25, row_h5b, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD)
+                # bar proporsional tipis di bawah label sbg indikator visual skala
+                bar_w5 = max(0.05, (right_w5 - 1.9 - 0.1) * (r5["biaya"] / max_biaya5)) if max_biaya5 else 0.05
+                bar5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x5 + 0.55), Inches(ry5c + row_h5b - 0.06), Inches(bar_w5), Inches(0.035))
+                bar5.fill.solid(); bar5.fill.fore_color.rgb = rank_bg5
+                bar5.line.fill.background(); bar5.shadow.inherit = False
         else:
-            add_textbox(s, 0.55, tbl_top6 + 0.2, left_w6 - 0.3, 0.6, "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+            add_textbox(s, right_x5 + 0.15, list_top5, right_w5 - 0.3, 0.5, "Data Maintenance belum tersedia.", size=9, italic=True, color=TEXT_MUTED)
 
-        # --- Catatan bawah panel kiri: kategori mana yang OVER rata-rata ---
-        note_top6 = panel_bottom6 - note_h6 - 0.15
-        if over_kategori6:
-            over_txt6 = ", ".join(over_kategori6[:3]) + (", dll" if len(over_kategori6) > 3 else "")
-            add_finding_box(s, 0.55, note_top6, left_w6 - 0.3, note_h6, "\u26A0",
-                             f"Kategori dgn kontribusi biaya jauh di atas porsi wajar (rata-rata {fair_share6:.1f}% per kategori): {over_txt6}. "
-                             f"Perlu investigasi penyebab tingginya "
-                             f"frekuensi/biaya perbaikan pada kategori ini.",
-                             RED_BG, RED, RED)
-        elif qty_rows6:
-            add_finding_box(s, 0.55, note_top6, left_w6 - 0.3, note_h6, "\u2705",
-                             "Seluruh kategori sparepart berada dalam rentang biaya yang wajar (tidak ada outlier signifikan).",
-                             GREEN_BG, GREEN, GREEN)
-
-        # ================= PANEL KANAN ATAS: Analisis Kategori Tertinggi =================
-        top_kat6 = qty_agg6.iloc[0] if not qty_agg6.empty else None
-        box1_top6 = panel_top6
-        box1_h6 = panel_h6 * 0.42
-
-        box1_6 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x6), Inches(box1_top6), Inches(right_w6), Inches(box1_h6))
-        box1_6.fill.solid(); box1_6.fill.fore_color.rgb = WHITE
-        box1_6.line.color.rgb = BORDER; box1_6.line.width = Pt(0.75)
-        box1_6.shadow.inherit = False
-        strip1_6 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x6), Inches(box1_top6), Inches(right_w6), Inches(0.06))
-        strip1_6.fill.solid(); strip1_6.fill.fore_color.rgb = RED
-        strip1_6.line.fill.background(); strip1_6.shadow.inherit = False
-
-        if top_kat6 is not None:
-            biaya_per_kejadian6 = top_kat6["total_biaya"] / top_kat6["qty"] if top_kat6["qty"] else 0
-            share_pct6 = (top_kat6["total_biaya"] / qty_agg6["total_biaya"].sum() * 100) if qty_agg6["total_biaya"].sum() else 0
-            add_textbox(s, right_x6 + 0.15, box1_top6 + 0.14, right_w6 - 0.3, 0.3,
-                        f"Analisis {top_kat6['kategori_sparepart']} ({top_kat6['qty']:.0f}x, {fmt_rp(top_kat6['total_biaya'])})",
-                        size=11.5, bold=True, color=RED)
-            bullets1_6 = [
-                f"Kategori dengan KONTRIBUSI BIAYA TERTINGGI, menyumbang {share_pct6:.1f}% dari total biaya maintenance keseluruhan "
-                f"(porsi wajar rata-rata: {fair_share6:.1f}% per kategori).",
-                f"Rata-rata biaya per kejadian: {fmt_rp(biaya_per_kejadian6)} \u2014 {int(top_kat6['qty'])} kali kejadian s/d {period}.",
-            ]
-            if len(qty_agg6) > 1:
-                kat2_6 = qty_agg6.iloc[1]
-                selisih_kat6 = top_kat6["total_biaya"] - kat2_6["total_biaya"]
-                bullets1_6.append(
-                    f"Selisih dengan kategori tertinggi ke-2 ({kat2_6['kategori_sparepart']}, {fmt_rp(kat2_6['total_biaya'])}): "
-                    f"{fmt_rp(selisih_kat6)} \u2014 menunjukkan kesenjangan yang perlu diperhatikan."
-                )
-            bullets1_6.append("Rekomendasi: telusuri riwayat kerusakan & evaluasi kesesuaian spare part dengan spesifikasi standar pabrikan.")
-            bt6 = s.shapes.add_textbox(Inches(right_x6 + 0.15), Inches(box1_top6 + 0.5), Inches(right_w6 - 0.3), Inches(box1_h6 - 0.6))
-            btf6 = bt6.text_frame; btf6.word_wrap = True
-            for bi6, btxt6 in enumerate(bullets1_6):
-                bpar6 = btf6.paragraphs[0] if bi6 == 0 else btf6.add_paragraph()
-                bpar6.space_after = Pt(6)
-                brun6 = bpar6.add_run(); brun6.text = f"●  {btxt6}"
-                brun6.font.size = Pt(9.5); brun6.font.color.rgb = TEXT_DARK; brun6.font.name = "Calibri"
-        else:
-            add_textbox(s, right_x6 + 0.15, box1_top6 + 0.14, right_w6 - 0.3, box1_h6 - 0.3,
-                        "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
-
-        # ================= PANEL KANAN BAWAH: Kalkulasi Dampak Biaya =================
-        box2_top6 = box1_top6 + box1_h6 + 0.15
-        box2_h6 = panel_h6 - box1_h6 - 0.15
-
-        box2_6 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x6), Inches(box2_top6), Inches(right_w6), Inches(box2_h6))
-        box2_6.fill.solid(); box2_6.fill.fore_color.rgb = WHITE
-        box2_6.line.color.rgb = BORDER; box2_6.line.width = Pt(0.75)
-        box2_6.shadow.inherit = False
-        strip2_6 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x6), Inches(box2_top6), Inches(right_w6), Inches(0.06))
-        strip2_6.fill.solid(); strip2_6.fill.fore_color.rgb = NAVY
-        strip2_6.line.fill.background(); strip2_6.shadow.inherit = False
-        add_textbox(s, right_x6 + 0.15, box2_top6 + 0.14, right_w6 - 0.3, 0.3, "Kalkulasi Dampak Biaya Maintenance", size=11.5, bold=True, color=NAVY)
-
-        # Cari unit paling sering maintenance (utk kalkulasi dampak pendapatan)
-        freq6 = pd.DataFrame()
-        if maint_data is not None and not maint_data.empty and "nama_unit" in maint_data.columns:
-            m6b = maint_data.copy()
-            if "lokasi" in m6b.columns and site_list:
-                m6b = m6b[m6b["lokasi"].isin(site_list)]
-            if "bulan" in m6b.columns and month_list:
-                m6b = m6b[m6b["bulan"].isin(month_list)]
-            kat_scope6b = set(data["kategori"].dropna().unique())
-            if "kategori" in m6b.columns:
-                m6b = m6b[m6b["kategori"].isin(kat_scope6b)]
-            elif "nama_unit" in m6b.columns:
-                valid_units6b = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
-                m6b = m6b[m6b["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units6b)]
-            freq6 = m6b.groupby(["lokasi", "nama_unit"], as_index=False).agg(
-                jumlah_maintenance=("nama_unit", "count"), total_biaya=("biaya", "sum"))
-            freq6 = freq6.sort_values("jumlah_maintenance", ascending=False)
-
-        if not qty_agg6.empty:
-            total_biaya_all6 = qty_agg6["total_biaya"].sum()
-            bullets2_6 = [f"Total Biaya Maintenance (semua kategori): {fmt_rp(total_biaya_all6)} s/d {period}."]
-            if top_kat6 is not None:
-                bullets2_6.append(f"{top_kat6['kategori_sparepart']}: {fmt_rp(top_kat6['total_biaya'])} ({share_pct6:.1f}% dari total).")
-            top3_kat6 = qty_agg6.head(3)
-            top3_share6 = (top3_kat6["total_biaya"].sum() / total_biaya_all6 * 100) if total_biaya_all6 else 0
-            top3_names6 = ", ".join(top3_kat6["kategori_sparepart"].tolist())
-            bullets2_6.append(f"Top 3 kategori ({top3_names6}) menyumbang {top3_share6:.1f}% dari total biaya maintenance keseluruhan.")
-            if not freq6.empty:
-                top_unit6b = freq6.iloc[0]
-                site_s6b = SITE_ABBR.get(top_unit6b["lokasi"], top_unit6b["lokasi"])
-                unit_pend6b = data[data["nama_unit"].astype(str).str.strip().str.upper() == str(top_unit6b["nama_unit"]).strip().upper()]
-                pend_r6b = unit_pend6b["pendapatan_realisasi"].sum() if not unit_pend6b.empty else None
-                pend_b6b = unit_pend6b["pendapatan_budget"].sum() if not unit_pend6b.empty else None
-                gap6b = (pend_r6b - pend_b6b) if (pend_r6b is not None and pend_b6b is not None) else None
-                bullets2_6.append(f"Unit paling sering maintenance: {site_s6b} — {top_unit6b['nama_unit']} ({int(top_unit6b['jumlah_maintenance'])}x, {fmt_rp(top_unit6b['total_biaya'])}).")
-                if gap6b is not None:
-                    gap_sign6b = "MINUS" if gap6b < 0 else "PLUS"
-                    bullets2_6.append(f"Dampak Pendapatan unit tsb: {gap_sign6b} {fmt_rp(abs(gap6b))} (Realisasi {fmt_rp(pend_r6b)} vs Budget {fmt_rp(pend_b6b)}).")
-
-            bt2_6 = s.shapes.add_textbox(Inches(right_x6 + 0.15), Inches(box2_top6 + 0.5), Inches(right_w6 - 0.3), Inches(box2_h6 - 0.6))
-            btf2_6 = bt2_6.text_frame; btf2_6.word_wrap = True
-            for bi2_6, btxt2_6 in enumerate(bullets2_6):
-                bpar2_6 = btf2_6.paragraphs[0] if bi2_6 == 0 else btf2_6.add_paragraph()
-                bpar2_6.space_after = Pt(6)
-                brun2_6 = bpar2_6.add_run(); brun2_6.text = f"●  {btxt2_6}"
-                brun2_6.font.size = Pt(9); brun2_6.font.color.rgb = TEXT_DARK; brun2_6.font.name = "Calibri"
-                # Highlight angka Rupiah dgn warna merah (segmen sesudah kata "Rp")
-        else:
-            add_textbox(s, right_x6 + 0.15, box2_top6 + 0.5, right_w6 - 0.3, box2_h6 - 0.6,
-                        "Data Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
 
 
@@ -2139,10 +1948,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         data_ab = data_ab_check.copy()
         sm_tr = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "TR"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
         sm_ab = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "AB"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
-        render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", "05", "06", " · TRANSPORTASI")
-        render_6_slides(data_ab, sm_ab, "07", "08", "09", "10", "11", "12", " · ALAT BERAT")
+        render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", "05", " · TRANSPORTASI")
+        render_6_slides(data_ab, sm_ab, "06", "07", "08", "09", "10", " · ALAT BERAT")
     else:
-        render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "05", "06", "")
+        render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "05", "")
 
     buf = _io.BytesIO()
     prs.save(buf)
