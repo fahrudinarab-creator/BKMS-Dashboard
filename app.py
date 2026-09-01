@@ -1536,7 +1536,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             devs = []
             if row["cap_prestasi"] is not None:
                 devs.append(("Volume Operasi (Prestasi)", row["cap_prestasi"], abs(row["cap_prestasi"] - 100)))
-            devs.append(("Efisiensi Konsumsi", row["cap"], abs(row["cap"] - 100)))
+            devs.append(("Konsumsi BBM", row["cap"], abs(row["cap"] - 100)))
             if row["cap_harga"] is not None:
                 devs.append(("Harga BBM", row["cap_harga"], abs(row["cap_harga"] - 100)))
             if not devs:
@@ -1572,11 +1572,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             cd_m3b = CategoryChartData()
             cd_m3b.categories = list(chart_src3["label"])
             cd_m3b.add_series("Cap. Prestasi", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_prestasi"]))
-            cd_m3b.add_series(f"Cap. Efisiensi ({unit_label3})", tuple(round(v, 0) for v in chart_src3["cap"]))
-            cd_m3b.add_series("Cap. Harga BBM", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_harga"]))
+            cd_m3b.add_series(f"Cap. Konsumsi ({unit_label3})", tuple(round(v, 0) for v in chart_src3["cap"]))
+            cd_m3b.add_series("Capaian Harga BBM (Rp/Ltr)", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_harga"]))
             gframe_m3b = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_m3b), Inches(12.1), Inches(chart_h_m3b), cd_m3b)
             chart_m3b = gframe_m3b.chart
-            SERIES_COLORS3 = [RGBColor(0x2E, 0x6D, 0xB4), TEAL, GOLD]  # Prestasi=biru, Efisiensi=teal, Harga=emas
+            SERIES_COLORS3 = [RGBColor(0x2E, 0x6D, 0xB4), TEAL, GOLD]  # Prestasi=biru, Konsumsi=teal, Harga=emas
             for si, col in enumerate(SERIES_COLORS3):
                 chart_m3b.series[si].format.fill.solid(); chart_m3b.series[si].format.fill.fore_color.rgb = col
             chart_m3b.has_title = False
@@ -1602,7 +1602,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             add_finding_box(s, 0.55, note_top3b, 12.2, note_h3b, "\U0001F4A1",
                              f"{top1_3['label']} adalah unit dengan dampak Rupiah biaya BBM terbesar ({fmt_rp(top1_3['abs_gap'])} {gap_sign3}) \u2014 "
                              f"penyebab dominannya: {top1_3['penyebab']} (Cap. Prestasi {top1_3['cap_prestasi']:.0f}%, "
-                             f"Cap. Efisiensi {top1_3['cap']:.0f}%, Cap. Harga {top1_3['cap_harga']:.0f}% jika tersedia).",
+                             f"Cap. Konsumsi {top1_3['cap']:.0f}%, Cap. Harga {top1_3['cap_harga']:.0f}% jika tersedia).",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
         else:
             add_textbox(s, 0.55, chart_top_m3b + 0.1, 12.0, 0.5, "Data Konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
