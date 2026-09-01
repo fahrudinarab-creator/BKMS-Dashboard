@@ -1399,8 +1399,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         add_textbox(s, 0.4, 0.98, 5.9, 0.3, f"Ringkasan Biaya PT. BKMS (s/d {period})", size=14, bold=True, color=TEXT_DARK)
 
-        tbl3_top = 1.33
-        tbl3_h = 2.75
+        tbl3_top = 1.28
+        tbl3_h = 2.15
         add_table(s, 0.4, tbl3_top, 5.9, tbl3_h,
                   ["Metrik", "Budget", "Aktual", "Capaian", "Cap. Fisik"], ringkasan3_rows,
                   status_col=[3, 4], col_widths=[1.7, 1.15, 1.15, 0.95, 0.95], font_size=10, header_size=10,
@@ -1410,8 +1410,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         cap_map3 = {"Total Biaya": cap_biaya3, "Upah Operator": cap_upah3, "Biaya BBM": cap_bbm3,
                     "Biaya Maintenance": cap_maint3, "Biaya Lainnya": cap_lain3}
         over_items3 = {k: v for k, v in cap_map3.items() if v is not None and v > 100 and k != "Total Biaya"}
-        note_top3 = tbl3_top + tbl3_h + 0.15
-        note_h3 = 0.75
+        note_top3 = tbl3_top + tbl3_h + 0.1
+        note_h3 = 0.65
         if over_items3:
             worst_label3 = max(over_items3, key=over_items3.get)
             worst_val3 = over_items3[worst_label3]
@@ -1517,52 +1517,95 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         maint_su3["cap"] = maint_su3.apply(_bbm_cap3, axis=1)
         maint_su3 = maint_su3.dropna(subset=["cap"])
-        maint_su3 = maint_su3.sort_values("gap", ascending=False)
+
+        # --- Hitung Cap. Prestasi & Cap. Harga BBM, utk dekomposisi 3 faktor penyebab kenaikan biaya BBM ---
+        maint_su3["cap_prestasi"] = maint_su3.apply(
+            lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
+        harga_bbm_full3 = data_bbm_ok.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
+            biaya_r=("biaya_bbm_realisasi", "sum"), biaya_b=("biaya_bbm_budget", "sum"),
+            qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum"))
+        harga_bbm_full3["harga_r"] = harga_bbm_full3.apply(lambda r: (r["biaya_r"] / r["qty_r"]) if r["qty_r"] else None, axis=1)
+        harga_bbm_full3["harga_b"] = harga_bbm_full3.apply(lambda r: (r["biaya_b"] / r["qty_b"]) if r["qty_b"] else None, axis=1)
+        harga_full_lookup3 = {(r["lokasi"], r["jenis_unit"]): (r["harga_r"], r["harga_b"]) for _, r in harga_bbm_full3.iterrows()}
+        maint_su3["harga_r"] = maint_su3.apply(lambda r: harga_full_lookup3.get((r["lokasi"], r["jenis_unit"]), (None, None))[0], axis=1)
+        maint_su3["harga_b"] = maint_su3.apply(lambda r: harga_full_lookup3.get((r["lokasi"], r["jenis_unit"]), (None, None))[1], axis=1)
+        maint_su3["cap_harga"] = maint_su3.apply(
+            lambda r: (r["harga_r"] / r["harga_b"] * 100) if (r["harga_r"] is not None and r["harga_b"]) else None, axis=1)
+
+        def _penyebab_dominan3(row):
+            devs = []
+            if row["cap_prestasi"] is not None:
+                devs.append(("Volume Operasi (Prestasi)", row["cap_prestasi"], abs(row["cap_prestasi"] - 100)))
+            devs.append(("Efisiensi Konsumsi", row["cap"], abs(row["cap"] - 100)))
+            if row["cap_harga"] is not None:
+                devs.append(("Harga BBM", row["cap_harga"], abs(row["cap_harga"] - 100)))
+            if not devs:
+                return "-"
+            nama, cap_val, _ = max(devs, key=lambda x: x[2])
+            arah = "Naik" if cap_val > 100 else "Turun"
+            return f"{nama} {arah}"
+
+        maint_su3["penyebab"] = maint_su3.apply(_penyebab_dominan3, axis=1)
+        # "Boros" = realisasi rate (KM/Ltr atau Ltr/HM) OVER dibanding budget rate -> Capaian > 100%.
+        # Diurutkan dari Capaian paling tinggi (paling over) dulu, utk kedua kategori (TR & AB) secara seragam.
+        maint_su3 = maint_su3.sort_values("cap", ascending=False)
         n_maint3 = max(len(maint_su3), 1)
 
         maint_panel_top3 = max(left_col_bottom3, right_col_bottom3) + 0.15
         maint_panel_h3 = 7.3 - maint_panel_top3
         add_card_panel(s, 0.4, maint_panel_top3, 12.5, maint_panel_h3)
-        add_panel_header(s, 0.4, maint_panel_top3, 12.5, "\u26fd % Capaian Konsumsi BBM \u2014 per Site & Jenis Unit", height=0.36)
-        chart_top_m3 = maint_panel_top3 + 0.42
-        chart_h_m3 = maint_panel_h3 - 0.47
+        add_panel_header(s, 0.4, maint_panel_top3, 12.5,
+                          "\U0001F50D Analisa Penyebab Kenaikan Biaya BBM \u2014 per Site & Jenis Unit", height=0.36)
+        chart_top_m3b = maint_panel_top3 + 0.42
+        avail_h_m3b = maint_panel_h3 - 0.42 - 0.15
         if not maint_su3.empty:
-            cd_m3 = CategoryChartData()
-            cd_m3.categories = list(maint_su3["label"])
-            cd_m3.add_series("% Capaian Konsumsi BBM", tuple(round(v, 1) for v in maint_su3["cap"]))
-            gframe_m3 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_m3), Inches(12.2), Inches(chart_h_m3), cd_m3)
-            chart_m3 = gframe_m3.chart
-            chart_m3.series[0].format.fill.solid(); chart_m3.series[0].format.fill.fore_color.rgb = TEAL
-            chart_m3.has_title = False
-            plot_m3 = chart_m3.plots[0]
-            plot_m3.gap_width = 50
-            label_font_m3 = 7.5 if n_maint3 <= 12 else (6.5 if n_maint3 <= 20 else 6)
-            from pptx.oxml.ns import qn as _qn
-            for i, pt in enumerate(chart_m3.series[0].points):
-                v = maint_su3["cap"].iloc[i]
-                gap_val = maint_su3["gap"].iloc[i]
-                if gap_val > 0:
-                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
-                gap_sign = "+" if gap_val >= 0 else "-"
-                dl = pt.data_label
-                dl.has_text_frame = True
-                harga_r_val = maint_su3["harga_r"].iloc[i]
-                harga_txt = f"Rp {harga_r_val:,.0f}/Ltr" if harga_r_val is not None else "-"
-                dl.text_frame.text = f"{v:.0f}% ({harga_txt})"
-                if n_maint3 > 12:
-                    # Kategori banyak: putar teks label vertikal (90 derajat) supaya tidak numpuk horizontal
-                    bodyPr = dl.text_frame._txBody.find(_qn('a:bodyPr'))
-                    if bodyPr is not None:
-                        bodyPr.set('rot', '-5400000')
-                        bodyPr.set('vert', 'horz')
-                r0 = dl.text_frame.paragraphs[0].runs[0]
-                r0.font.size = Pt(label_font_m3); r0.font.bold = True; r0.font.color.rgb = TEXT_DARK; r0.font.name = "Calibri"
-            style_chart_light(chart_m3, legend=False)
-            cat_font_m3 = 8 if n_maint3 <= 10 else (6.5 if n_maint3 <= 20 else 5.3)
-            chart_m3.category_axis.tick_labels.font.size = Pt(cat_font_m3)
-            chart_m3.value_axis.tick_labels.font.size = Pt(cat_font_m3)
+            unit_label3 = "KM/Ltr" if set(maint_su3["kategori"].unique()) == {"TR"} else ("Ltr/HM" if set(maint_su3["kategori"].unique()) == {"AB"} else "Rate")
+            # Pilih Top N unit dgn dampak Rupiah biaya BBM terbesar (paling relevan utk disorot di chart)
+            top_n3 = 7
+            maint_su3["abs_gap"] = maint_su3["gap"].abs()
+            chart_src3 = maint_su3.sort_values("abs_gap", ascending=False).head(top_n3)
+            chart_src3 = chart_src3.sort_values("gap", ascending=False)  # urutkan tampil dari over paling tinggi
+
+            note_h3b = 0.85
+            chart_h_m3b = avail_h_m3b - note_h3b - 0.12
+
+            cd_m3b = CategoryChartData()
+            cd_m3b.categories = list(chart_src3["label"])
+            cd_m3b.add_series("Cap. Prestasi", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_prestasi"]))
+            cd_m3b.add_series(f"Cap. Efisiensi ({unit_label3})", tuple(round(v, 0) for v in chart_src3["cap"]))
+            cd_m3b.add_series("Cap. Harga BBM", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_harga"]))
+            gframe_m3b = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_m3b), Inches(12.1), Inches(chart_h_m3b), cd_m3b)
+            chart_m3b = gframe_m3b.chart
+            SERIES_COLORS3 = [RGBColor(0x2E, 0x6D, 0xB4), TEAL, GOLD]  # Prestasi=biru, Efisiensi=teal, Harga=emas
+            for si, col in enumerate(SERIES_COLORS3):
+                chart_m3b.series[si].format.fill.solid(); chart_m3b.series[si].format.fill.fore_color.rgb = col
+            chart_m3b.has_title = False
+            plot_m3b = chart_m3b.plots[0]
+            plot_m3b.gap_width = 60
+            plot_m3b.overlap = -8
+            plot_m3b.has_data_labels = True
+            dls_m3b = plot_m3b.data_labels
+            dls_m3b.number_format = '0"%"'; dls_m3b.number_format_is_linked = False
+            dls_m3b.font.size = Pt(7); dls_m3b.font.bold = True; dls_m3b.font.color.rgb = TEXT_DARK; dls_m3b.font.name = "Calibri"
+            dls_m3b.position = XL_LABEL_POSITION.OUTSIDE_END
+            style_chart_light(chart_m3b, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
+            n_cat3b = len(chart_src3)
+            cat_font_m3b = 8.5 if n_cat3b <= 6 else 7.5
+            chart_m3b.category_axis.tick_labels.font.size = Pt(cat_font_m3b)
+            chart_m3b.value_axis.tick_labels.font.size = Pt(cat_font_m3b)
+            chart_m3b.value_axis.has_major_gridlines = True
+
+            # --- Insight otomatis: unit #1 (dampak Rupiah terbesar) & penyebab dominannya ---
+            top1_3 = chart_src3.sort_values("abs_gap", ascending=False).iloc[0]
+            gap_sign3 = "membengkak" if top1_3["gap"] > 0 else "hemat"
+            note_top3b = chart_top_m3b + chart_h_m3b + 0.12
+            add_finding_box(s, 0.55, note_top3b, 12.2, note_h3b, "\U0001F4A1",
+                             f"{top1_3['label']} adalah unit dengan dampak Rupiah biaya BBM terbesar ({fmt_rp(top1_3['abs_gap'])} {gap_sign3}) \u2014 "
+                             f"penyebab dominannya: {top1_3['penyebab']} (Cap. Prestasi {top1_3['cap_prestasi']:.0f}%, "
+                             f"Cap. Efisiensi {top1_3['cap']:.0f}%, Cap. Harga {top1_3['cap_harga']:.0f}% jika tersedia).",
+                             GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
         else:
-            add_textbox(s, 0.55, chart_top_m3 + 0.1, 12.0, 0.5, "Data Konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+            add_textbox(s, 0.55, chart_top_m3b + 0.1, 12.0, 0.5, "Data Konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
 
         # ================= SLIDE 4: ANALISIS Capaian Biaya vs Capaian Fisik & Konsumsi BBM =================
