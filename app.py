@@ -1597,7 +1597,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             # --- Insight otomatis: unit #1 (dampak Rupiah terbesar) & penyebab dominannya ---
             top1_3 = chart_src3.sort_values("abs_gap", ascending=False).iloc[0]
-            gap_sign3 = "membengkak" if top1_3["gap"] > 0 else "hemat"
+            gap_sign3 = "over budget" if top1_3["gap"] > 0 else "hemat"
             cap_prestasi_txt3 = f"{top1_3['cap_prestasi']:.0f}%" if top1_3["cap_prestasi"] is not None else "data tidak tersedia"
             cap_harga_txt3 = f"{top1_3['cap_harga']:.0f}%" if top1_3["cap_harga"] is not None else "data tidak tersedia"
             note_top3b = chart_top_m3b + chart_h_m3b + 0.12
