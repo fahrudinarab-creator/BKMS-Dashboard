@@ -1752,6 +1752,19 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         avail_target5 = (100 - dt_avg_t5) if dt_avg_t5 is not None else None
         avail_aktual5 = (100 - dt_avg_r5) if dt_avg_r5 is not None else None
 
+        # --- Hitung per Site & Jenis Unit lebih awal, dipakai baik di kartu KPI maupun chart di bawah ---
+        dt_su5 = pd.DataFrame()
+        if not sasaran_mutu_data.empty:
+            dt_su5 = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+                dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
+            dt_su5["site_short"] = dt_su5["lokasi"].map(SITE_ABBR).fillna(dt_su5["lokasi"])
+            dt_su5["label"] = dt_su5["site_short"] + " \u2014 " + dt_su5["jenis_unit"]
+            dt_su5["cap"] = dt_su5.apply(lambda r: (r["dt_r"] / r["dt_t"] * 100) if r["dt_t"] else None, axis=1)
+            dt_su5 = dt_su5.dropna(subset=["cap"])
+            dt_su5 = dt_su5.sort_values("cap", ascending=False)
+        n_dt5 = max(len(dt_su5), 1)
+        n_over5 = int((dt_su5["cap"] > 100).sum()) if not dt_su5.empty else 0
+
         # ================= BARIS ATAS: 3 KARTU KPI =================
         card_top5 = 0.98
         card_h5 = 1.85
@@ -1759,27 +1772,27 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         card_w5 = (12.5 - 2 * card_gap5) / 3
 
         add_kpi_card(s, 0.4, card_top5, card_w5, card_h5, "\u23f8", RED, RED,
-                     "Downtime Aktual (s/d " + period + ")",
-                     (f"{dt_avg_r5:.2f}%" if dt_avg_r5 is not None else "-"),
-                     (f"Target: {dt_avg_t5:.2f}%  |  Varian: {varian_dt5:+.2f}%" if varian_dt5 is not None else "-"),
-                     (f"\u2717 VARIAN {varian_dt5:.2f}% BELUM TERKENDALI" if (varian_dt5 is not None and varian_dt5 > 0)
-                      else (f"\u2713 DALAM TARGET" if varian_dt5 is not None else "Data tidak tersedia")),
+                     "% Capaian Realisasi Downtime (s/d " + period + ")",
+                     (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
+                     "",
+                     (f"\u2717 Over Target" if (cap_dt5 is not None and cap_dt5 > 100)
+                      else (f"\u2713 DALAM TARGET" if cap_dt5 is not None else "Data tidak tersedia")),
                      good_dt5)
 
         add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\u2699", TEAL, TEAL,
                      "Target Downtime (Diizinkan)",
                      (f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-"),
-                     (f"Availability Target: {avail_target5:.2f}%" if avail_target5 is not None else "-"),
+                     "",
                      "BATAS MAKSIMUM DOWNTIME",
                      True)
 
-        cap_good5 = cap_dt5 is not None and cap_dt5 <= 100
-        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\u25CE", GREEN if cap_good5 else RED, GREEN if cap_good5 else RED,
-                     "% Capaian Realisasi Downtime",
-                     (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
-                     (f"Availability Aktual: {avail_aktual5:.2f}%" if avail_aktual5 is not None else "-"),
-                     (f"{cap_dt5:.1f}% \u2014 {'Under' if cap_good5 else 'Over'} Budget" if cap_dt5 is not None else "Data tidak tersedia"),
-                     cap_good5)
+        n_over_good5 = n_over5 == 0
+        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\u26a0", GREEN if n_over_good5 else RED, GREEN if n_over_good5 else RED,
+                     "Unit Melebihi Target Downtime",
+                     (f"{n_over5} / {n_dt5}" if not dt_su5.empty else "-"),
+                     "",
+                     (f"\u2717 {n_over5} UNIT PERLU TINDAK LANJUT" if (not dt_su5.empty and n_over5 > 0) else (f"\u2713 SEMUA UNIT DALAM TARGET" if not dt_su5.empty else "Data tidak tersedia")),
+                     n_over_good5)
 
         # ================= BARIS BAWAH =================
         panel_top5 = card_top5 + card_h5 + 0.15
@@ -1796,38 +1809,27 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         chart_top5 = panel_top5 + 0.45
         note_h5 = 0.85
         chart_h5 = panel_h5 - 0.45 - note_h5 - 0.15
-        dt_su5 = pd.DataFrame()
-        if not sasaran_mutu_data.empty:
-            dt_su5 = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-                dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
-            dt_su5["site_short"] = dt_su5["lokasi"].map(SITE_ABBR).fillna(dt_su5["lokasi"])
-            dt_su5["label"] = dt_su5["site_short"] + " \u2014 " + dt_su5["jenis_unit"]
-            dt_su5 = dt_su5.sort_values("dt_r", ascending=False)
-            n_dt5 = max(len(dt_su5), 1)
-
+        if not dt_su5.empty:
             cd_dt5 = CategoryChartData()
             cd_dt5.categories = list(dt_su5["label"])
-            cd_dt5.add_series("Realisasi Downtime (%)", tuple(round(v, 2) for v in dt_su5["dt_r"]))
-            cd_dt5.add_series("Target Downtime (%)", tuple(round(v, 2) for v in dt_su5["dt_t"]))
+            cd_dt5.add_series("% Capaian Downtime", tuple(round(v, 1) for v in dt_su5["cap"]))
             gframe_dt5 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top5), Inches(7.0), Inches(chart_h5), cd_dt5)
             chart_dt5 = gframe_dt5.chart
             chart_dt5.series[0].format.fill.solid(); chart_dt5.series[0].format.fill.fore_color.rgb = RED
-            chart_dt5.series[1].format.fill.solid(); chart_dt5.series[1].format.fill.fore_color.rgb = RGBColor(0xA9, 0xB8, 0xD4)
             chart_dt5.has_title = False
             for i, pt in enumerate(chart_dt5.series[0].points):
-                dt_r_v = dt_su5["dt_r"].iloc[i]
-                dt_t_v = dt_su5["dt_t"].iloc[i]
-                if dt_r_v <= dt_t_v:
+                cap_v = dt_su5["cap"].iloc[i]
+                if cap_v <= 100:
                     pt.format.fill.solid(); pt.format.fill.fore_color.rgb = GREEN
             plot_dt5 = chart_dt5.plots[0]
             plot_dt5.gap_width = 50
             plot_dt5.has_data_labels = True
             dls_dt5 = plot_dt5.data_labels
-            dls_dt5.number_format = '0.0"%"'; dls_dt5.number_format_is_linked = False
+            dls_dt5.number_format = '0"%"'; dls_dt5.number_format_is_linked = False
             label_font_dt5 = 7 if n_dt5 <= 12 else (5.5 if n_dt5 <= 25 else 4.3)
             dls_dt5.font.size = Pt(label_font_dt5); dls_dt5.font.bold = True; dls_dt5.font.color.rgb = TEXT_DARK; dls_dt5.font.name = "Calibri"
             dls_dt5.position = XL_LABEL_POSITION.OUTSIDE_END
-            style_chart_light(chart_dt5, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
+            style_chart_light(chart_dt5, legend=False)
             cat_font_dt5 = 7.5 if n_dt5 <= 10 else (6 if n_dt5 <= 20 else (5 if n_dt5 <= 30 else 4.2))
             chart_dt5.category_axis.tick_labels.font.size = Pt(cat_font_dt5)
             chart_dt5.value_axis.tick_labels.font.size = Pt(cat_font_dt5)
@@ -1836,16 +1838,21 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         else:
             add_textbox(s, 0.55, chart_top5 + 0.1, 6.9, 0.5, "Data Downtime belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
-        # --- Catatan strategi: unit paling kritis (gap downtime terbesar) ---
+        # --- Catatan: ringkasan portofolio (berapa unit over target) + unit paling kritis ---
         note_top5 = chart_top5 + chart_h5 + 0.1
         if not dt_su5.empty:
             worst5 = dt_su5.iloc[0]
-            gap_worst5 = worst5["dt_r"] - worst5["dt_t"]
-            add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\u26A0",
-                             f"Strategi Perbaikan: Turunkan Downtime {worst5['label']} dari {worst5['dt_r']:.1f}% \u2192 "
-                             f"\u2264{worst5['dt_t']:.1f}% (satu-satunya/unit paling kritis OVER target, gap {gap_worst5:+.1f}%). "
-                             f"Cek riwayat kerusakan & jadwal preventive maintenance unit ini.",
-                             RED_BG, RED, RED)
+            pct_over5 = (n_over5 / n_dt5 * 100) if n_dt5 else 0
+            if n_over5 > 0:
+                add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\u26A0",
+                                 f"{n_over5} dari {n_dt5} unit ({pct_over5:.0f}%) melebihi target downtime. Unit paling kritis: {worst5['label']} "
+                                 f"dengan Capaian Downtime {worst5['cap']:.0f}% (downtime realisasinya {worst5['cap']-100:.0f}% di atas batas yang diizinkan) \u2014 "
+                                 f"prioritaskan preventive maintenance pada unit-unit ini.",
+                                 RED_BG, RED, RED)
+            else:
+                add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\u2705",
+                                 f"Seluruh {n_dt5} unit berada dalam target downtime yang diizinkan. Pertahankan jadwal preventive maintenance saat ini.",
+                                 GREEN_BG, GREEN, GREEN)
         else:
             add_finding_box(s, 0.55, note_top5, 6.9, note_h5, "\u26A0",
                              "Data unit belum tersedia untuk rekomendasi strategi perbaikan.",
