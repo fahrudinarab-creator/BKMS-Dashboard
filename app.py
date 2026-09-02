@@ -768,18 +768,30 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # Skala ukuran font & posisi menyesuaikan lebar kartu (supaya tetap muat kalau kartu dibuat sempit, mis. 5 kartu sejajar)
         narrow = narrow_pre
         label_size = 9.5 if narrow else 11.5
-        value_size = 19 if narrow else 23
+        has_sub = bool(sub_text)
+        # Kalau tidak ada sub-teks, angka utama dibuat lebih besar & diposisikan di tengah ruang kosong yg tersisa
+        value_size = (19 if narrow else 23) if has_sub else (24 if narrow else 30)
         sub_size = 8.5 if narrow else 10
         pill_size = 9 if narrow else 10.5
         label_h = 0.55 if narrow else 0.4
         # label
         add_textbox(slide, left + 1.0, top + 0.24, width - 1.15, label_h, label, size=label_size, bold=True, color=TEXT_MUTED)
         # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
-        value_top = top + (0.78 if narrow else 0.66)
-        add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=value_size, bold=True, color=TEXT_DARK)
-        # sub text (target/budget)
-        if sub_text:
+        if has_sub:
+            value_top = top + (0.78 if narrow else 0.66)
+            add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=value_size, bold=True, color=TEXT_DARK)
+            # sub text (target/budget)
             add_textbox(slide, left + 0.25, value_top + (0.38 if narrow else 0.42), width - 0.5, 0.3, sub_text, size=sub_size, color=TEXT_MUTED)
+        else:
+            # Tidak ada sub-teks: angka ditengahkan vertikal (MIDDLE anchor) di ruang antara label & pill,
+            # supaya tidak ada celah kosong besar seperti kalau pakai box TOP-anchored biasa.
+            label_bottom_ref = top + 0.6
+            pill_top_ref = top + height - 0.5
+            val_box = slide.shapes.add_textbox(Inches(left + 0.25), Inches(label_bottom_ref), Inches(width - 0.5), Inches(pill_top_ref - label_bottom_ref))
+            val_tf = val_box.text_frame; val_tf.word_wrap = True; val_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            val_p = val_tf.paragraphs[0]
+            val_r = val_p.add_run(); val_r.text = value
+            val_r.font.size = Pt(value_size); val_r.font.bold = True; val_r.font.color.rgb = TEXT_DARK; val_r.font.name = "Calibri"
         # pill (selalu menempel ke bawah kartu)
         pbg, ptxt = pill_colors(pill_good)
         pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + 0.25), Inches(top + height - 0.5), Inches(width - 0.5), Inches(0.35))
@@ -1907,13 +1919,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         if not kat_agg5.empty:
             n_kat5 = len(kat_agg5)
-            row_h5b = min(0.42, list_avail5 / n_kat5)
+            row_gap5 = 0.06  # jarak eksplisit antar baris, supaya bar underline tidak menempel ke baris berikutnya
+            max_row_cap5 = 0.42 if n_kat5 >= 5 else 0.75  # kalau kategori sedikit, baris melebar mengisi ruang (tidak kosong)
+            row_h5b = min(max_row_cap5, (list_avail5 - (n_kat5 - 1) * row_gap5) / n_kat5)
             max_biaya5 = kat_agg5["biaya"].max()
             for i5, (_, r5) in enumerate(kat_agg5.iterrows()):
-                ry5c = list_top5 + i5 * row_h5b
+                ry5c = list_top5 + i5 * (row_h5b + row_gap5)
                 rank_bg5 = GOLD if i5 == 0 else (RGBColor(0xB0, 0xB0, 0xB0) if i5 == 1 else (RGBColor(0xCD, 0x7F, 0x32) if i5 == 2 else RGBColor(0xE0, 0xE4, 0xEC)))
                 rank_txt5 = WHITE if i5 <= 2 else TEXT_MUTED
-                circ_size5 = min(0.3, row_h5b * 0.7)
+                circ_size5 = min(0.3, row_h5b * 0.72)
                 rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5c + row_h5b / 2 - circ_size5 / 2), Inches(circ_size5), Inches(circ_size5))
                 rank_circ5.fill.solid(); rank_circ5.fill.fore_color.rgb = rank_bg5
                 rank_circ5.line.fill.background(); rank_circ5.shadow.inherit = False
@@ -1921,13 +1935,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rtf5.margin_left = 0; rtf5.margin_right = 0
                 rp5 = rtf5.paragraphs[0]; rp5.alignment = PP_ALIGN.CENTER
                 rr5 = rp5.add_run(); rr5.text = str(i5 + 1)
-                rr5.font.size = Pt(min(9, circ_size5 * 22)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
-                font_row5 = 9 if n_kat5 <= 6 else (8 if n_kat5 <= 10 else 7)
-                add_textbox(s, right_x5 + 0.55, ry5c, right_w5 - 1.9, row_h5b, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
-                add_textbox(s, right_x5 + right_w5 - 1.4, ry5c, 1.25, row_h5b, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD)
-                # bar proporsional tipis di bawah label sbg indikator visual skala
+                rr5.font.size = Pt(min(9.5, circ_size5 * 22)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
+                font_row5 = 9.5 if n_kat5 <= 6 else (8.5 if n_kat5 <= 10 else 7.5)
+                text_h5 = row_h5b * 0.62  # teks hanya isi bagian atas baris, sisanya utk jarak visual ke bar
+                add_textbox(s, right_x5 + 0.55, ry5c, right_w5 - 1.9, text_h5, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
+                add_textbox(s, right_x5 + right_w5 - 1.4, ry5c, 1.25, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD)
+                # bar proporsional tipis di bawah label sbg indikator visual skala, dgn jarak yg jelas dari teks
                 bar_w5 = max(0.05, (right_w5 - 1.9 - 0.1) * (r5["biaya"] / max_biaya5)) if max_biaya5 else 0.05
-                bar5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x5 + 0.55), Inches(ry5c + row_h5b - 0.06), Inches(bar_w5), Inches(0.035))
+                bar_y5 = ry5c + row_h5b - 0.09
+                bar5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x5 + 0.55), Inches(bar_y5), Inches(bar_w5), Inches(0.045))
                 bar5.fill.solid(); bar5.fill.fore_color.rgb = rank_bg5
                 bar5.line.fill.background(); bar5.shadow.inherit = False
         else:
