@@ -764,7 +764,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         ic_tf.margin_left = 0; ic_tf.margin_right = 0
         icp = ic_tf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
         icr = icp.add_run(); icr.text = icon_txt
-        icr.font.size = Pt(14 if narrow_pre else 17); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
+        icr.font.size = Pt(16 if narrow_pre else 20); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
         # Skala ukuran font & posisi menyesuaikan lebar kartu (supaya tetap muat kalau kartu dibuat sempit, mis. 5 kartu sejajar)
         narrow = narrow_pre
         label_size = 9.5 if narrow else 11.5
