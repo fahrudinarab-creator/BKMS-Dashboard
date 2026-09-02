@@ -1925,8 +1925,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             max_biaya5 = kat_agg5["biaya"].max()
             for i5, (_, r5) in enumerate(kat_agg5.iterrows()):
                 ry5c = list_top5 + i5 * (row_h5b + row_gap5)
-                rank_bg5 = GOLD if i5 == 0 else (RGBColor(0xB0, 0xB0, 0xB0) if i5 == 1 else (RGBColor(0xCD, 0x7F, 0x32) if i5 == 2 else RGBColor(0xE0, 0xE4, 0xEC)))
-                rank_txt5 = WHITE if i5 <= 2 else TEXT_MUTED
+                rank_bg5 = GOLD
+                rank_txt5 = WHITE
                 circ_size5 = min(0.3, row_h5b * 0.72)
                 rank_circ5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(right_x5 + 0.15), Inches(ry5c + row_h5b / 2 - circ_size5 / 2), Inches(circ_size5), Inches(circ_size5))
                 rank_circ5.fill.solid(); rank_circ5.fill.fore_color.rgb = rank_bg5
