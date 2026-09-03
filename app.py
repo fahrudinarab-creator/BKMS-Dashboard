@@ -393,7 +393,7 @@ def load_workshop_mttr_files(uploaded_files, unit_lookup_df=None) -> pd.DataFram
     kode_lookup = None
     if unit_lookup_df is not None and not unit_lookup_df.empty and "kode_unit" in unit_lookup_df.columns:
         kode_lookup = (unit_lookup_df.dropna(subset=["kode_unit"]).drop_duplicates("kode_unit")
-                        .set_index("kode_unit")[["id_unit", "nama_unit", "jenis_unit"]])
+                        .set_index("kode_unit")[["id_unit", "nama_unit", "jenis_unit", "kategori"]])
 
     rows = []
     for uf in uploaded_files:
@@ -417,15 +417,15 @@ def load_workshop_mttr_files(uploaded_files, unit_lookup_df=None) -> pd.DataFram
                 if kegiatan in REPAIR_KEGIATAN and isinstance(jumlah, (int, float)) and remark:
                     m = KODE_PATTERN.match(str(remark).strip())
                     kode_unit = m.group(1) if m else None
-                    id_unit, nama_unit, jenis_unit = None, None, None
+                    id_unit, nama_unit, jenis_unit, kategori = None, None, None, None
                     if kode_unit is not None and kode_lookup is not None and kode_unit in kode_lookup.index:
                         lu = kode_lookup.loc[kode_unit]
-                        id_unit, nama_unit, jenis_unit = lu["id_unit"], lu["nama_unit"], lu["jenis_unit"]
+                        id_unit, nama_unit, jenis_unit, kategori = lu["id_unit"], lu["nama_unit"], lu["jenis_unit"], lu["kategori"]
                     rows.append(dict(
                         lokasi=site, bulan=bulan,
                         tanggal=tgl.date().isoformat() if hasattr(tgl, "date") else None,
                         account=str(account) if account is not None else None,
-                        kode_unit=kode_unit, id_unit=id_unit, nama_unit=nama_unit, jenis_unit=jenis_unit,
+                        kode_unit=kode_unit, id_unit=id_unit, nama_unit=nama_unit, jenis_unit=jenis_unit, kategori=kategori,
                         kegiatan=kegiatan, remark=str(remark).strip(), jumlah_jam=float(jumlah),
                     ))
         wb.close()
@@ -1892,7 +1892,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         avail_target5 = (100 - dt_avg_t5) if dt_avg_t5 is not None else None
         avail_aktual5 = (100 - dt_avg_r5) if dt_avg_r5 is not None else None
 
-        # --- Hitung MTTR (Mean Time To Repair) dari data Workshop (per kejadian), difilter site & bulan yg sedang aktif ---
+        # --- Hitung MTTR (Mean Time To Repair) dari data Workshop (per kejadian), difilter site, bulan, & kategori (AB/TR) yg sedang aktif ---
         mttr_val5 = None
         mttr_n5 = 0
         if mttr_data is not None and not mttr_data.empty:
@@ -1901,6 +1901,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 m5mttr = m5mttr[m5mttr["lokasi"].isin(site_list)]
             if month_list:
                 m5mttr = m5mttr[m5mttr["bulan"].isin(month_list)]
+            kat_scope5mttr = set(data["kategori"].dropna().unique())
+            if "kategori" in m5mttr.columns and kat_scope5mttr:
+                m5mttr = m5mttr[m5mttr["kategori"].isin(kat_scope5mttr)]
             if not m5mttr.empty:
                 total_jam5 = m5mttr["jumlah_jam"].sum()
                 mttr_n5 = len(m5mttr)
