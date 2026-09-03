@@ -352,6 +352,55 @@ def load_from_upload_sparepart(uploaded_file) -> pd.DataFrame:
         ))
     return pd.DataFrame(rows)
 
+def _guess_site_from_filename(filename: str) -> str:
+    """Tebak nama site dari nama file upload Workshop (mis. 'Workshop_Sungai_Danau__PH_Gabungan_.xlsx' -> 'SUNGAI DANAU')."""
+    name_up = filename.upper().replace("_", " ")
+    if "BUHUT" in name_up and "LHL" in name_up:
+        return "BUHUT LHL"
+    if "SUNGAI" in name_up and "DANAU" in name_up:
+        return "SUNGAI DANAU"
+    if "BUHUT" in name_up:
+        return "BUHUT"
+    if "TANJUNG" in name_up:
+        return "TANJUNG"
+    if "KUMAI" in name_up:
+        return "KUMAI"
+    if "AMPAH" in name_up:
+        return "AMPAH"
+    return ""
+
+def load_workshop_mttr_files(uploaded_files) -> pd.DataFrame:
+    """Parse file(s) 'Workshop_[Site]__Gabungan_.xlsx' (jurnal harian bengkel per site, 1 sheet per bulan).
+    Menghitung total jam perbaikan & jumlah kejadian per site per bulan, dipakai utk hitung MTTR
+    (Mean Time To Repair) = Total Jam / Jumlah Kejadian. Baris valid = Kegiatan berisi 'WS-PERBAIKAN UNIT'
+    atau 'WS-PERBAIKAN DAN MAINTENANCE UNIT', dgn kolom Jumlah (jam) berupa angka."""
+    import openpyxl as _oxl
+    REPAIR_KEGIATAN = {"WS-PERBAIKAN UNIT", "WS-PERBAIKAN DAN MAINTENANCE UNIT"}
+    MONTH_MAP_ID = {"Jan": "Jan", "Feb": "Feb", "Mar": "Mar", "Apr": "Apr", "May": "May", "Jun": "Jun",
+                     "Jul": "Jul", "Aug": "Aug", "Sep": "Sep", "Oct": "Oct", "Nov": "Nov", "Dec": "Dec"}
+    rows = []
+    for uf in uploaded_files:
+        site = _guess_site_from_filename(uf.name)
+        if not site:
+            continue
+        wb = _oxl.load_workbook(uf, read_only=True, data_only=True)
+        for sheet_name in wb.sheetnames:
+            bulan = MONTH_MAP_ID.get(sheet_name.strip()[:3].title())
+            if not bulan:
+                continue
+            ws = wb[sheet_name]
+            total_jam, n_kejadian = 0.0, 0
+            for row in ws.iter_rows(values_only=True):
+                kegiatan = row[1] if len(row) > 1 else None
+                jumlah = row[10] if len(row) > 10 else None
+                if kegiatan in REPAIR_KEGIATAN and isinstance(jumlah, (int, float)):
+                    total_jam += jumlah
+                    n_kejadian += 1
+            if n_kejadian > 0:
+                rows.append(dict(lokasi=site, bulan=bulan, total_jam=total_jam, n_kejadian=n_kejadian))
+        wb.close()
+    return pd.DataFrame(rows)
+
 with st.sidebar:
     MINING_SITES = ["TANJUNG", "BUHUT", "BUHUT LHL"]
     PLANTATION_SITES = ["SUNGAI DANAU", "KUMAI"]
@@ -390,6 +439,22 @@ with st.sidebar:
             sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
     else:
         sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
+
+    uploaded_workshop = st.file_uploader(
+        "Upload data Workshop (jurnal harian, utk MTTR) \u2014 bisa pilih beberapa file sekaligus (opsional)",
+        type=["xls", "xlsx"], accept_multiple_files=True)
+    if uploaded_workshop:
+        try:
+            mttr_raw = load_workshop_mttr_files(uploaded_workshop)
+            if not mttr_raw.empty:
+                st.success(f"Berhasil memuat data MTTR dari {len(uploaded_workshop)} file workshop ({mttr_raw['lokasi'].nunique()} site).")
+            else:
+                st.warning("File workshop terbaca, tapi tidak ada baris perbaikan yang valid ditemukan.")
+        except Exception as e:
+            st.error(f"Gagal membaca file workshop: {e}")
+            mttr_raw = pd.DataFrame()
+    else:
+        mttr_raw = pd.DataFrame()
 
     # Tambahkan kolom 'kategori' (AB/TR) ke data maintenance & sparepart, dicocokkan lewat nama_unit
     # terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori. Hasilnya disimpan kembali
@@ -606,7 +671,7 @@ pct_populasi = (realisasi_populasi / target_populasi * 100) if target_populasi e
 # background terang, header bar navy, kartu KPI ikon+pill status, tabel
 # dengan indikator warna, dan kotak analisis.
 # ---------------------------------------------------------------
-def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list, sasaran_mutu_data=None) -> bytes:
+def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list, sasaran_mutu_data=None, mttr_data=None) -> bytes:
     from pptx import Presentation
     from pptx.util import Inches, Pt
     from pptx.dml.color import RGBColor
@@ -620,6 +685,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     # Khusus site TANJUNG: gabungkan kategori TR ke AB (tidak dipisah AB/TR di seluruh chart PPTX)
     data = data.copy()
     data.loc[data["lokasi"] == "TANJUNG", "kategori"] = "AB"
+    if mttr_data is None:
+        mttr_data = pd.DataFrame()
     if sasaran_mutu_data is not None and not sasaran_mutu_data.empty:
         sasaran_mutu_data = sasaran_mutu_data.copy()
         sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "kategori"] = "AB"
@@ -1644,7 +1711,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
         add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 % Capaian Biaya Maintenance \u2014 per Site & Jenis Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
-        chart_h_r4 = panel_h4 - 0.55
+        note_h4 = 0.95
+        chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
         if not maint_su4.empty:
             cd_r4 = CategoryChartData()
             cd_r4.categories = list(maint_su4["label"])
@@ -1687,7 +1755,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
         add_panel_header(s, 6.85, panel_top4, 6.05, "\U0001F527 Rekap Maintenance Rutin vs Non-Rutin \u2014 per Site & Jenis Unit", height=0.4)
         chart_top_m4 = panel_top4 + 0.45
-        chart_h_m4 = panel_h4 - 0.55
+        chart_h_m4 = panel_h4 - 0.45 - note_h4 - 0.25
         rutin_pivot4 = pd.DataFrame()
         if maint_data is not None and not maint_data.empty and "jenis_pemeliharaan" in maint_data.columns:
             m4 = maint_data.copy()
@@ -1753,6 +1821,35 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
                         size=10, italic=True, color=TEXT_MUTED)
 
+        # ================= INSIGHT: hubungkan Capaian Biaya Maintenance dgn porsi Non-Rutin =================
+        insight_top4 = panel_top4 + panel_h4 - note_h4
+        if not maint_su4.empty and not rutin_pivot4.empty:
+            merge4 = maint_su4.merge(rutin_pivot4[["lokasi", "jenis_unit", "pct_nonrutin"]], on=["lokasi", "jenis_unit"], how="inner")
+            over_budget4 = merge4[merge4["cap"] > 100]
+            if not over_budget4.empty:
+                worst4 = over_budget4.sort_values("pct_nonrutin", ascending=False).iloc[0]
+                avg_nonrutin_over4 = over_budget4["pct_nonrutin"].mean()
+                under_budget4 = merge4[merge4["cap"] <= 100]
+                avg_nonrutin_under4 = under_budget4["pct_nonrutin"].mean() if not under_budget4.empty else None
+                if avg_nonrutin_under4 is not None and avg_nonrutin_over4 > avg_nonrutin_under4:
+                    banding_txt4 = (f"Rata-rata porsi Non-Rutin pada unit yang OVER BUDGET ({avg_nonrutin_over4:.0f}%) lebih tinggi dibanding "
+                                     f"unit yang sesuai/di bawah budget ({avg_nonrutin_under4:.0f}%) \u2014 mengindikasikan preventive maintenance "
+                                     f"yang belum memadai menjadi salah satu penyebab pembengkakan biaya.")
+                else:
+                    banding_txt4 = "Perlu ditelusuri lebih lanjut apakah ada korelasi antara porsi Non-Rutin dan pembengkakan biaya maintenance."
+                add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\U0001F4A1",
+                                 f"{worst4['label']} memiliki porsi Non-Rutin tertinggi ({worst4['pct_nonrutin']:.0f}%) di antara unit yang OVER BUDGET "
+                                 f"(Capaian {worst4['cap']:.0f}%). {banding_txt4}",
+                                 GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
+            else:
+                add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2705",
+                                 "Tidak ada unit yang over budget pada biaya maintenance \u2014 seluruh unit berada dalam/di bawah budget.",
+                                 GREEN_BG, GREEN, GREEN)
+        else:
+            add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2139\ufe0f",
+                             "Data belum cukup lengkap untuk analisis korelasi antara Capaian Biaya Maintenance dan porsi Non-Rutin.",
+                             GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
+
         # ================= SLIDE 5: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
         s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum5}{divisi_label}{kat_suffix}")
 
@@ -1763,6 +1860,20 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         good_dt5 = varian_dt5 is not None and varian_dt5 <= 0
         avail_target5 = (100 - dt_avg_t5) if dt_avg_t5 is not None else None
         avail_aktual5 = (100 - dt_avg_r5) if dt_avg_r5 is not None else None
+
+        # --- Hitung MTTR (Mean Time To Repair) dari data Workshop, difilter site & bulan yg sedang aktif ---
+        mttr_val5 = None
+        mttr_n5 = 0
+        if mttr_data is not None and not mttr_data.empty:
+            m5mttr = mttr_data.copy()
+            if site_list:
+                m5mttr = m5mttr[m5mttr["lokasi"].isin(site_list)]
+            if month_list:
+                m5mttr = m5mttr[m5mttr["bulan"].isin(month_list)]
+            if not m5mttr.empty:
+                total_jam5 = m5mttr["total_jam"].sum()
+                mttr_n5 = int(m5mttr["n_kejadian"].sum())
+                mttr_val5 = (total_jam5 / mttr_n5) if mttr_n5 else None
 
         # --- Hitung per Site & Jenis Unit lebih awal, dipakai baik di kartu KPI maupun chart di bawah ---
         dt_su5 = pd.DataFrame()
@@ -1791,11 +1902,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                       else (f"\u2713 DALAM TARGET" if cap_dt5 is not None else "Data tidak tersedia")),
                      good_dt5)
 
-        add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\u2699", TEAL, TEAL,
-                     "Target Downtime (Diizinkan)",
-                     (f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-"),
+        add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\u26a1", TEAL, TEAL,
+                     "MTTR (Mean Time To Repair)",
+                     (f"{mttr_val5:.1f} jam" if mttr_val5 is not None else "-"),
                      "",
-                     "BATAS MAKSIMUM DOWNTIME",
+                     (f"Dari {mttr_n5} kejadian perbaikan" if mttr_val5 is not None else "Data Workshop belum tersedia"),
                      True)
 
         # --- Hitung % Maintenance Rutin vs Non-Rutin (dari total biaya maintenance), utk Kartu KPI 3 ---
@@ -1979,7 +2090,7 @@ with colY:
         with st.spinner("Menyusun slide presentasi..."):
             maint_for_pptx = maint_df_site_bulan if not maint_raw.empty else pd.DataFrame()
             sparepart_for_pptx = sparepart_df_site_bulan if not sparepart_raw.empty else pd.DataFrame()
-            pptx_bytes = build_pptx(df, maint_for_pptx, sparepart_for_pptx, sel_site, sel_month, sel_kat, sasaran_mutu_df)
+            pptx_bytes = build_pptx(df, maint_for_pptx, sparepart_for_pptx, sel_site, sel_month, sel_kat, sasaran_mutu_df, mttr_raw)
         st.session_state["pptx_bytes"] = pptx_bytes
     if "pptx_bytes" in st.session_state:
         st.download_button(
