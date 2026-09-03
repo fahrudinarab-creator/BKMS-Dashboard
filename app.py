@@ -220,6 +220,7 @@ DATA_PATH = Path(__file__).parent / "data_bkms.csv"
 MAINT_DATA_PATH = Path(__file__).parent / "data_maintenance.csv"
 SPAREPART_DATA_PATH = Path(__file__).parent / "data_sparepart.csv"
 SASARAN_MUTU_PATH = Path(__file__).parent / "data_sasaran_mutu.csv"
+MTTR_DATA_PATH = Path(__file__).parent / "data_mttr.csv"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Transportasi (TR)"}
 
@@ -244,6 +245,12 @@ def load_sasaran_mutu_data(file) -> pd.DataFrame:
     if not Path(file).exists():
         return pd.DataFrame()
     return pd.read_csv(file, dtype={"id_unit": str})
+
+@st.cache_data
+def load_mttr_data(file) -> pd.DataFrame:
+    if not Path(file).exists():
+        return pd.DataFrame()
+    return pd.read_csv(file)
 
 def load_from_upload(uploaded_file) -> pd.DataFrame:
     """Parse an uploaded 'Gabungan.xlsx' file with the same fixed layout used to build data_bkms.csv.
@@ -369,35 +376,58 @@ def _guess_site_from_filename(filename: str) -> str:
         return "AMPAH"
     return ""
 
-def load_workshop_mttr_files(uploaded_files) -> pd.DataFrame:
+def load_workshop_mttr_files(uploaded_files, unit_lookup_df=None) -> pd.DataFrame:
     """Parse file(s) 'Workshop_[Site]__Gabungan_.xlsx' (jurnal harian bengkel per site, 1 sheet per bulan).
-    Menghitung total jam perbaikan & jumlah kejadian per site per bulan, dipakai utk hitung MTTR
-    (Mean Time To Repair) = Total Jam / Jumlah Kejadian. Baris valid = Kegiatan berisi 'WS-PERBAIKAN UNIT'
-    atau 'WS-PERBAIKAN DAN MAINTENANCE UNIT', dgn kolom Jumlah (jam) berupa angka."""
+    Menghasilkan data per KEJADIAN perbaikan (1 baris = 1 kejadian), dipakai utk hitung MTTR
+    (Mean Time To Repair) = Total Jam / Jumlah Kejadian, difilter site & bulan saat render slide.
+    Baris valid = Kegiatan berisi 'WS-PERBAIKAN UNIT' atau 'WS-PERBAIKAN DAN MAINTENANCE UNIT',
+    dgn kolom Jumlah (jam) berupa angka. Kode unit diekstrak dari awal kolom Remark (mis. '322-012'),
+    dicocokkan ke kode_unit pada data utama (unit_lookup_df) utk dapat id_unit/nama_unit/jenis_unit."""
     import openpyxl as _oxl
+    import re as _re
     REPAIR_KEGIATAN = {"WS-PERBAIKAN UNIT", "WS-PERBAIKAN DAN MAINTENANCE UNIT"}
     MONTH_MAP_ID = {"Jan": "Jan", "Feb": "Feb", "Mar": "Mar", "Apr": "Apr", "May": "May", "Jun": "Jun",
                      "Jul": "Jul", "Aug": "Aug", "Sep": "Sep", "Oct": "Oct", "Nov": "Nov", "Dec": "Dec"}
+    KODE_PATTERN = _re.compile(r'^(\d{2,3}-\d{2,3})')
+
+    kode_lookup = None
+    if unit_lookup_df is not None and not unit_lookup_df.empty and "kode_unit" in unit_lookup_df.columns:
+        kode_lookup = (unit_lookup_df.dropna(subset=["kode_unit"]).drop_duplicates("kode_unit")
+                        .set_index("kode_unit")[["id_unit", "nama_unit", "jenis_unit"]])
+
     rows = []
     for uf in uploaded_files:
         site = _guess_site_from_filename(uf.name)
         if not site:
             continue
+        uf.seek(0)  # reset cursor -- Streamlit menjalankan ulang skrip tiap ada interaksi (mis. klik tombol),
+                    # dan file yg sudah pernah dibaca sebelumnya cursor-nya bisa tertinggal di akhir file
         wb = _oxl.load_workbook(uf, read_only=True, data_only=True)
         for sheet_name in wb.sheetnames:
             bulan = MONTH_MAP_ID.get(sheet_name.strip()[:3].title())
             if not bulan:
                 continue
             ws = wb[sheet_name]
-            total_jam, n_kejadian = 0.0, 0
             for row in ws.iter_rows(values_only=True):
+                tgl = row[0] if len(row) > 0 else None
                 kegiatan = row[1] if len(row) > 1 else None
+                account = row[2] if len(row) > 2 else None
+                remark = row[5] if len(row) > 5 else None
                 jumlah = row[10] if len(row) > 10 else None
-                if kegiatan in REPAIR_KEGIATAN and isinstance(jumlah, (int, float)):
-                    total_jam += jumlah
-                    n_kejadian += 1
-            if n_kejadian > 0:
-                rows.append(dict(lokasi=site, bulan=bulan, total_jam=total_jam, n_kejadian=n_kejadian))
+                if kegiatan in REPAIR_KEGIATAN and isinstance(jumlah, (int, float)) and remark:
+                    m = KODE_PATTERN.match(str(remark).strip())
+                    kode_unit = m.group(1) if m else None
+                    id_unit, nama_unit, jenis_unit = None, None, None
+                    if kode_unit is not None and kode_lookup is not None and kode_unit in kode_lookup.index:
+                        lu = kode_lookup.loc[kode_unit]
+                        id_unit, nama_unit, jenis_unit = lu["id_unit"], lu["nama_unit"], lu["jenis_unit"]
+                    rows.append(dict(
+                        lokasi=site, bulan=bulan,
+                        tanggal=tgl.date().isoformat() if hasattr(tgl, "date") else None,
+                        account=str(account) if account is not None else None,
+                        kode_unit=kode_unit, id_unit=id_unit, nama_unit=nama_unit, jenis_unit=jenis_unit,
+                        kegiatan=kegiatan, remark=str(remark).strip(), jumlah_jam=float(jumlah),
+                    ))
         wb.close()
     return pd.DataFrame(rows)
 
@@ -441,20 +471,21 @@ with st.sidebar:
         sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
 
     uploaded_workshop = st.file_uploader(
-        "Upload data Workshop (jurnal harian, utk MTTR) \u2014 bisa pilih beberapa file sekaligus (opsional)",
+        "Upload data Workshop (jurnal harian, utk MTTR) \u2014 bisa pilih beberapa file sekaligus (opsional, akan pakai data default kalau tidak diisi)",
         type=["xls", "xlsx"], accept_multiple_files=True)
     if uploaded_workshop:
         try:
-            mttr_raw = load_workshop_mttr_files(uploaded_workshop)
+            mttr_raw = load_workshop_mttr_files(uploaded_workshop, df_raw)
             if not mttr_raw.empty:
                 st.success(f"Berhasil memuat data MTTR dari {len(uploaded_workshop)} file workshop ({mttr_raw['lokasi'].nunique()} site).")
             else:
                 st.warning("File workshop terbaca, tapi tidak ada baris perbaikan yang valid ditemukan.")
+                mttr_raw = load_mttr_data(MTTR_DATA_PATH)
         except Exception as e:
             st.error(f"Gagal membaca file workshop: {e}")
-            mttr_raw = pd.DataFrame()
+            mttr_raw = load_mttr_data(MTTR_DATA_PATH)
     else:
-        mttr_raw = pd.DataFrame()
+        mttr_raw = load_mttr_data(MTTR_DATA_PATH)
 
     # Tambahkan kolom 'kategori' (AB/TR) ke data maintenance & sparepart, dicocokkan lewat nama_unit
     # terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori. Hasilnya disimpan kembali
@@ -1861,7 +1892,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         avail_target5 = (100 - dt_avg_t5) if dt_avg_t5 is not None else None
         avail_aktual5 = (100 - dt_avg_r5) if dt_avg_r5 is not None else None
 
-        # --- Hitung MTTR (Mean Time To Repair) dari data Workshop, difilter site & bulan yg sedang aktif ---
+        # --- Hitung MTTR (Mean Time To Repair) dari data Workshop (per kejadian), difilter site & bulan yg sedang aktif ---
         mttr_val5 = None
         mttr_n5 = 0
         if mttr_data is not None and not mttr_data.empty:
@@ -1871,8 +1902,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             if month_list:
                 m5mttr = m5mttr[m5mttr["bulan"].isin(month_list)]
             if not m5mttr.empty:
-                total_jam5 = m5mttr["total_jam"].sum()
-                mttr_n5 = int(m5mttr["n_kejadian"].sum())
+                total_jam5 = m5mttr["jumlah_jam"].sum()
+                mttr_n5 = len(m5mttr)
                 mttr_val5 = (total_jam5 / mttr_n5) if mttr_n5 else None
 
         # --- Hitung per Site & Jenis Unit lebih awal, dipakai baik di kartu KPI maupun chart di bawah ---
