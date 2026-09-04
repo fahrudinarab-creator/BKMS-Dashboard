@@ -487,32 +487,37 @@ with st.sidebar:
     else:
         mttr_raw = load_mttr_data(MTTR_DATA_PATH)
 
-    # Tambahkan kolom 'kategori' (AB/TR) ke data maintenance & sparepart, dicocokkan lewat nama_unit
-    # terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori. Hasilnya disimpan kembali
-    # ke file CSV-nya (data_maintenance.csv & data_sparepart.csv) supaya kolom kategori permanen di file.
+    # Tambahkan kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' ke data maintenance & sparepart, dicocokkan lewat
+    # nama_unit terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori/jenis unit. Hasilnya disimpan
+    # kembali ke file CSV-nya (data_maintenance.csv & data_sparepart.csv) supaya kolom2 ini permanen di file.
     if not df_raw.empty and "nama_unit" in df_raw.columns and "kategori" in df_raw.columns:
+        _unit_lookup_cols = [c for c in ["kategori", "jenis_unit", "id_unit"] if c in df_raw.columns]
         _kategori_lookup = (
-            df_raw.dropna(subset=["nama_unit", "kategori"])
+            df_raw.dropna(subset=["nama_unit"])
             .assign(_nama_unit_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
             .drop_duplicates(subset=["_nama_unit_key"])
-            .set_index("_nama_unit_key")["kategori"]
+            .set_index("_nama_unit_key")[_unit_lookup_cols]
         )
         if not maint_raw.empty and "nama_unit" in maint_raw.columns:
             maint_raw = maint_raw.copy()
-            maint_raw["kategori"] = maint_raw["nama_unit"].astype(str).str.strip().str.upper().map(_kategori_lookup)
+            _maint_key = maint_raw["nama_unit"].astype(str).str.strip().str.upper()
+            for _col in _unit_lookup_cols:
+                maint_raw[_col] = _maint_key.map(_kategori_lookup[_col])
             try:
                 maint_raw.to_csv(MAINT_DATA_PATH, index=False)
                 load_maintenance_data.clear()
             except Exception as _e_maint_save:
-                st.warning(f"Kolom kategori berhasil ditambahkan, tapi gagal menyimpan ke {MAINT_DATA_PATH.name}: {_e_maint_save}")
+                st.warning(f"Kolom kategori/jenis_unit berhasil ditambahkan, tapi gagal menyimpan ke {MAINT_DATA_PATH.name}: {_e_maint_save}")
         if not sparepart_raw.empty and "nama_unit" in sparepart_raw.columns:
             sparepart_raw = sparepart_raw.copy()
-            sparepart_raw["kategori"] = sparepart_raw["nama_unit"].astype(str).str.strip().str.upper().map(_kategori_lookup)
+            _sp_key = sparepart_raw["nama_unit"].astype(str).str.strip().str.upper()
+            for _col in _unit_lookup_cols:
+                sparepart_raw[_col] = _sp_key.map(_kategori_lookup[_col])
             try:
                 sparepart_raw.to_csv(SPAREPART_DATA_PATH, index=False)
                 load_sparepart_data.clear()
             except Exception as _e_sp_save:
-                st.warning(f"Kolom kategori berhasil ditambahkan, tapi gagal menyimpan ke {SPAREPART_DATA_PATH.name}: {_e_sp_save}")
+                st.warning(f"Kolom kategori/jenis_unit berhasil ditambahkan, tapi gagal menyimpan ke {SPAREPART_DATA_PATH.name}: {_e_sp_save}")
 
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
 
