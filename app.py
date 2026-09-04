@@ -1834,7 +1834,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
-                if n_maint4 > 12:
+                if n_maint4 > 6:
                     # Kategori banyak: putar teks label vertikal (90 derajat) supaya tidak numpuk horizontal
                     bodyPr = dl.text_frame._txBody.find(_qn4('a:bodyPr'))
                     if bodyPr is not None:
