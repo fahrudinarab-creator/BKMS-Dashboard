@@ -1755,7 +1755,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_m3b.has_data_labels = True
             dls_m3b = plot_m3b.data_labels
             dls_m3b.number_format = '0"%"'; dls_m3b.number_format_is_linked = False
-            dls_m3b.font.size = Pt(9); dls_m3b.font.bold = True; dls_m3b.font.color.rgb = TEXT_DARK; dls_m3b.font.name = "Calibri"
+            dls_m3b.font.size = Pt(7.5); dls_m3b.font.bold = True; dls_m3b.font.color.rgb = TEXT_DARK; dls_m3b.font.name = "Calibri"
             dls_m3b.position = XL_LABEL_POSITION.OUTSIDE_END
             style_chart_light(chart_m3b, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
             n_cat3b = len(chart_src3)
@@ -1813,7 +1813,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
-            label_font_r4 = 10 if n_maint4 <= 6 else (9 if n_maint4 <= 12 else 7.5)
+            label_font_r4 = 10 if n_maint4 <= 6 else (9 if n_maint4 <= 12 else (7.5 if n_maint4 <= 20 else 6))
+            simplify_label_r4 = n_maint4 > 20  # kalau kategori sangat banyak, label disederhanakan (persentase saja, tanpa baris Rupiah)
             from pptx.oxml.ns import qn as _qn4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = maint_su4["cap"].iloc[i]
@@ -1824,13 +1825,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dl = pt.data_label
                 dl.has_text_frame = True
                 tf = dl.text_frame
-                tf.text = f"{v:.0f}%"
-                p2 = tf.add_paragraph()
-                p2.text = f"({gap_sign4}{fmt_rp(abs(gap_val4))})"
+                if simplify_label_r4:
+                    tf.text = f"{v:.0f}%"
+                else:
+                    tf.text = f"{v:.0f}%"
+                    p2 = tf.add_paragraph()
+                    p2.text = f"({gap_sign4}{fmt_rp(abs(gap_val4))})"
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
-                if n_maint4 > 6:
+                if n_maint4 > 12:
+                    # Kategori banyak: putar teks label vertikal (90 derajat) supaya tidak numpuk horizontal
                     bodyPr = dl.text_frame._txBody.find(_qn4('a:bodyPr'))
                     if bodyPr is not None:
                         bodyPr.set('rot', '-5400000')
