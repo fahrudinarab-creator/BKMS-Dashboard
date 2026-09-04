@@ -1796,10 +1796,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         maint_su4["gap_rp"] = maint_su4["maint_r"] - maint_su4["maint_b"]
         # Diurutkan dari gap Rupiah (over) paling tinggi dulu
         maint_su4 = maint_su4.sort_values("gap_rp", ascending=False)
+        n_maint4_total = len(maint_su4)
+        # Batasi maks 8 kategori yg ditampilkan di chart (panel ini cukup sempit) -- supaya label TIDAK PERNAH terlalu
+        # padat/tumpang tindih apapun cara render-nya (LibreOffice/PowerPoint), sisanya cukup disebut di catatan
+        top_n_maint4 = 8
+        maint_su4_sisa = maint_su4.iloc[top_n_maint4:] if n_maint4_total > top_n_maint4 else maint_su4.iloc[0:0]
+        maint_su4 = maint_su4.head(top_n_maint4)
         n_maint4 = max(len(maint_su4), 1)
 
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 % Capaian Biaya Maintenance \u2014 per Site & Jenis Unit", height=0.4)
+        title_maint4 = (f"\U0001F527 % Capaian Biaya Maintenance \u2014 Top {top_n_maint4} dari {n_maint4_total} Unit"
+                         if n_maint4_total > top_n_maint4 else "\U0001F527 % Capaian Biaya Maintenance \u2014 per Site & Jenis Unit")
+        add_panel_header(s, 0.4, panel_top4, 6.05, title_maint4, height=0.4)
         chart_top_r4 = panel_top4 + 0.45
         note_h4 = 0.95
         chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
@@ -1813,7 +1821,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
-            label_font_r4 = 8.5 if n_maint4 <= 6 else (7.5 if n_maint4 <= 12 else (6.5 if n_maint4 <= 20 else 5.5))
+            label_font_r4 = 9 if n_maint4 <= 6 else 8
             from pptx.oxml.ns import qn as _qn4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = maint_su4["cap"].iloc[i]
