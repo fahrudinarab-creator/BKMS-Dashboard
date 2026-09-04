@@ -1799,7 +1799,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         n_maint4_total = len(maint_su4)
         # Batasi maks 8 kategori yg ditampilkan di chart (panel ini cukup sempit) -- supaya label TIDAK PERNAH terlalu
         # padat/tumpang tindih apapun cara render-nya (LibreOffice/PowerPoint), sisanya cukup disebut di catatan
-        top_n_maint4 = 8
+        top_n_maint4 = 6
         maint_su4_sisa = maint_su4.iloc[top_n_maint4:] if n_maint4_total > top_n_maint4 else maint_su4.iloc[0:0]
         maint_su4 = maint_su4.head(top_n_maint4)
         n_maint4 = max(len(maint_su4), 1)
@@ -1820,9 +1820,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4.series[0].format.fill.solid(); chart_r4.series[0].format.fill.fore_color.rgb = TEAL
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
-            plot_r4.gap_width = 50
-            label_font_r4 = 9 if n_maint4 <= 6 else 8
-            from pptx.oxml.ns import qn as _qn4
+            plot_r4.gap_width = 80
+            label_font_r4 = 9
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = maint_su4["cap"].iloc[i]
                 gap_val4 = maint_su4["gap_rp"].iloc[i]
@@ -1832,16 +1831,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dl = pt.data_label
                 dl.has_text_frame = True
                 tf = dl.text_frame
-                # Label 1 baris (bukan 2 baris terpisah) supaya lebih ringkas & konsisten render-nya di berbagai aplikasi
-                tf.text = f"{v:.0f}% ({gap_sign4}{fmt_rp(abs(gap_val4))})"
+                # Label 2 baris horizontal (TANPA rotasi) -- rotasi ternyata di-render tidak konsisten di PowerPoint,
+                # jadi lebih aman pakai 2 baris biasa. Karena chart ini sudah dibatasi maks 8 kategori, ruang per bar cukup lega.
+                tf.text = f"{v:.0f}%"
+                p2 = tf.add_paragraph()
+                p2.text = f"({gap_sign4}{fmt_rp(abs(gap_val4))})"
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
-                if n_maint4 > 6:
-                    # Kategori banyak: putar teks label vertikal (90 derajat) supaya tidak numpuk horizontal
-                    bodyPr = dl.text_frame._txBody.find(_qn4('a:bodyPr'))
-                    if bodyPr is not None:
-                        bodyPr.set('rot', '-5400000')
             style_chart_light(chart_r4, legend=False)
             cat_font_r4 = 8 if n_maint4 <= 10 else (6.5 if n_maint4 <= 20 else 5.3)
             chart_r4.category_axis.tick_labels.font.size = Pt(cat_font_r4)
