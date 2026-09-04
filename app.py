@@ -1814,7 +1814,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
             label_font_r4 = 10 if n_maint4 <= 6 else (9 if n_maint4 <= 12 else (7.5 if n_maint4 <= 20 else 6))
-            simplify_label_r4 = n_maint4 > 20  # kalau kategori sangat banyak, label disederhanakan (persentase saja, tanpa baris Rupiah)
+            simplify_label_r4 = True  # label chart selalu disederhanakan (persentase saja) supaya konsisten & tidak tumpang tindih di semua aplikasi
             from pptx.oxml.ns import qn as _qn4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = maint_su4["cap"].iloc[i]
