@@ -1359,8 +1359,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         card_top2 = 0.98
         card_h2 = 1.85
-        card_gap2 = 0.25
-        card_w2 = (12.5 - 2 * card_gap2) / 3
+        card_gap2 = 0.4
+        card_w2 = (12.5 - card_gap2) / 2
 
         add_kpi_card(s, 0.4, card_top2, card_w2, card_h2, "\U0001F3AF", GOLD, GOLD,
                      "Rata-rata Capaian Utilisasi",
@@ -1377,13 +1377,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                      (f"\u2717 {n_over_avail2} unit di bawah target" if (avg_avail_cap2 is not None and n_over_avail2 > 0)
                       else (f"\u2713 Semua unit dalam target" if avg_avail_cap2 is not None else "Data tidak tersedia")),
                      avg_avail_cap2 is not None and n_over_avail2 == 0)
-
-        add_kpi_card(s, 0.4 + 2 * (card_w2 + card_gap2), card_top2, card_w2, card_h2, "\U0001F4CA", RGBColor(0x8E, 0x5B, 0xC9), RGBColor(0x8E, 0x5B, 0xC9),
-                     "Jumlah Site & Jenis Unit Dianalisis",
-                     (f"{len(avail_rows)}" if avail_rows else "-"),
-                     "",
-                     "Kombinasi Site \u00d7 Jenis Unit" if avail_rows else "Data tidak tersedia",
-                     True)
 
         panel_top2 = card_top2 + card_h2 + 0.15
         panel_bottom2 = 7.3
