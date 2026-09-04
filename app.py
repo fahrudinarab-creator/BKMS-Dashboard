@@ -2035,7 +2035,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                      "Maintenance Rutin vs Non-Rutin",
                      (f"{pct_rutin5:.0f}% / {pct_nonrutin5:.0f}%" if pct_rutin5 is not None else "-"),
                      "",
-                     (f"\u2713 RUTIN {pct_rutin5:.0f}%" if (pct_rutin5 is not None and rutin_good5) else (f"\u2717 NON-RUTIN {pct_nonrutin5:.0f}% DOMINAN" if pct_rutin5 is not None else "Data tidak tersedia")),
+                     (f"\u2713 Rutin Lebih Dominan" if (pct_rutin5 is not None and rutin_good5) else (f"\u2717 Non-Rutin Lebih Dominan" if pct_rutin5 is not None else "Data tidak tersedia")),
                      rutin_good5)
 
         # ================= BARIS BAWAH =================
