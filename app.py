@@ -1260,7 +1260,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 plot_x.has_data_labels = True
                 dls_x = plot_x.data_labels
                 dls_x.number_format = '0"%"'; dls_x.number_format_is_linked = False
-                dls_x.font.size = Pt(8.5); dls_x.font.bold = True; dls_x.font.color.rgb = TEXT_DARK; dls_x.font.name = "Calibri"
+                label_font_x = 11 if n_x <= 10 else (9.5 if n_x <= 20 else 7.5)
+                dls_x.font.size = Pt(label_font_x); dls_x.font.bold = True; dls_x.font.color.rgb = TEXT_DARK; dls_x.font.name = "Calibri"
                 dls_x.position = XL_LABEL_POSITION.OUTSIDE_END
                 # Label angka Prestasi ditampilkan utk SEMUA nilai (termasuk yg >=100%), diwarnai merah kalau <100%
                 for i_pt_x, pt_x in enumerate(chart_x.series[0].points):
@@ -1270,12 +1271,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     if prestasi_val_x is not None:
                         dl_x.text_frame.text = f"{prestasi_val_x:.0f}%"
                         r0_x = dl_x.text_frame.paragraphs[0].runs[0]
-                        r0_x.font.size = Pt(8.5); r0_x.font.bold = True; r0_x.font.name = "Calibri"
+                        r0_x.font.size = Pt(label_font_x); r0_x.font.bold = True; r0_x.font.name = "Calibri"
                         r0_x.font.color.rgb = RED if prestasi_val_x < 100 else TEXT_DARK
                     else:
                         dl_x.text_frame.text = "-"
                         r0_x = dl_x.text_frame.paragraphs[0].runs[0]
-                        r0_x.font.size = Pt(8.5); r0_x.font.bold = True; r0_x.font.name = "Calibri"; r0_x.font.color.rgb = TEXT_MUTED
+                        r0_x.font.size = Pt(label_font_x); r0_x.font.bold = True; r0_x.font.name = "Calibri"; r0_x.font.color.rgb = TEXT_MUTED
                 style_chart_light(chart_x, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
                 cat_font_x = 8.5 if n_x <= 8 else (7 if n_x <= 14 else (6 if n_x <= 22 else 5.3))
                 chart_x.category_axis.tick_labels.font.size = Pt(cat_font_x)
@@ -1410,7 +1411,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 plot_y.has_data_labels = True
                 dls_y = plot_y.data_labels
                 dls_y.number_format = num_fmt; dls_y.number_format_is_linked = False
-                dls_y.font.size = Pt(9.5); dls_y.font.bold = True; dls_y.font.color.rgb = TEXT_DARK; dls_y.font.name = "Calibri"
+                label_font_y = 12 if n_y <= 10 else (10 if n_y <= 20 else 8)
+                dls_y.font.size = Pt(label_font_y); dls_y.font.bold = True; dls_y.font.color.rgb = TEXT_DARK; dls_y.font.name = "Calibri"
                 dls_y.position = XL_LABEL_POSITION.OUTSIDE_END
                 style_chart_light(chart_y, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
                 cat_font_y = 9 if n_y <= 8 else (7.5 if n_y <= 14 else (6.5 if n_y <= 22 else 5.5))
@@ -1760,7 +1762,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_m3b.has_data_labels = True
             dls_m3b = plot_m3b.data_labels
             dls_m3b.number_format = '0"%"'; dls_m3b.number_format_is_linked = False
-            dls_m3b.font.size = Pt(9); dls_m3b.font.bold = True; dls_m3b.font.color.rgb = TEXT_DARK; dls_m3b.font.name = "Calibri"
+            dls_m3b.font.size = Pt(11.5); dls_m3b.font.bold = True; dls_m3b.font.color.rgb = TEXT_DARK; dls_m3b.font.name = "Calibri"
             dls_m3b.position = XL_LABEL_POSITION.OUTSIDE_END
             style_chart_light(chart_m3b, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
             n_cat3b = len(chart_src3)
@@ -1818,7 +1820,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
-            label_font_r4 = 10 if n_maint4 <= 6 else (9 if n_maint4 <= 12 else 7.5)
+            label_font_r4 = 13 if n_maint4 <= 6 else (11.5 if n_maint4 <= 12 else 9.5)
             from pptx.oxml.ns import qn as _qn4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = maint_su4["cap"].iloc[i]
@@ -1903,7 +1905,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             dls_m4 = plot_m4.data_labels
             dls_m4.number_format = '0"%"'; dls_m4.number_format_is_linked = False
             n_rows4 = len(rutin_shown4)
-            label_font_m4 = 10 if n_rows4 <= 8 else (9 if n_rows4 <= 12 else 7.5)
+            label_font_m4 = 13 if n_rows4 <= 8 else (11.5 if n_rows4 <= 12 else 9.5)
             dls_m4.font.size = Pt(label_font_m4); dls_m4.font.bold = True; dls_m4.font.color.rgb = WHITE; dls_m4.font.name = "Calibri"
             style_chart_light(chart_m4, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
             cat_font_m4 = 8 if n_rows4 <= 8 else (7 if n_rows4 <= 12 else 6)
@@ -2070,7 +2072,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_dt5.has_data_labels = True
             dls_dt5 = plot_dt5.data_labels
             dls_dt5.number_format = '0"%"'; dls_dt5.number_format_is_linked = False
-            label_font_dt5 = 9 if n_dt5 <= 12 else (7 if n_dt5 <= 25 else 5.5)
+            label_font_dt5 = 12 if n_dt5 <= 12 else (9.5 if n_dt5 <= 25 else 7.5)
             dls_dt5.font.size = Pt(label_font_dt5); dls_dt5.font.bold = True; dls_dt5.font.color.rgb = TEXT_DARK; dls_dt5.font.name = "Calibri"
             dls_dt5.position = XL_LABEL_POSITION.OUTSIDE_END
             style_chart_light(chart_dt5, legend=False)
