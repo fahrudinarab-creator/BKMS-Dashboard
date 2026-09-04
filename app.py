@@ -1571,9 +1571,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if over_items3:
             worst_label3 = max(over_items3, key=over_items3.get)
             worst_val3 = over_items3[worst_label3]
-            add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u26A0",
-                             f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%) \u2014 perlu efisiensi biaya s/d {period}.",
-                             RED_BG, RED, RED)
+            if worst_label3 == "Biaya Maintenance" and cap_fisik_maint3 is not None:
+                if cap_fisik_maint3 > 100:
+                    fisik_txt3 = f"sejalan dengan Downtime yang juga OVER ({cap_fisik_maint3:.1f}%)."
+                else:
+                    fisik_txt3 = f"namun Downtime justru DALAM TARGET ({cap_fisik_maint3:.1f}%)."
+                add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u26A0",
+                                 f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%), {fisik_txt3}",
+                                 RED_BG, RED, RED)
+            else:
+                add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u26A0",
+                                 f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%) \u2014 perlu efisiensi biaya s/d {period}.",
+                                 RED_BG, RED, RED)
         else:
             add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u2705",
                              "Seluruh komponen biaya berada dalam/di bawah budget.",
