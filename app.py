@@ -1813,8 +1813,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
-            label_font_r4 = 10 if n_maint4 <= 6 else (9 if n_maint4 <= 12 else (7.5 if n_maint4 <= 20 else 6))
-            simplify_label_r4 = True  # label chart selalu disederhanakan (persentase saja) supaya konsisten & tidak tumpang tindih di semua aplikasi
+            label_font_r4 = 8.5 if n_maint4 <= 6 else (7.5 if n_maint4 <= 12 else (6.5 if n_maint4 <= 20 else 5.5))
             from pptx.oxml.ns import qn as _qn4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = maint_su4["cap"].iloc[i]
@@ -1825,12 +1824,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dl = pt.data_label
                 dl.has_text_frame = True
                 tf = dl.text_frame
-                if simplify_label_r4:
-                    tf.text = f"{v:.0f}%"
-                else:
-                    tf.text = f"{v:.0f}%"
-                    p2 = tf.add_paragraph()
-                    p2.text = f"({gap_sign4}{fmt_rp(abs(gap_val4))})"
+                # Label 1 baris (bukan 2 baris terpisah) supaya lebih ringkas & konsisten render-nya di berbagai aplikasi
+                tf.text = f"{v:.0f}% ({gap_sign4}{fmt_rp(abs(gap_val4))})"
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
