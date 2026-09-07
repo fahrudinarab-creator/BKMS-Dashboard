@@ -2807,12 +2807,17 @@ else:
 
         st.markdown("##### Rincian Pemakaian per Barang")
         search_sp = st.text_input("🔍 Cari nama barang / part number...", "", key="search_sparepart")
-        show_sp = sparepart_df[["tanggal", "lokasi", "nama_unit", "kategori_sparepart", "jenis_pemeliharaan",
-                                 "kode_barang", "part_number", "nama_barang", "qty", "satuan", "biaya"]].rename(columns={
+        _sp_cols_base = ["tanggal", "lokasi", "nama_unit", "kategori_sparepart", "jenis_pemeliharaan",
+                          "kode_barang", "part_number", "nama_barang", "qty", "satuan", "biaya"]
+        _sp_rename = {
             "tanggal": "Tanggal", "lokasi": "Site", "nama_unit": "Nama Unit", "kategori_sparepart": "Kategori Sparepart",
             "jenis_pemeliharaan": "Jenis", "kode_barang": "Kode Barang", "part_number": "Part Number",
             "nama_barang": "Nama Barang", "qty": "Qty", "satuan": "Satuan", "biaya": "Biaya",
-        })
+        }
+        if "jenis_unit" in sparepart_df.columns:
+            _sp_cols_base.insert(3, "jenis_unit")  # taruh setelah nama_unit
+            _sp_rename["jenis_unit"] = "Jenis Unit"
+        show_sp = sparepart_df[_sp_cols_base].rename(columns=_sp_rename)
         if search_sp:
             mask = (show_sp["Nama Barang"].str.contains(search_sp, case=False, na=False) |
                     show_sp["Part Number"].str.contains(search_sp, case=False, na=False))
