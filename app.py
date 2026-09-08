@@ -884,7 +884,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             value_top = top + (0.78 if narrow else 0.66)
             add_textbox(slide, left, value_top, width, 0.5, value, size=value_size, bold=True, color=TEXT_DARK, align=PP_ALIGN.CENTER)
             # sub text (target/budget)
-            add_textbox(slide, left + 0.25, value_top + (0.38 if narrow else 0.42), width - 0.5, 0.3, sub_text, size=sub_size, color=TEXT_MUTED)
+            add_textbox(slide, left, value_top + (0.38 if narrow else 0.42), width, 0.3, sub_text, size=sub_size, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
         else:
             # Tidak ada sub-teks: angka ditengahkan vertikal (MIDDLE anchor) di ruang antara label & pill,
             # supaya tidak ada celah kosong besar seperti kalau pakai box TOP-anchored biasa.
@@ -1871,6 +1871,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # --- Hitung MTTR (Mean Time To Repair) dari data Workshop (per kejadian), difilter site, bulan, & kategori (AB/TR) yg sedang aktif ---
         mttr_val5 = None
         mttr_n5 = 0
+        mttr_per_site5 = []
         if mttr_data is not None and not mttr_data.empty:
             m5mttr = mttr_data.copy()
             if site_list:
@@ -1884,6 +1885,28 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 total_jam5 = m5mttr["jumlah_jam"].sum()
                 mttr_n5 = len(m5mttr)
                 mttr_val5 = (total_jam5 / mttr_n5) if mttr_n5 else None
+                # --- Breakdown MTTR per site ---
+                if m5mttr["lokasi"].nunique() > 1:
+                    site_mttr_agg5 = m5mttr.groupby("lokasi").agg(total_jam=("jumlah_jam", "sum"), n=("jumlah_jam", "size"))
+                    site_mttr_agg5 = site_mttr_agg5.sort_values("total_jam", ascending=False)
+                    for site5m, row5m in site_mttr_agg5.iterrows():
+                        if row5m["n"] <= 0:
+                            continue
+                        mttr_site5 = row5m["total_jam"] / row5m["n"]
+                        site_short5m = SITE_ABBR.get(site5m, site5m)
+                        mttr_per_site5.append(f"{site_short5m} {mttr_site5:.1f}j")
+
+        # --- Breakdown % Capaian Downtime per site ---
+        cap_dt_per_site5 = []
+        if not sasaran_mutu_data.empty and sasaran_mutu_data["lokasi"].nunique() > 1:
+            site_dt_agg5 = sasaran_mutu_data.groupby("lokasi").agg(dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
+            site_dt_agg5 = site_dt_agg5.sort_values("dt_r", ascending=False)
+            for site5d, row5d in site_dt_agg5.iterrows():
+                if not row5d["dt_t"]:
+                    continue
+                cap_dt_site5 = row5d["dt_r"] / row5d["dt_t"] * 100
+                site_short5d = SITE_ABBR.get(site5d, site5d)
+                cap_dt_per_site5.append(f"{site_short5d} {cap_dt_site5:.0f}%")
 
         # --- Hitung per Site & Jenis Unit lebih awal, dipakai baik di kartu KPI maupun chart di bawah ---
         dt_su5 = pd.DataFrame()
@@ -1907,7 +1930,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_kpi_card(s, 0.4, card_top5, card_w5, card_h5, "\u23f8", RED, RED,
                      "% Capaian Realisasi Downtime (s/d " + period + ")",
                      (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
-                     "",
+                     ("  \u00b7  ".join(cap_dt_per_site5) if cap_dt_per_site5 else ""),
                      (f"\u2717 Over Target" if (cap_dt5 is not None and cap_dt5 > 100)
                       else (f"\u2713 DALAM TARGET" if cap_dt5 is not None else "Data tidak tersedia")),
                      good_dt5)
@@ -1915,7 +1938,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\u26a1", TEAL, TEAL,
                      "MTTR (Mean Time To Repair)",
                      (f"{mttr_val5:.1f} jam" if mttr_val5 is not None else "-"),
-                     "",
+                     ("  \u00b7  ".join(mttr_per_site5) if mttr_per_site5 else ""),
                      (f"Dari {mttr_n5} kejadian perbaikan" if mttr_val5 is not None else "Data Workshop belum tersedia"),
                      True)
 
