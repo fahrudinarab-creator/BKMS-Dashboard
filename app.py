@@ -1764,14 +1764,25 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rutin_pivot4["label"] = rutin_pivot4["site_short"] + " \u2014 " + rutin_pivot4["jenis_unit"]
                 rutin_pivot4 = rutin_pivot4.sort_values("total", ascending=False)
 
+                # --- % Capaian Downtime per (lokasi, jenis_unit), dari Sasaran Mutu, utk ditampilkan di sisi kanan chart ---
+                if not sasaran_mutu_data.empty:
+                    dt_su4b = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "jenis_unit"], as_index=False).agg(
+                        dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
+                    dt_su4b["cap_dt"] = dt_su4b.apply(lambda r: (r["dt_r"] / r["dt_t"] * 100) if r["dt_t"] else None, axis=1)
+                    dt_lookup4b = {(r["lokasi"], r["jenis_unit"]): r["cap_dt"] for _, r in dt_su4b.iterrows()}
+                    rutin_pivot4["cap_downtime"] = rutin_pivot4.apply(lambda r: dt_lookup4b.get((r["lokasi"], r["jenis_unit"])), axis=1)
+                else:
+                    rutin_pivot4["cap_downtime"] = None
+
         if not rutin_pivot4.empty:
             max_rows4 = 14
             rutin_shown4 = rutin_pivot4.head(max_rows4).sort_values("total", ascending=True)  # ascending: biar batang terbesar di ATAS pada bar chart horizontal
+            chart_w_m4 = 4.55  # dipersempit sedikit dari 5.75 utk memberi ruang kolom % Capaian Downtime di kanan
             cd_m4 = CategoryChartData()
             cd_m4.categories = list(rutin_shown4["label"])
             cd_m4.add_series("Rutin", tuple(round(v, 1) for v in rutin_shown4["pct_rutin"]))
             cd_m4.add_series("Non Rutin", tuple(round(v, 1) for v in rutin_shown4["pct_nonrutin"]))
-            gframe_m4 = s.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED_100, Inches(7.0), Inches(chart_top_m4), Inches(5.75), Inches(chart_h_m4), cd_m4)
+            gframe_m4 = s.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED_100, Inches(7.0), Inches(chart_top_m4), Inches(chart_w_m4), Inches(chart_h_m4), cd_m4)
             chart_m4 = gframe_m4.chart
             chart_m4.series[0].format.fill.solid(); chart_m4.series[0].format.fill.fore_color.rgb = TEAL
             chart_m4.series[1].format.fill.solid(); chart_m4.series[1].format.fill.fore_color.rgb = GOLD
@@ -1790,6 +1801,28 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_m4.value_axis.tick_labels.font.size = Pt(cat_font_m4)
             chart_m4.value_axis.has_major_gridlines = False
             chart_m4.value_axis.visible = False
+
+            # --- Kolom "% Capaian Downtime" di sisi kanan chart, sejajar tiap baris ---
+            col_dt_x4 = 7.0 + chart_w_m4 + 0.1
+            col_dt_w4 = 6.05 - (col_dt_x4 - 6.85) - 0.15
+            legend_h_m4 = 0.32  # perkiraan tinggi area legend di atas plot area
+            plot_h_m4 = chart_h_m4 - legend_h_m4
+            row_h_m4b = plot_h_m4 / n_rows4
+            add_textbox(s, col_dt_x4, chart_top_m4, col_dt_w4, legend_h_m4, "Cap. Downtime", size=7.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            for i4dt, (_, r4dt) in enumerate(rutin_shown4.iterrows()):
+                # rutin_shown4 diurutkan ascending (total terkecil dulu) -> pada chart horizontal, baris PALING BAWAH = index 0.
+                # Jadi posisi dari ATAS (from_top) = n_rows4-1-i4dt.
+                from_top4 = n_rows4 - 1 - i4dt
+                y4dt = chart_top_m4 + legend_h_m4 + from_top4 * row_h_m4b
+                cap_dt_val = r4dt["cap_downtime"]
+                if cap_dt_val is not None and not pd.isna(cap_dt_val):
+                    dt_color4 = RED if cap_dt_val > 100 else GREEN
+                    dt_text4 = f"{cap_dt_val:.0f}%"
+                else:
+                    dt_color4 = TEXT_MUTED
+                    dt_text4 = "-"
+                dt_tb4 = add_textbox(s, col_dt_x4, y4dt, col_dt_w4, row_h_m4b, dt_text4, size=min(9, cat_font_m4 + 1), bold=True, color=dt_color4, align=PP_ALIGN.CENTER)
+                dt_tb4.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
         else:
             add_textbox(s, 7.0, chart_top_m4 + 0.1, 5.6, 0.6,
                         "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
