@@ -2014,14 +2014,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              "Data unit belum tersedia untuk rekomendasi strategi perbaikan.",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
-        # --- Panel kanan: Kategori Sparepart & Nilai Rupiah (keseluruhan divisi ini) ---
+        # --- Panel kanan: Kategori Sparepart & Nilai Rupiah, dipecah per Site (keseluruhan divisi ini) ---
         add_card_panel(s, right_x5, panel_top5, right_w5, panel_h5, accent_color=GOLD)
-        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Kategori Sparepart \u2014 Nilai Tertinggi", height=0.4)
+        add_panel_header(s, right_x5, panel_top5, right_w5, "\U0001F527 Kategori Sparepart \u2014 Nilai Tertinggi per Site", height=0.4)
 
         list_top5 = panel_top5 + 0.5
         list_avail5 = panel_h5 - 0.5 - 0.15
-        # Agregat kategori_sparepart & total biaya utk keseluruhan site/kategori yg sedang dirender di slide ini
+        # Agregat kategori_sparepart x lokasi & total biaya utk keseluruhan kategori (AB/TR) yg sedang dirender di slide ini
         kat_agg5 = pd.DataFrame()
+        kat_site_agg5 = pd.DataFrame()
+        site_order5 = []
         if maint_data is not None and not maint_data.empty and "kategori_sparepart" in maint_data.columns:
             m5 = maint_data.copy()
             if "lokasi" in m5.columns and site_list:
@@ -2037,15 +2039,39 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             if not m5.empty:
                 kat_agg5 = m5.groupby("kategori_sparepart", as_index=False).agg(biaya=("biaya", "sum"))
                 kat_agg5 = kat_agg5.sort_values("biaya", ascending=False).head(10)
+                top_kats5 = set(kat_agg5["kategori_sparepart"])
+                # Breakdown per site, HANYA utk 10 kategori teratas yg akan ditampilkan
+                m5_top = m5[m5["kategori_sparepart"].isin(top_kats5)]
+                kat_site_agg5 = m5_top.groupby(["kategori_sparepart", "lokasi"], as_index=False).agg(biaya=("biaya", "sum"))
+                # Urutan site utk legenda & warna: berdasarkan total biaya site tsb (site kontribusi terbesar duluan)
+                site_order5 = (kat_site_agg5.groupby("lokasi")["biaya"].sum().sort_values(ascending=False).index.tolist())
+
+        SITE_COLORS5 = [GOLD, TEAL, RGBColor(0x8E, 0x5B, 0xC9), RGBColor(0xD9, 0x5C, 0x5C), RGBColor(0x5C, 0x9E, 0xD9), RGBColor(0x7A, 0xA6, 0x5C)]
+        site_color_map5 = {site: SITE_COLORS5[i % len(SITE_COLORS5)] for i, site in enumerate(site_order5)}
 
         if not kat_agg5.empty:
             n_kat5 = len(kat_agg5)
+            # --- Legenda site (kalau lebih dari 1 site) ---
+            legend_h5 = 0.26 if len(site_order5) > 1 else 0
+            if len(site_order5) > 1:
+                lx5 = right_x5 + 0.15
+                for site5 in site_order5:
+                    site_short5 = SITE_ABBR.get(site5, site5)
+                    sw5 = 0.13 + len(site_short5) * 0.072 + 0.15
+                    dot5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(lx5), Inches(list_top5 + 0.06), Inches(0.11), Inches(0.11))
+                    dot5.fill.solid(); dot5.fill.fore_color.rgb = site_color_map5[site5]
+                    dot5.line.fill.background(); dot5.shadow.inherit = False
+                    add_textbox(s, lx5 + 0.15, list_top5 - 0.02, sw5, 0.22, site_short5, size=7, bold=True, color=TEXT_MUTED)
+                    lx5 += sw5 + 0.1
+            list_top5b = list_top5 + legend_h5
+            list_avail5b = list_avail5 - legend_h5
+
             row_gap5 = 0.06  # jarak eksplisit antar baris, supaya bar underline tidak menempel ke baris berikutnya
             max_row_cap5 = 0.42 if n_kat5 >= 5 else 0.75  # kalau kategori sedikit, baris melebar mengisi ruang (tidak kosong)
-            row_h5b = min(max_row_cap5, (list_avail5 - (n_kat5 - 1) * row_gap5) / n_kat5)
+            row_h5b = min(max_row_cap5, (list_avail5b - (n_kat5 - 1) * row_gap5) / n_kat5)
             max_biaya5 = kat_agg5["biaya"].max()
             for i5, (_, r5) in enumerate(kat_agg5.iterrows()):
-                ry5c = list_top5 + i5 * (row_h5b + row_gap5)
+                ry5c = list_top5b + i5 * (row_h5b + row_gap5)
                 rank_bg5 = GOLD
                 rank_txt5 = WHITE
                 circ_size5 = min(0.3, row_h5b * 0.72)
@@ -2058,15 +2084,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rr5 = rp5.add_run(); rr5.text = str(i5 + 1)
                 rr5.font.size = Pt(min(9.5, circ_size5 * 22)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
                 font_row5 = 9.5 if n_kat5 <= 6 else (8.5 if n_kat5 <= 10 else 7.5)
-                text_h5 = row_h5b * 0.62  # teks hanya isi bagian atas baris, sisanya utk jarak visual ke bar
+                text_h5 = row_h5b * 0.55  # baris judul kategori (baris atas)
                 add_textbox(s, right_x5 + 0.55, ry5c, right_w5 - 1.9, text_h5, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
                 add_textbox(s, right_x5 + right_w5 - 1.4, ry5c, 1.25, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD)
-                # bar proporsional tipis di bawah label sbg indikator visual skala, dgn jarak yg jelas dari teks
-                bar_w5 = max(0.05, (right_w5 - 1.9 - 0.1) * (r5["biaya"] / max_biaya5)) if max_biaya5 else 0.05
-                bar_y5 = ry5c + row_h5b - 0.09
-                bar5 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(right_x5 + 0.55), Inches(bar_y5), Inches(bar_w5), Inches(0.045))
-                bar5.fill.solid(); bar5.fill.fore_color.rgb = rank_bg5
-                bar5.line.fill.background(); bar5.shadow.inherit = False
+                # --- Baris kecil kedua: breakdown angka Rupiah eksplisit per site ---
+                kat_rows5 = kat_site_agg5[kat_site_agg5["kategori_sparepart"] == r5["kategori_sparepart"]].sort_values(
+                    "lokasi", key=lambda col: col.map({s5: i5b for i5b, s5 in enumerate(site_order5)}))
+                if not kat_rows5.empty and len(site_order5) > 1:
+                    breakdown_font5 = max(6.5, font_row5 - 1.5)
+                    breakdown_parts5 = [f"{SITE_ABBR.get(kr5['lokasi'], kr5['lokasi'])} {fmt_rp(kr5['biaya'])}" for _, kr5 in kat_rows5.iterrows()]
+                    breakdown_txt5 = "   \u00b7   ".join(breakdown_parts5)
+                    add_textbox(s, right_x5 + 0.55, ry5c + text_h5, right_w5 - 0.75, row_h5b - text_h5, breakdown_txt5, size=breakdown_font5, color=TEXT_MUTED)
         else:
             add_textbox(s, right_x5 + 0.15, list_top5, right_w5 - 0.3, 0.5, "Data Maintenance belum tersedia.", size=9, italic=True, color=TEXT_MUTED)
 
