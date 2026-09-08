@@ -1922,6 +1922,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # --- Hitung % Maintenance Rutin vs Non-Rutin (dari total biaya maintenance), utk Kartu KPI 3 ---
         pct_rutin5 = None
         pct_nonrutin5 = None
+        rutin_per_site5 = []
         if maint_data is not None and not maint_data.empty and "jenis_pemeliharaan" in maint_data.columns:
             m5kpi = maint_data.copy()
             if "lokasi" in m5kpi.columns and site_list:
@@ -1941,12 +1942,23 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 if total_maint5kpi:
                     pct_rutin5 = rutin_biaya5kpi / total_maint5kpi * 100
                     pct_nonrutin5 = nonrutin_biaya5kpi / total_maint5kpi * 100
+                # --- Breakdown per site (kalau site yg aktif lebih dari 1) ---
+                if "lokasi" in m5kpi.columns and m5kpi["lokasi"].nunique() > 1:
+                    site_totals5 = m5kpi.groupby("lokasi")["biaya"].sum().sort_values(ascending=False)
+                    for site5kpi, total5kpi in site_totals5.items():
+                        if total5kpi <= 0:
+                            continue
+                        rutin5kpi_site = m5kpi.loc[(m5kpi["lokasi"] == site5kpi) & (m5kpi["jenis_pemeliharaan"] == "RUTIN"), "biaya"].sum()
+                        pct_r5site = rutin5kpi_site / total5kpi * 100
+                        site_short5kpi = SITE_ABBR.get(site5kpi, site5kpi)
+                        rutin_per_site5.append(f"{site_short5kpi} {pct_r5site:.0f}%R")
 
         rutin_good5 = pct_rutin5 is not None and pct_rutin5 >= 50
+        rutin_breakdown_txt5 = "  \u00b7  ".join(rutin_per_site5) if rutin_per_site5 else ""
         add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\U0001F527", GREEN if rutin_good5 else GOLD, GREEN if rutin_good5 else GOLD,
                      "Maintenance Rutin vs Non-Rutin",
                      (f"{pct_rutin5:.0f}% / {pct_nonrutin5:.0f}%" if pct_rutin5 is not None else "-"),
-                     "",
+                     rutin_breakdown_txt5,
                      (f"\u2713 Rutin Lebih Dominan" if (pct_rutin5 is not None and rutin_good5) else (f"\u2717 Non-Rutin Lebih Dominan" if pct_rutin5 is not None else "Data tidak tersedia")),
                      rutin_good5)
 
@@ -2046,25 +2058,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 # Urutan site utk legenda & warna: berdasarkan total biaya site tsb (site kontribusi terbesar duluan)
                 site_order5 = (kat_site_agg5.groupby("lokasi")["biaya"].sum().sort_values(ascending=False).index.tolist())
 
-        SITE_COLORS5 = [GOLD, TEAL, RGBColor(0x8E, 0x5B, 0xC9), RGBColor(0xD9, 0x5C, 0x5C), RGBColor(0x5C, 0x9E, 0xD9), RGBColor(0x7A, 0xA6, 0x5C)]
-        site_color_map5 = {site: SITE_COLORS5[i % len(SITE_COLORS5)] for i, site in enumerate(site_order5)}
-
         if not kat_agg5.empty:
             n_kat5 = len(kat_agg5)
-            # --- Legenda site (kalau lebih dari 1 site) ---
-            legend_h5 = 0.26 if len(site_order5) > 1 else 0
-            if len(site_order5) > 1:
-                lx5 = right_x5 + 0.15
-                for site5 in site_order5:
-                    site_short5 = SITE_ABBR.get(site5, site5)
-                    sw5 = 0.13 + len(site_short5) * 0.072 + 0.15
-                    dot5 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(lx5), Inches(list_top5 + 0.06), Inches(0.11), Inches(0.11))
-                    dot5.fill.solid(); dot5.fill.fore_color.rgb = site_color_map5[site5]
-                    dot5.line.fill.background(); dot5.shadow.inherit = False
-                    add_textbox(s, lx5 + 0.15, list_top5 - 0.02, sw5, 0.22, site_short5, size=7, bold=True, color=TEXT_MUTED)
-                    lx5 += sw5 + 0.1
-            list_top5b = list_top5 + legend_h5
-            list_avail5b = list_avail5 - legend_h5
+            list_top5b = list_top5
+            list_avail5b = list_avail5
 
             row_gap5 = 0.06  # jarak eksplisit antar baris, supaya bar underline tidak menempel ke baris berikutnya
             max_row_cap5 = 0.42 if n_kat5 >= 5 else 0.75  # kalau kategori sedikit, baris melebar mengisi ruang (tidak kosong)
@@ -2084,17 +2081,24 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rr5 = rp5.add_run(); rr5.text = str(i5 + 1)
                 rr5.font.size = Pt(min(9.5, circ_size5 * 22)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
                 font_row5 = 9.5 if n_kat5 <= 6 else (8.5 if n_kat5 <= 10 else 7.5)
-                text_h5 = row_h5b * 0.55  # baris judul kategori (baris atas)
-                add_textbox(s, right_x5 + 0.55, ry5c, right_w5 - 1.9, text_h5, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
-                add_textbox(s, right_x5 + right_w5 - 1.4, ry5c, 1.25, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD)
-                # --- Baris kecil kedua: breakdown angka Rupiah eksplisit per site ---
+                text_h5 = row_h5b  # 1 baris penuh (nama kategori + total + breakdown per site semua di baris yg sama)
+                kat_name_w5 = 1.65  # lebar tetap utk nama kategori, sisanya utk nilai+breakdown
+                add_textbox(s, right_x5 + 0.55, ry5c, kat_name_w5, text_h5, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
+                # --- Total Rupiah + breakdown per site, digabung jadi 1 baris, ditaruh tepat setelah nama kategori ---
                 kat_rows5 = kat_site_agg5[kat_site_agg5["kategori_sparepart"] == r5["kategori_sparepart"]].sort_values(
                     "lokasi", key=lambda col: col.map({s5: i5b for i5b, s5 in enumerate(site_order5)}))
+                value_x5 = right_x5 + 0.55 + kat_name_w5 + 0.05
+                value_w5 = right_x5 + right_w5 - 0.15 - value_x5
+                value_tb5 = s.shapes.add_textbox(Inches(value_x5), Inches(ry5c), Inches(value_w5), Inches(text_h5))
+                vtf5b = value_tb5.text_frame; vtf5b.word_wrap = False; vtf5b.vertical_anchor = MSO_ANCHOR.MIDDLE
+                vp5b = vtf5b.paragraphs[0]; vp5b.alignment = PP_ALIGN.LEFT
+                vr_total5 = vp5b.add_run(); vr_total5.text = fmt_rp(r5["biaya"])
+                vr_total5.font.size = Pt(font_row5); vr_total5.font.bold = True; vr_total5.font.color.rgb = GOLD; vr_total5.font.name = "Calibri"
                 if not kat_rows5.empty and len(site_order5) > 1:
                     breakdown_font5 = max(6.5, font_row5 - 1.5)
                     breakdown_parts5 = [f"{SITE_ABBR.get(kr5['lokasi'], kr5['lokasi'])} {fmt_rp(kr5['biaya'])}" for _, kr5 in kat_rows5.iterrows()]
-                    breakdown_txt5 = "   \u00b7   ".join(breakdown_parts5)
-                    add_textbox(s, right_x5 + 0.55, ry5c + text_h5, right_w5 - 0.75, row_h5b - text_h5, breakdown_txt5, size=breakdown_font5, color=TEXT_MUTED)
+                    vr_sep5 = vp5b.add_run(); vr_sep5.text = "  \u2014  " + "  \u00b7  ".join(breakdown_parts5)
+                    vr_sep5.font.size = Pt(breakdown_font5); vr_sep5.font.bold = False; vr_sep5.font.color.rgb = TEXT_MUTED; vr_sep5.font.name = "Calibri"
         else:
             add_textbox(s, right_x5 + 0.15, list_top5, right_w5 - 0.3, 0.5, "Data Maintenance belum tersedia.", size=9, italic=True, color=TEXT_MUTED)
 
