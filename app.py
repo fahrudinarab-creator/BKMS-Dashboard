@@ -858,16 +858,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_soft_shadow(card)
         # icon circle (ukuran diperbesar sedikit agar lebih menonjol; sedikit lebih kecil kalau kartu sempit)
         narrow_pre = width < 2.6
-        icon_size = 0.46 if narrow_pre else 0.56
+        icon_size = 0.56 if narrow_pre else 0.68
         icon_left = left + 0.2 if narrow_pre else left + 0.25
         circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(icon_left), Inches(top + 0.25), Inches(icon_size), Inches(icon_size))
         circ.fill.solid(); circ.fill.fore_color.rgb = icon_color
         circ.line.fill.background(); circ.shadow.inherit = False
         ic_tf = circ.text_frame; ic_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        ic_tf.margin_left = 0; ic_tf.margin_right = 0
+        ic_tf.margin_left = 0; ic_tf.margin_right = 0; ic_tf.margin_top = 0; ic_tf.margin_bottom = 0
         icp = ic_tf.paragraphs[0]; icp.alignment = PP_ALIGN.CENTER
         icr = icp.add_run(); icr.text = icon_txt
-        icr.font.size = Pt(14 if narrow_pre else 17); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
+        icr.font.size = Pt(19 if narrow_pre else 24); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
         # Skala ukuran font & posisi menyesuaikan lebar kartu (supaya tetap muat kalau kartu dibuat sempit, mis. 5 kartu sejajar)
         narrow = narrow_pre
         label_size = 9.5 if narrow else 11.5
@@ -882,7 +882,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
         if has_sub:
             value_top = top + (0.78 if narrow else 0.66)
-            add_textbox(slide, left + 0.25, value_top, width - 0.5, 0.5, value, size=value_size, bold=True, color=TEXT_DARK)
+            add_textbox(slide, left, value_top, width, 0.5, value, size=value_size, bold=True, color=TEXT_DARK, align=PP_ALIGN.CENTER)
             # sub text (target/budget)
             add_textbox(slide, left + 0.25, value_top + (0.38 if narrow else 0.42), width - 0.5, 0.3, sub_text, size=sub_size, color=TEXT_MUTED)
         else:
@@ -892,7 +892,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             pill_top_ref = top + height - 0.5
             val_box = slide.shapes.add_textbox(Inches(left + 0.25), Inches(label_bottom_ref), Inches(width - 0.5), Inches(pill_top_ref - label_bottom_ref))
             val_tf = val_box.text_frame; val_tf.word_wrap = True; val_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            val_p = val_tf.paragraphs[0]
+            val_p = val_tf.paragraphs[0]; val_p.alignment = PP_ALIGN.CENTER
             val_r = val_p.add_run(); val_r.text = value
             val_r.font.size = Pt(value_size); val_r.font.bold = True; val_r.font.color.rgb = TEXT_DARK; val_r.font.name = "Calibri"
         # pill (selalu menempel ke bawah kartu)
@@ -1923,6 +1923,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         pct_rutin5 = None
         pct_nonrutin5 = None
         rutin_per_site5 = []
+        site_rutin_vals5 = []  # list of (site_short, pct_rutin) utk baris "Rutin"
+        site_nonrutin_vals5 = []  # list of (site_short, pct_nonrutin) utk baris "Non Rutin"
         if maint_data is not None and not maint_data.empty and "jenis_pemeliharaan" in maint_data.columns:
             m5kpi = maint_data.copy()
             if "lokasi" in m5kpi.columns and site_list:
@@ -1942,7 +1944,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 if total_maint5kpi:
                     pct_rutin5 = rutin_biaya5kpi / total_maint5kpi * 100
                     pct_nonrutin5 = nonrutin_biaya5kpi / total_maint5kpi * 100
-                # --- Breakdown per site (kalau site yg aktif lebih dari 1) ---
+                # --- Breakdown per site (kalau site yg aktif lebih dari 1) -- Rutin & Non-Rutin masing2 jadi baris terpisah ---
                 if "lokasi" in m5kpi.columns and m5kpi["lokasi"].nunique() > 1:
                     site_totals5 = m5kpi.groupby("lokasi")["biaya"].sum().sort_values(ascending=False)
                     for site5kpi, total5kpi in site_totals5.items():
@@ -1950,17 +1952,30 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                             continue
                         rutin5kpi_site = m5kpi.loc[(m5kpi["lokasi"] == site5kpi) & (m5kpi["jenis_pemeliharaan"] == "RUTIN"), "biaya"].sum()
                         pct_r5site = rutin5kpi_site / total5kpi * 100
+                        pct_nr5site = 100 - pct_r5site
                         site_short5kpi = SITE_ABBR.get(site5kpi, site5kpi)
-                        rutin_per_site5.append(f"{site_short5kpi} {pct_r5site:.0f}%R")
+                        site_rutin_vals5.append(f"{site_short5kpi} {pct_r5site:.0f}%")
+                        site_nonrutin_vals5.append(f"{site_short5kpi} {pct_nr5site:.0f}%")
 
         rutin_good5 = pct_rutin5 is not None and pct_rutin5 >= 50
-        rutin_breakdown_txt5 = "  \u00b7  ".join(rutin_per_site5) if rutin_per_site5 else ""
         add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\U0001F527", GREEN if rutin_good5 else GOLD, GREEN if rutin_good5 else GOLD,
                      "Maintenance Rutin vs Non-Rutin",
                      (f"{pct_rutin5:.0f}% / {pct_nonrutin5:.0f}%" if pct_rutin5 is not None else "-"),
-                     rutin_breakdown_txt5,
+                     " " if site_rutin_vals5 else "",
                      (f"\u2713 Rutin Lebih Dominan" if (pct_rutin5 is not None and rutin_good5) else (f"\u2717 Non-Rutin Lebih Dominan" if pct_rutin5 is not None else "Data tidak tersedia")),
                      rutin_good5)
+        # --- Timpa area sub-text bawaan dgn 2 baris kustom: "Rutin: ..." & "Non Rutin: ..." ---
+        if site_rutin_vals5:
+            card3_x5 = 0.4 + 2 * (card_w5 + card_gap5)
+            sub_top5 = card_top5 + 0.66 + 0.40  # sama dgn perhitungan value_top+offset di add_kpi_card (kartu tdk narrow)
+            sub_tb5 = s.shapes.add_textbox(Inches(card3_x5 + 0.25), Inches(sub_top5), Inches(card_w5 - 0.5), Inches(0.32))
+            sub_tf5 = sub_tb5.text_frame; sub_tf5.word_wrap = True; sub_tf5.margin_left = 0; sub_tf5.margin_top = 0; sub_tf5.margin_bottom = 0; sub_tf5.margin_right = 0
+            sp1_5b = sub_tf5.paragraphs[0]; sp1_5b.alignment = PP_ALIGN.CENTER
+            r1_5b = sp1_5b.add_run(); r1_5b.text = "Rutin: " + "  \u00b7  ".join(site_rutin_vals5)
+            r1_5b.font.size = Pt(8); r1_5b.font.color.rgb = TEXT_MUTED; r1_5b.font.name = "Calibri"
+            sp2_5b = sub_tf5.add_paragraph(); sp2_5b.space_before = Pt(0); sp2_5b.alignment = PP_ALIGN.CENTER
+            r2_5b = sp2_5b.add_run(); r2_5b.text = "Non Rutin: " + "  \u00b7  ".join(site_nonrutin_vals5)
+            r2_5b.font.size = Pt(8); r2_5b.font.color.rgb = TEXT_MUTED; r2_5b.font.name = "Calibri"
 
         # ================= BARIS BAWAH =================
         panel_top5 = card_top5 + card_h5 + 0.15
