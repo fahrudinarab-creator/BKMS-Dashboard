@@ -1113,7 +1113,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     _now = _dt.datetime.now()
     tgl_laporan = f"{_bulan_id[_now.month-1]} {_now.year}"
 
-    def render_6_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, snum5, kat_suffix):
+    def render_6_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, kat_suffix):
         r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
         pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
         bl_r_raw = data["biaya_langsung_realisasi"].sum(); bl_b_raw = data["biaya_langsung_budget"].sum()
@@ -1189,11 +1189,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             for _, r in au_tbl.iterrows():
                 util_cap = (r["util_r"] / r["util_t"] * 100) if r["util_t"] else None
+                avail_cap = (r["avail_r"] / r["avail_t"] * 100) if r["avail_t"] else None
                 prestasi_cap = prestasi_lookup_unit.get((r["lokasi"], r["kategori"], r["jenis_unit"]))
                 if prestasi_cap is None:
                     prestasi_cap = prestasi_lookup.get((r["lokasi"], r["kategori"]))
                 kriteria = kriteria_unit_lookup_grp.get((r["lokasi"], r["kategori"], r["jenis_unit"]))
-                au_rows.append({"label": f"{r['site_short']} — {r['jenis_unit']}", "util_cap": util_cap,
+                au_rows.append({"label": f"{r['site_short']} — {r['jenis_unit']}", "util_cap": util_cap, "avail_cap": avail_cap,
                                  "prestasi_cap": prestasi_cap, "kriteria_unit": kriteria})
 
         au_rows_floating = [r for r in au_rows if r["kriteria_unit"] == "Floating Tarif"]
@@ -1249,18 +1250,20 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 cd_x.categories = [r["label"] for r in rows]
                 cd_x.add_series("% Capaian Prestasi", tuple(round(r["prestasi_cap"], 1) if r["prestasi_cap"] is not None else 0 for r in rows))
                 cd_x.add_series(util_label_x, tuple(round(r["util_cap"], 1) if r["util_cap"] is not None else 0 for r in rows))
+                cd_x.add_series("% Capaian Availability", tuple(round(r["avail_cap"], 1) if r["avail_cap"] is not None else 0 for r in rows))
                 gframe_x = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_x), Inches(12.2), Inches(chart_h_x), cd_x)
                 chart_x = gframe_x.chart
                 PRESTASI_COLOR = RGBColor(0x2E, 0x6D, 0xB4)  # disamakan dgn warna ikon kartu KPI "Capaian Prestasi"
                 chart_x.series[0].format.fill.solid(); chart_x.series[0].format.fill.fore_color.rgb = PRESTASI_COLOR
                 chart_x.series[1].format.fill.solid(); chart_x.series[1].format.fill.fore_color.rgb = GOLD
+                chart_x.series[2].format.fill.solid(); chart_x.series[2].format.fill.fore_color.rgb = TEAL
                 chart_x.has_title = False
                 plot_x = chart_x.plots[0]
                 plot_x.gap_width = 60
                 plot_x.has_data_labels = True
                 dls_x = plot_x.data_labels
                 dls_x.number_format = '0"%"'; dls_x.number_format_is_linked = False
-                label_font_x = 8.5 if n_x <= 10 else (7.5 if n_x <= 20 else 6)
+                label_font_x = 7.5 if n_x <= 8 else (6.5 if n_x <= 16 else 5.5)
                 dls_x.font.size = Pt(label_font_x); dls_x.font.bold = True; dls_x.font.color.rgb = TEXT_DARK; dls_x.font.name = "Calibri"
                 dls_x.position = XL_LABEL_POSITION.OUTSIDE_END
                 # Label angka Prestasi ditampilkan utk SEMUA nilai (termasuk yg >=100%), diwarnai merah kalau <100%
@@ -1329,124 +1332,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              "Tidak ada unit dengan gap pendapatan minus — seluruh unit mencapai/melebihi target pendapatan.",
                              GREEN_BG, GREEN, GREEN)
 
-        # ================= SLIDE 2: AVAILABILITY — REALISASI VS BUDGET & CAPAIAN VS UTILISASI =================
-        s = add_content_slide(f"UTILISASI & AVAILABILITY — Analisis Capaian s/d {period}", f"Tren Bulanan · {snum2}{divisi_label}{kat_suffix}")
-
-        avail_rows = []
-        if not sasaran_mutu_data.empty:
-            sm2 = sasaran_mutu_data.copy()
-            sm2 = sm2.dropna(subset=["jenis_unit"])
-            avail_tbl = sm2.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-                avail_r=("availability_pct", "mean"), avail_t=("availability_target", "mean"),
-                util_r=("utilisasi_pct", "mean"), util_t=("utilisasi_target", "mean"),
-            )
-            avail_tbl["site_short"] = avail_tbl["lokasi"].map(SITE_ABBR).fillna(avail_tbl["lokasi"])
-            avail_tbl["label"] = avail_tbl["site_short"] + " — " + avail_tbl["jenis_unit"]
-            avail_tbl = avail_tbl.sort_values(["lokasi", "kategori", "jenis_unit"])
-            for _, r in avail_tbl.iterrows():
-                avail_cap = (r["avail_r"] / r["avail_t"] * 100) if r["avail_t"] else None
-                util_cap = (r["util_r"] / r["util_t"] * 100) if r["util_t"] else None
-                avail_rows.append({"label": r["label"], "avail_r": r["avail_r"], "avail_t": r["avail_t"],
-                                    "avail_cap": avail_cap, "util_cap": util_cap})
-
-        # --- Baris atas: 3 kartu KPI ringkasan (konsisten dgn slide lain) ---
-        cap_util_vals2 = [r["util_cap"] for r in avail_rows if r["util_cap"] is not None]
-        cap_avail_vals2 = [r["avail_cap"] for r in avail_rows if r["avail_cap"] is not None]
-        avg_util_cap2 = (sum(cap_util_vals2) / len(cap_util_vals2)) if cap_util_vals2 else None
-        avg_avail_cap2 = (sum(cap_avail_vals2) / len(cap_avail_vals2)) if cap_avail_vals2 else None
-        n_over_util2 = sum(1 for v in cap_util_vals2 if v < 100)
-        n_over_avail2 = sum(1 for v in cap_avail_vals2 if v < 100)
-
-        card_top2 = 0.98
-        card_h2 = 1.85
-        card_gap2 = 0.4
-        card_w2 = (12.5 - card_gap2) / 2
-
-        add_kpi_card(s, 0.4, card_top2, card_w2, card_h2, "\U0001F3AF", GOLD, GOLD,
-                     "Rata-rata Capaian Utilisasi",
-                     (f"{avg_util_cap2:.1f}%" if avg_util_cap2 is not None else "-"),
-                     "",
-                     (f"\u2717 {n_over_util2} unit di bawah target" if (avg_util_cap2 is not None and n_over_util2 > 0)
-                      else (f"\u2713 Semua unit dalam target" if avg_util_cap2 is not None else "Data tidak tersedia")),
-                     avg_util_cap2 is not None and n_over_util2 == 0)
-
-        add_kpi_card(s, 0.4 + card_w2 + card_gap2, card_top2, card_w2, card_h2, "\u2699", TEAL, TEAL,
-                     "Rata-rata Capaian Availability",
-                     (f"{avg_avail_cap2:.1f}%" if avg_avail_cap2 is not None else "-"),
-                     "",
-                     (f"\u2717 {n_over_avail2} unit di bawah target" if (avg_avail_cap2 is not None and n_over_avail2 > 0)
-                      else (f"\u2713 Semua unit dalam target" if avg_avail_cap2 is not None else "Data tidak tersedia")),
-                     avg_avail_cap2 is not None and n_over_avail2 == 0)
-
-        panel_top2 = card_top2 + card_h2 + 0.15
-        panel_bottom2 = 7.3
-        total_h2 = panel_bottom2 - panel_top2
-
-        def _draw_avail_chart(slide, rows, top, height, title, series1_name, series1_key, series1_color,
-                               series2_name, series2_key, series2_color, num_fmt):
-            add_card_panel(slide, 0.45, top, 12.35, height)
-            add_panel_header(slide, 0.45, top, 12.35, title, height=0.36)
-            chart_top_y = top + 0.42
-            chart_h_y = height - 0.47
-            if rows:
-                n_y = len(rows)
-                cd_y = CategoryChartData()
-                cd_y.categories = [r["label"] for r in rows]
-                cd_y.add_series(series1_name, tuple(round(r[series1_key], 1) if r[series1_key] is not None else 0 for r in rows))
-                cd_y.add_series(series2_name, tuple(round(r[series2_key], 1) if r[series2_key] is not None else 0 for r in rows))
-                gframe_y = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_y), Inches(12.2), Inches(chart_h_y), cd_y)
-                chart_y = gframe_y.chart
-                chart_y.series[0].format.fill.solid(); chart_y.series[0].format.fill.fore_color.rgb = series1_color
-                chart_y.series[1].format.fill.solid(); chart_y.series[1].format.fill.fore_color.rgb = series2_color
-                chart_y.has_title = False
-                plot_y = chart_y.plots[0]
-                plot_y.gap_width = 60
-                plot_y.has_data_labels = True
-                dls_y = plot_y.data_labels
-                dls_y.number_format = num_fmt; dls_y.number_format_is_linked = False
-                label_font_y = 9.5 if n_y <= 10 else (8 if n_y <= 20 else 6.5)
-                dls_y.font.size = Pt(label_font_y); dls_y.font.bold = True; dls_y.font.color.rgb = TEXT_DARK; dls_y.font.name = "Calibri"
-                dls_y.position = XL_LABEL_POSITION.OUTSIDE_END
-                style_chart_light(chart_y, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
-                cat_font_y = 9 if n_y <= 8 else (7.5 if n_y <= 14 else (6.5 if n_y <= 22 else 5.5))
-                chart_y.category_axis.tick_labels.font.size = Pt(cat_font_y)
-                chart_y.value_axis.tick_labels.font.size = Pt(cat_font_y)
-                chart_y.value_axis.tick_labels.number_format = num_fmt
-                chart_y.value_axis.tick_labels.number_format_is_linked = False
-            else:
-                add_textbox(slide, 0.6, chart_top_y + 0.1, 12.0, 0.4, "Data Sasaran Mutu belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
-
-        # Chart tunggal: urutan Utilisasi dulu baru Availability
-        h_chart2 = total_h2 * 0.7
-        _draw_avail_chart(s, avail_rows, panel_top2, h_chart2,
-                           "🟡 % Capaian Utilisasi vs % Capaian Availability — per Site & Jenis Unit",
-                           "% Capaian Utilisasi", "util_cap", GOLD,
-                           "% Capaian Availability", "avail_cap", TEAL, '0"%"')
-
-        # --- Analisa: cari unit dengan kesenjangan (gap) Utilisasi vs Availability paling besar ---
-        note_top2 = panel_top2 + h_chart2 + 0.15
-        note_h2 = panel_bottom2 - note_top2
-        gap_rows2 = [r for r in avail_rows if r["util_cap"] is not None and r["avail_cap"] is not None]
-        if gap_rows2:
-            for r in gap_rows2:
-                r["gap_au"] = r["avail_cap"] - r["util_cap"]
-            worst2 = max(gap_rows2, key=lambda r: abs(r["gap_au"]))
-            if worst2["gap_au"] > 0:
-                narasi2 = (f"{worst2['label']} memiliki Availability Capaian ({worst2['avail_cap']:.0f}%) jauh lebih tinggi dari Utilisasi Capaian "
-                           f"({worst2['util_cap']:.0f}%), selisih {worst2['gap_au']:.0f} poin — unit ini SIAP BEROPERASI namun tidak dimanfaatkan "
-                           f"secara maksimal (idle/menganggur), berpotensi jadi peluang peningkatan produktivitas.")
-            else:
-                narasi2 = (f"{worst2['label']} memiliki Utilisasi Capaian ({worst2['util_cap']:.0f}%) jauh lebih tinggi dari Availability Capaian "
-                           f"({worst2['avail_cap']:.0f}%), selisih {abs(worst2['gap_au']):.0f} poin — unit ini DIPAKSAKAN BEROPERASI melebihi "
-                           f"kesiapan/keandalannya, berisiko mempercepat kerusakan & menambah downtime ke depan.")
-            add_finding_box(s, 0.6, note_top2, 12.2, note_h2, "💡", narasi2, GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
-        else:
-            add_finding_box(s, 0.6, note_top2, 12.2, note_h2, "ℹ️",
-                             "Data Capaian Utilisasi/Availability belum cukup untuk analisis kesenjangan.",
-                             GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
-
-        # ================= SLIDE 3: BIAYA OPERASIONAL — Ringkasan Biaya vs Fisik =================
-        s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional \u00b7 {snum3}{divisi_label}{kat_suffix}")
+        # ================= SLIDE 2: BIAYA OPERASIONAL — Ringkasan Biaya vs Fisik =================
+        s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional \u00b7 {snum2}{divisi_label}{kat_suffix}")
 
         # --- Filter khusus BBM: baris dgn qty_bbm ada TAPI biaya_bbm ATAU prestasi tidak ada -> jangan dihitung ---
         def _bbm_valid_mask(df_):
@@ -1779,8 +1666,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             add_textbox(s, 0.55, chart_top_m3b + 0.1, 12.0, 0.5, "Data Konsumsi BBM belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
 
-        # ================= SLIDE 4: ANALISIS Biaya Maintenance & Maintenance Rutin/Non-Rutin =================
-        s = add_content_slide(f"ANALISIS: Biaya Maintenance & Rutin/Non-Rutin \u2014 s/d {period}", f"Analisis Biaya \u00b7 {snum4}{divisi_label}{kat_suffix}")
+        # ================= SLIDE 3: ANALISIS Biaya Maintenance & Maintenance Rutin/Non-Rutin =================
+        s = add_content_slide(f"ANALISIS: Biaya Maintenance & Rutin/Non-Rutin \u2014 s/d {period}", f"Analisis Biaya \u00b7 {snum3}{divisi_label}{kat_suffix}")
 
         panel_top4 = 1.0
         panel_bottom4 = 7.3
@@ -1937,8 +1824,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              "Data belum cukup lengkap untuk analisis korelasi antara Capaian Biaya Maintenance dan porsi Non-Rutin.",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
-        # ================= SLIDE 5: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
-        s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum5}{divisi_label}{kat_suffix}")
+        # ================= SLIDE 4: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
+        s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum4}{divisi_label}{kat_suffix}")
 
         dt_avg_r5 = sasaran_mutu_data["downtime_pct"].mean() if not sasaran_mutu_data.empty else None
         dt_avg_t5 = sasaran_mutu_data["downtime_target"].mean() if not sasaran_mutu_data.empty else None
@@ -2165,10 +2052,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         data_ab = data_ab_check.copy()
         sm_tr = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "TR"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
         sm_ab = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "AB"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
-        render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", "05", " · TRANSPORTASI")
-        render_6_slides(data_ab, sm_ab, "06", "07", "08", "09", "10", " · ALAT BERAT")
+        render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", " · TRANSPORTASI")
+        render_6_slides(data_ab, sm_ab, "05", "06", "07", "08", " · ALAT BERAT")
     else:
-        render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "05", "")
+        render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "")
 
     buf = _io.BytesIO()
     prs.save(buf)
