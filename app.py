@@ -1764,7 +1764,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rutin_pivot4["label"] = rutin_pivot4["site_short"] + " \u2014 " + rutin_pivot4["jenis_unit"]
                 rutin_pivot4 = rutin_pivot4.sort_values("total", ascending=False)
 
-                # --- % Capaian Downtime per (lokasi, jenis_unit), dari Sasaran Mutu, utk ditampilkan di sisi kanan chart ---
+                # --- % Capaian Downtime per (lokasi, jenis_unit), dari Sasaran Mutu ---
                 if not sasaran_mutu_data.empty:
                     dt_su4b = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "jenis_unit"], as_index=False).agg(
                         dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
@@ -1777,7 +1777,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if not rutin_pivot4.empty:
             max_rows4 = 14
             rutin_shown4 = rutin_pivot4.head(max_rows4).sort_values("total", ascending=True)  # ascending: biar batang terbesar di ATAS pada bar chart horizontal
-            chart_w_m4 = 4.55  # dipersempit sedikit dari 5.75 utk memberi ruang kolom % Capaian Downtime di kanan
+            chart_w_m4 = 4.55  # dipersempit sedikit utk memberi ruang kolom Cap. Downtime di kanan
             cd_m4 = CategoryChartData()
             cd_m4.categories = list(rutin_shown4["label"])
             cd_m4.add_series("Rutin", tuple(round(v, 1) for v in rutin_shown4["pct_rutin"]))
@@ -1788,41 +1788,57 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_m4.series[1].format.fill.solid(); chart_m4.series[1].format.fill.fore_color.rgb = GOLD
             chart_m4.has_title = False
             plot_m4 = chart_m4.plots[0]
-            plot_m4.gap_width = 45
+            plot_m4.gap_width = 35
             plot_m4.has_data_labels = True
             dls_m4 = plot_m4.data_labels
             dls_m4.number_format = '0"%"'; dls_m4.number_format_is_linked = False
             n_rows4 = len(rutin_shown4)
             label_font_m4 = 10 if n_rows4 <= 8 else (9 if n_rows4 <= 12 else 7.5)
             dls_m4.font.size = Pt(label_font_m4); dls_m4.font.bold = True; dls_m4.font.color.rgb = WHITE; dls_m4.font.name = "Calibri"
+            # --- Sorot segmen Non-Rutin dgn warna merah kalau porsinya tinggi (>40%) -- sinyal visual unit yg perlu perhatian ---
+            for i4nr, pt4nr in enumerate(chart_m4.series[1].points):
+                if rutin_shown4["pct_nonrutin"].iloc[i4nr] > 40:
+                    pt4nr.format.fill.solid(); pt4nr.format.fill.fore_color.rgb = RED
             style_chart_light(chart_m4, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
-            cat_font_m4 = 8 if n_rows4 <= 8 else (7 if n_rows4 <= 12 else 6)
+            cat_font_m4 = 8.5 if n_rows4 <= 8 else (7.5 if n_rows4 <= 12 else 6.5)
             chart_m4.category_axis.tick_labels.font.size = Pt(cat_font_m4)
+            chart_m4.category_axis.tick_labels.font.bold = True
             chart_m4.value_axis.tick_labels.font.size = Pt(cat_font_m4)
             chart_m4.value_axis.has_major_gridlines = False
             chart_m4.value_axis.visible = False
 
-            # --- Kolom "% Capaian Downtime" di sisi kanan chart, sejajar tiap baris ---
-            col_dt_x4 = 7.0 + chart_w_m4 + 0.1
-            col_dt_w4 = 6.05 - (col_dt_x4 - 6.85) - 0.15
+            # --- Kolom "Cap. Downtime" di sisi kanan chart, sejajar tiap baris -- HANYA dirender kalau datanya ada
+            # (baris yg tidak ada data dibiarkan benar-benar kosong, tanpa tanda "-", supaya tidak terlihat berantakan) ---
+            col_dt_x4 = 7.0 + chart_w_m4 + 0.15
+            col_dt_w4 = 6.85 + 6.05 - 0.15 - col_dt_x4
             legend_h_m4 = 0.32  # perkiraan tinggi area legend di atas plot area
             plot_h_m4 = chart_h_m4 - legend_h_m4
             row_h_m4b = plot_h_m4 / n_rows4
-            add_textbox(s, col_dt_x4, chart_top_m4, col_dt_w4, legend_h_m4, "Cap. Downtime", size=7.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            # Garis pemisah vertikal tipis, biar kolom ini terlihat rapi sbg "kolom" (bukan teks mengambang)
+            sep_line4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(col_dt_x4 - 0.08), Inches(chart_top_m4), Inches(0.012), Inches(chart_h_m4))
+            sep_line4.fill.solid(); sep_line4.fill.fore_color.rgb = RGBColor(0xE0, 0xE4, 0xEC)
+            sep_line4.line.fill.background(); sep_line4.shadow.inherit = False
+            add_textbox(s, col_dt_x4, chart_top_m4, col_dt_w4, legend_h_m4, "Cap.\nDowntime", size=7.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
             for i4dt, (_, r4dt) in enumerate(rutin_shown4.iterrows()):
                 # rutin_shown4 diurutkan ascending (total terkecil dulu) -> pada chart horizontal, baris PALING BAWAH = index 0.
-                # Jadi posisi dari ATAS (from_top) = n_rows4-1-i4dt.
                 from_top4 = n_rows4 - 1 - i4dt
                 y4dt = chart_top_m4 + legend_h_m4 + from_top4 * row_h_m4b
                 cap_dt_val = r4dt["cap_downtime"]
-                if cap_dt_val is not None and not pd.isna(cap_dt_val):
-                    dt_color4 = RED if cap_dt_val > 100 else GREEN
-                    dt_text4 = f"{cap_dt_val:.0f}%"
-                else:
-                    dt_color4 = TEXT_MUTED
-                    dt_text4 = "-"
-                dt_tb4 = add_textbox(s, col_dt_x4, y4dt, col_dt_w4, row_h_m4b, dt_text4, size=min(9, cat_font_m4 + 1), bold=True, color=dt_color4, align=PP_ALIGN.CENTER)
-                dt_tb4.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+                if cap_dt_val is None or pd.isna(cap_dt_val):
+                    continue  # data tidak ada -> tidak render apapun (bukan tanda "-"), biar bersih
+                dt_color4 = RED if cap_dt_val > 100 else GREEN
+                dt_bg4 = RGBColor(0xFC, 0xE4, 0xE1) if cap_dt_val > 100 else RGBColor(0xDE, 0xF2, 0xE4)
+                badge_h4 = min(0.26, row_h_m4b * 0.55)
+                badge4 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(col_dt_x4 + 0.08), Inches(y4dt + row_h_m4b / 2 - badge_h4 / 2), Inches(col_dt_w4 - 0.16), Inches(badge_h4))
+                badge4.adjustments[0] = 0.5
+                badge4.fill.solid(); badge4.fill.fore_color.rgb = dt_bg4
+                badge4.line.fill.background(); badge4.shadow.inherit = False
+                btf4 = badge4.text_frame; btf4.vertical_anchor = MSO_ANCHOR.MIDDLE
+                btf4.margin_left = 0; btf4.margin_right = 0; btf4.margin_top = 0; btf4.margin_bottom = 0
+                bp4 = btf4.paragraphs[0]; bp4.alignment = PP_ALIGN.CENTER
+                br4 = bp4.add_run(); br4.text = f"{cap_dt_val:.0f}%"
+                br4.font.size = Pt(min(8.5, cat_font_m4)); br4.font.bold = True; br4.font.color.rgb = dt_color4; br4.font.name = "Calibri"
+
         else:
             add_textbox(s, 7.0, chart_top_m4 + 0.1, 5.6, 0.6,
                         "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
