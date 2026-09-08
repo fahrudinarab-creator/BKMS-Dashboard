@@ -2060,8 +2060,23 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         if not kat_agg5.empty:
             n_kat5 = len(kat_agg5)
-            list_top5b = list_top5
-            list_avail5b = list_avail5
+            kat_name_w5 = 1.7  # lebar tetap utk nama kategori
+            n_val_cols5 = len(site_order5) + 1  # kolom per site + 1 kolom Total
+            val_area_x5 = right_x5 + 0.55 + kat_name_w5
+            val_area_w5 = right_x5 + right_w5 - 0.15 - val_area_x5
+            col_w5 = val_area_w5 / n_val_cols5
+
+            # --- Header kolom (nama site & "Total"), ditulis SEKALI di atas, bukan diulang tiap baris ---
+            header_h5 = 0.22 if len(site_order5) > 1 else 0
+            if len(site_order5) > 1:
+                for ci5, site5h in enumerate(site_order5):
+                    site_short5h = SITE_ABBR.get(site5h, site5h)
+                    hx5 = val_area_x5 + ci5 * col_w5
+                    add_textbox(s, hx5, list_top5, col_w5, header_h5, site_short5h, size=7, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+                hx5_total = val_area_x5 + len(site_order5) * col_w5
+                add_textbox(s, hx5_total, list_top5, col_w5, header_h5, "Total", size=7, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            list_top5b = list_top5 + header_h5
+            list_avail5b = list_avail5 - header_h5
 
             row_gap5 = 0.06  # jarak eksplisit antar baris, supaya bar underline tidak menempel ke baris berikutnya
             max_row_cap5 = 0.42 if n_kat5 >= 5 else 0.75  # kalau kategori sedikit, baris melebar mengisi ruang (tidak kosong)
@@ -2081,24 +2096,22 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rr5 = rp5.add_run(); rr5.text = str(i5 + 1)
                 rr5.font.size = Pt(min(9.5, circ_size5 * 22)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
                 font_row5 = 9.5 if n_kat5 <= 6 else (8.5 if n_kat5 <= 10 else 7.5)
-                text_h5 = row_h5b  # 1 baris penuh (nama kategori + total + breakdown per site semua di baris yg sama)
-                kat_name_w5 = 1.65  # lebar tetap utk nama kategori, sisanya utk nilai+breakdown
+                text_h5 = row_h5b
                 add_textbox(s, right_x5 + 0.55, ry5c, kat_name_w5, text_h5, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
-                # --- Total Rupiah + breakdown per site, digabung jadi 1 baris, ditaruh tepat setelah nama kategori ---
-                kat_rows5 = kat_site_agg5[kat_site_agg5["kategori_sparepart"] == r5["kategori_sparepart"]].sort_values(
-                    "lokasi", key=lambda col: col.map({s5: i5b for i5b, s5 in enumerate(site_order5)}))
-                value_x5 = right_x5 + 0.55 + kat_name_w5 + 0.05
-                value_w5 = right_x5 + right_w5 - 0.15 - value_x5
-                value_tb5 = s.shapes.add_textbox(Inches(value_x5), Inches(ry5c), Inches(value_w5), Inches(text_h5))
-                vtf5b = value_tb5.text_frame; vtf5b.word_wrap = False; vtf5b.vertical_anchor = MSO_ANCHOR.MIDDLE
-                vp5b = vtf5b.paragraphs[0]; vp5b.alignment = PP_ALIGN.LEFT
-                vr_total5 = vp5b.add_run(); vr_total5.text = fmt_rp(r5["biaya"])
-                vr_total5.font.size = Pt(font_row5); vr_total5.font.bold = True; vr_total5.font.color.rgb = GOLD; vr_total5.font.name = "Calibri"
-                if not kat_rows5.empty and len(site_order5) > 1:
-                    breakdown_font5 = max(6.5, font_row5 - 1.5)
-                    breakdown_parts5 = [f"{SITE_ABBR.get(kr5['lokasi'], kr5['lokasi'])} {fmt_rp(kr5['biaya'])}" for _, kr5 in kat_rows5.iterrows()]
-                    vr_sep5 = vp5b.add_run(); vr_sep5.text = "  \u2014  " + "  \u00b7  ".join(breakdown_parts5)
-                    vr_sep5.font.size = Pt(breakdown_font5); vr_sep5.font.bold = False; vr_sep5.font.color.rgb = TEXT_MUTED; vr_sep5.font.name = "Calibri"
+                # --- Nilai per site & Total, ditaruh di kolom masing2 (tanpa label nama site diulang) ---
+                kat_rows5 = kat_site_agg5[kat_site_agg5["kategori_sparepart"] == r5["kategori_sparepart"]]
+                site_val_lookup5 = {row5b["lokasi"]: row5b["biaya"] for _, row5b in kat_rows5.iterrows()}
+                val_font5 = max(6.5, font_row5 - 1.5)
+                if len(site_order5) > 1:
+                    for ci5, site5v in enumerate(site_order5):
+                        vx5 = val_area_x5 + ci5 * col_w5
+                        v5 = site_val_lookup5.get(site5v)
+                        v_txt5 = fmt_rp(v5) if v5 else "-"
+                        add_textbox(s, vx5, ry5c, col_w5, text_h5, v_txt5, size=val_font5, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+                    total_x5 = val_area_x5 + len(site_order5) * col_w5
+                    add_textbox(s, total_x5, ry5c, col_w5, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD, align=PP_ALIGN.CENTER)
+                else:
+                    add_textbox(s, val_area_x5, ry5c, val_area_w5, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD, align=PP_ALIGN.RIGHT)
         else:
             add_textbox(s, right_x5 + 0.15, list_top5, right_w5 - 0.3, 0.5, "Data Maintenance belum tersedia.", size=9, italic=True, color=TEXT_MUTED)
 
