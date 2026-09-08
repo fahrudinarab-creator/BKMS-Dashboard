@@ -1632,7 +1632,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             cd_m3b.add_series("Capaian Harga BBM (Rp/Ltr)", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_harga"]))
             gframe_m3b = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_m3b), Inches(12.1), Inches(chart_h_m3b), cd_m3b)
             chart_m3b = gframe_m3b.chart
-            SERIES_COLORS3 = [RGBColor(0x2E, 0x6D, 0xB4), TEAL, GOLD]  # Prestasi=biru, Konsumsi=teal, Harga=emas
+            SERIES_COLORS3 = [RGBColor(0x7B, 0x5C, 0xC9), RGBColor(0xD9, 0x8A, 0x2E), RGBColor(0x3F, 0xA8, 0x6B)]  # Prestasi=ungu terang, Konsumsi=oranye keemasan, Harga=hijau segar
             for si, col in enumerate(SERIES_COLORS3):
                 chart_m3b.series[si].format.fill.solid(); chart_m3b.series[si].format.fill.fore_color.rgb = col
             chart_m3b.has_title = False
