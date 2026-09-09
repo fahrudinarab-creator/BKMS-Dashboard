@@ -1911,7 +1911,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "jenis_unit", "pct_nonrutin"]], on=["lokasi", "jenis_unit"], how="inner")
             over_budget4 = merge4[merge4["cap"] > 100]
             if not over_budget4.empty:
-                worst4 = over_budget4.sort_values("pct_nonrutin", ascending=False).iloc[0]
+                worst4 = over_budget4.sort_values("gap_rp", ascending=False).iloc[0]
                 avg_nonrutin_over4 = over_budget4["pct_nonrutin"].mean()
                 under_budget4 = merge4[merge4["cap"] <= 100]
                 avg_nonrutin_under4 = under_budget4["pct_nonrutin"].mean() if not under_budget4.empty else None
@@ -1922,8 +1922,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 else:
                     banding_txt4 = "Perlu ditelusuri lebih lanjut apakah ada korelasi antara porsi Non-Rutin dan pembengkakan biaya maintenance."
                 add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\U0001F4A1",
-                                 f"{worst4['label']} memiliki porsi Non-Rutin tertinggi ({worst4['pct_nonrutin']:.0f}%) di antara unit yang OVER BUDGET "
-                                 f"(Capaian {worst4['cap']:.0f}%). {banding_txt4}",
+                                 f"{worst4['label']} adalah unit dengan dampak Rupiah biaya OVER BUDGET terbesar ({fmt_rp(worst4['gap_rp'])}, Capaian {worst4['cap']:.0f}%), "
+                                 f"dengan porsi Non-Rutin {worst4['pct_nonrutin']:.0f}%. {banding_txt4}",
                                  GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
             else:
                 add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2705",
