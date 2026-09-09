@@ -726,6 +726,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         sasaran_mutu_data = sasaran_mutu_data.copy()
         sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "kategori"] = "AB"
         sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "Jenis_Sarmut"] = "Sarmut Kelompok Alat Berat"
+        # Baris kosong (NaN) pada downtime_pct dianggap 0% (tidak pernah downtime), bukan diabaikan dari rata-rata --
+        # supaya unit yg sebagian besar datanya belum terisi tidak jadi timpang krn cuma 1-2 baris yg kebetulan terisi
+        if "downtime_pct" in sasaran_mutu_data.columns:
+            sasaran_mutu_data["downtime_pct"] = sasaran_mutu_data["downtime_pct"].fillna(0)
 
     # Singkatan nama site dipakai konsisten di semua chart yg padat kategori
     SITE_ABBR = {"SUNGAI DANAU": "S.DANAU", "BUHUT LHL": "B.LHL", "TANJUNG": "TANJUNG",
