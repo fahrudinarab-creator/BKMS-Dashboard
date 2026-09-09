@@ -1695,42 +1695,50 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         note_h4 = 0.95
         chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
         if not maint_su4.empty:
-            cd_r4 = CategoryChartData()
-            cd_r4.categories = list(maint_su4["label"])
-            cd_r4.add_series("Gap Biaya Maintenance", tuple(round(v, 0) for v in maint_su4["gap_rp"]))
-            gframe_r4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_r4), Inches(5.75), Inches(chart_h_r4), cd_r4)
-            chart_r4 = gframe_r4.chart
-            chart_r4.series[0].format.fill.solid(); chart_r4.series[0].format.fill.fore_color.rgb = TEAL
-            chart_r4.has_title = False
-            plot_r4 = chart_r4.plots[0]
-            plot_r4.gap_width = 50
-            label_font_r4 = 9 if n_maint4 <= 6 else (8 if n_maint4 <= 10 else (7 if n_maint4 <= 16 else 6))
-            from pptx.oxml.ns import qn as _qn_r4
-            for i, pt in enumerate(chart_r4.series[0].points):
-                v = maint_su4["cap"].iloc[i]
-                gap_val4 = maint_su4["gap_rp"].iloc[i]
-                if gap_val4 > 0:
-                    pt.format.fill.solid(); pt.format.fill.fore_color.rgb = RED
-                gap_sign4 = "+" if gap_val4 >= 0 else "-"
-                dl = pt.data_label
-                dl.has_text_frame = True
-                tf = dl.text_frame
-                # Label 1 baris: gap Rupiah (nilai yg ditampilkan bar) + persentase capaian sbg konteks
-                tf.text = f"{gap_sign4}{fmt_rp(abs(gap_val4))}  ({v:.0f}%)"
-                for para in tf.paragraphs:
-                    for run in para.runs:
-                        run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
+            # --- Bar digambar manual (bukan native chart) -- rotasi label data-label native chart
+            # terbukti tidak konsisten di PowerPoint, sedangkan rotasi shape textbox biasa jauh lebih reliable ---
+            plot_left4 = 0.75
+            plot_right4 = 6.2
+            plot_bottom4 = chart_top_r4 + chart_h_r4 - 0.55  # sisakan ruang utk label kategori di bawah
+            plot_top4b = chart_top_r4 + 0.15
+            plot_area_h4 = plot_bottom4 - plot_top4b
+            max_gap4 = maint_su4["gap_rp"].max()
+            col_w4 = (plot_right4 - plot_left4) / n_maint4
+            bar_w4 = col_w4 * 0.55
+            cat_font_r4 = 7.5 if n_maint4 <= 10 else (6.5 if n_maint4 <= 16 else 5.5)
+            label_font_r4 = 8 if n_maint4 <= 8 else (7 if n_maint4 <= 14 else 6)
+            # Sumbu Y sederhana: garis dasar + label nilai max
+            axis_line4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(plot_left4), Inches(plot_bottom4), Inches(plot_right4 - plot_left4), Pt(1))
+            axis_line4.fill.solid(); axis_line4.fill.fore_color.rgb = RGBColor(0xD0, 0xD4, 0xDC); axis_line4.line.fill.background(); axis_line4.shadow.inherit = False
+            add_textbox(s, 0.15, plot_top4b - 0.1, plot_left4 - 0.2, 0.25, fmt_rp(max_gap4), size=7, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
+            add_textbox(s, 0.15, plot_bottom4 - 0.12, plot_left4 - 0.2, 0.25, "Rp0", size=7, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
+            for i4m, (_, r4m) in enumerate(maint_su4.iterrows()):
+                gap_val4 = r4m["gap_rp"]
+                v4 = r4m["cap"]
+                bar_h4 = max(0.03, plot_area_h4 * (gap_val4 / max_gap4)) if max_gap4 else 0.03
+                bar_x4 = plot_left4 + i4m * col_w4 + (col_w4 - bar_w4) / 2
+                bar_y4 = plot_bottom4 - bar_h4
+                bar4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4), Inches(bar_y4), Inches(bar_w4), Inches(bar_h4))
+                bar4.fill.solid(); bar4.fill.fore_color.rgb = RED
+                bar4.line.fill.background(); bar4.shadow.inherit = False
+                # Label nilai (dirotasi vertikal via shape.rotation -- properti standar PowerPoint, reliable di semua aplikasi)
+                lbl_txt4 = f"+{fmt_rp(gap_val4)} ({v4:.0f}%)"
+                lbl_w4 = 1.3
+                lbl_h4 = 0.22
+                lbl_tb4 = s.shapes.add_textbox(Inches(bar_x4 + bar_w4 / 2 - lbl_w4 / 2), Inches(bar_y4 - lbl_h4 - 0.02), Inches(lbl_w4), Inches(lbl_h4))
+                ltf4 = lbl_tb4.text_frame; ltf4.word_wrap = False; ltf4.margin_left = 0; ltf4.margin_right = 0; ltf4.margin_top = 0; ltf4.margin_bottom = 0
+                ltf4.vertical_anchor = MSO_ANCHOR.MIDDLE
+                lp4m = ltf4.paragraphs[0]; lp4m.alignment = PP_ALIGN.CENTER
+                lr4m = lp4m.add_run(); lr4m.text = lbl_txt4
+                lr4m.font.size = Pt(label_font_r4); lr4m.font.bold = True; lr4m.font.color.rgb = TEXT_DARK; lr4m.font.name = "Calibri"
                 if n_maint4 > 6:
-                    # Kategori banyak: putar teks label vertikal, supaya tidak numpuk horizontal antar bar
-                    bodyPr = dl.text_frame._txBody.find(_qn_r4('a:bodyPr'))
-                    if bodyPr is not None:
-                        bodyPr.set('rot', '-5400000')
-            style_chart_light(chart_r4, legend=False)
-            cat_font_r4 = 8 if n_maint4 <= 10 else (6.5 if n_maint4 <= 20 else 5.3)
-            chart_r4.category_axis.tick_labels.font.size = Pt(cat_font_r4)
-            chart_r4.value_axis.tick_labels.font.size = Pt(cat_font_r4)
-            chart_r4.value_axis.tick_labels.number_format = '"Rp"#,,"Jt"'
-            chart_r4.value_axis.tick_labels.number_format_is_linked = False
+                    lbl_tb4.rotation = -90  # properti rotation shape standar PowerPoint -- konsisten di semua aplikasi
+                # Label kategori di bawah bar
+                cat_tb4 = s.shapes.add_textbox(Inches(bar_x4 - (col_w4 - bar_w4) / 2), Inches(plot_bottom4 + 0.05), Inches(col_w4), Inches(0.5))
+                ctf4 = cat_tb4.text_frame; ctf4.word_wrap = True; ctf4.margin_left = 0; ctf4.margin_right = 0
+                cp4 = ctf4.paragraphs[0]; cp4.alignment = PP_ALIGN.CENTER
+                cr4 = cp4.add_run(); cr4.text = r4m["label"]
+                cr4.font.size = Pt(cat_font_r4); cr4.font.bold = True; cr4.font.color.rgb = TEXT_DARK; cr4.font.name = "Calibri"
         else:
             add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5,
                         "Tidak ada unit yang over budget \u2014 seluruh biaya maintenance dalam/di bawah budget." if n_maint4_total > 0 else "Data Biaya Maintenance belum tersedia.",
