@@ -1777,67 +1777,76 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if not rutin_pivot4.empty:
             max_rows4 = 14
             rutin_shown4 = rutin_pivot4.head(max_rows4).sort_values("total", ascending=True)  # ascending: biar batang terbesar di ATAS pada bar chart horizontal
-            chart_w_m4 = 4.55  # dipersempit sedikit utk memberi ruang kolom Cap. Downtime di kanan
-            cd_m4 = CategoryChartData()
-            cd_m4.categories = list(rutin_shown4["label"])
-            cd_m4.add_series("Rutin", tuple(round(v, 1) for v in rutin_shown4["pct_rutin"]))
-            cd_m4.add_series("Non Rutin", tuple(round(v, 1) for v in rutin_shown4["pct_nonrutin"]))
-            gframe_m4 = s.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED_100, Inches(7.0), Inches(chart_top_m4), Inches(chart_w_m4), Inches(chart_h_m4), cd_m4)
-            chart_m4 = gframe_m4.chart
-            chart_m4.series[0].format.fill.solid(); chart_m4.series[0].format.fill.fore_color.rgb = TEAL
-            chart_m4.series[1].format.fill.solid(); chart_m4.series[1].format.fill.fore_color.rgb = GOLD
-            chart_m4.has_title = False
-            plot_m4 = chart_m4.plots[0]
-            plot_m4.gap_width = 35
-            plot_m4.has_data_labels = True
-            dls_m4 = plot_m4.data_labels
-            dls_m4.number_format = '0"%"'; dls_m4.number_format_is_linked = False
             n_rows4 = len(rutin_shown4)
-            label_font_m4 = 10 if n_rows4 <= 8 else (9 if n_rows4 <= 12 else 7.5)
-            dls_m4.font.size = Pt(label_font_m4); dls_m4.font.bold = True; dls_m4.font.color.rgb = WHITE; dls_m4.font.name = "Calibri"
-            # --- Sorot segmen Non-Rutin dgn warna merah kalau porsinya tinggi (>40%) -- sinyal visual unit yg perlu perhatian ---
-            for i4nr, pt4nr in enumerate(chart_m4.series[1].points):
-                if rutin_shown4["pct_nonrutin"].iloc[i4nr] > 40:
-                    pt4nr.format.fill.solid(); pt4nr.format.fill.fore_color.rgb = RED
-            style_chart_light(chart_m4, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
-            cat_font_m4 = 8.5 if n_rows4 <= 8 else (7.5 if n_rows4 <= 12 else 6.5)
-            chart_m4.category_axis.tick_labels.font.size = Pt(cat_font_m4)
-            chart_m4.category_axis.tick_labels.font.bold = True
-            chart_m4.value_axis.tick_labels.font.size = Pt(cat_font_m4)
-            chart_m4.value_axis.has_major_gridlines = False
-            chart_m4.value_axis.visible = False
+            # --- Bar digambar manual (bukan native chart PowerPoint) -- supaya posisi badge Cap. Downtime
+            # bisa dihitung PERSIS sejajar dgn tiap baris, tidak bergantung pd estimasi tinggi legend/plot area chart ---
+            label_x4 = 6.85 + 0.15
+            label_w4 = 1.55
+            bar_x4 = label_x4 + label_w4 + 0.08
+            bar_max_w4 = 2.55
+            dt_x4 = bar_x4 + bar_max_w4 + 0.15
+            dt_w4 = (6.85 + 6.05 - 0.15) - dt_x4
 
-            # --- Kolom "Cap. Downtime" di sisi kanan chart, sejajar tiap baris -- HANYA dirender kalau datanya ada
-            # (baris yg tidak ada data dibiarkan benar-benar kosong, tanpa tanda "-", supaya tidak terlihat berantakan) ---
-            col_dt_x4 = 7.0 + chart_w_m4 + 0.15
-            col_dt_w4 = 6.85 + 6.05 - 0.15 - col_dt_x4
-            legend_h_m4 = 0.32  # perkiraan tinggi area legend di atas plot area
-            plot_h_m4 = chart_h_m4 - legend_h_m4
-            row_h_m4b = plot_h_m4 / n_rows4
-            # Garis pemisah vertikal tipis, biar kolom ini terlihat rapi sbg "kolom" (bukan teks mengambang)
-            sep_line4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(col_dt_x4 - 0.08), Inches(chart_top_m4), Inches(0.012), Inches(chart_h_m4))
+            legend_h_m4 = 0.28
+            leg_y4 = chart_top_m4
+            leg1 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4), Inches(leg_y4 + 0.06), Inches(0.14), Inches(0.14))
+            leg1.fill.solid(); leg1.fill.fore_color.rgb = TEAL; leg1.line.fill.background(); leg1.shadow.inherit = False
+            add_textbox(s, bar_x4 + 0.2, leg_y4, 0.8, 0.26, "Rutin", size=8.5, bold=True, color=TEXT_MUTED)
+            leg2 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4 + 0.95), Inches(leg_y4 + 0.06), Inches(0.14), Inches(0.14))
+            leg2.fill.solid(); leg2.fill.fore_color.rgb = GOLD; leg2.line.fill.background(); leg2.shadow.inherit = False
+            add_textbox(s, bar_x4 + 1.15, leg_y4, 1.1, 0.26, "Non Rutin", size=8.5, bold=True, color=TEXT_MUTED)
+            add_textbox(s, dt_x4, leg_y4, dt_w4, legend_h_m4, "Cap. Downtime", size=7.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            sep_line4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(dt_x4 - 0.08), Inches(chart_top_m4), Inches(0.012), Inches(chart_h_m4))
             sep_line4.fill.solid(); sep_line4.fill.fore_color.rgb = RGBColor(0xE0, 0xE4, 0xEC)
             sep_line4.line.fill.background(); sep_line4.shadow.inherit = False
-            add_textbox(s, col_dt_x4, chart_top_m4, col_dt_w4, legend_h_m4, "Cap.\nDowntime", size=7.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
-            for i4dt, (_, r4dt) in enumerate(rutin_shown4.iterrows()):
-                # rutin_shown4 diurutkan ascending (total terkecil dulu) -> pada chart horizontal, baris PALING BAWAH = index 0.
-                from_top4 = n_rows4 - 1 - i4dt
-                y4dt = chart_top_m4 + legend_h_m4 + from_top4 * row_h_m4b
-                cap_dt_val = r4dt["cap_downtime"]
-                if cap_dt_val is None or pd.isna(cap_dt_val):
-                    continue  # data tidak ada -> tidak render apapun (bukan tanda "-"), biar bersih
-                dt_color4 = RED if cap_dt_val > 100 else GREEN
-                dt_bg4 = RGBColor(0xFC, 0xE4, 0xE1) if cap_dt_val > 100 else RGBColor(0xDE, 0xF2, 0xE4)
-                badge_h4 = min(0.26, row_h_m4b * 0.55)
-                badge4 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(col_dt_x4 + 0.08), Inches(y4dt + row_h_m4b / 2 - badge_h4 / 2), Inches(col_dt_w4 - 0.16), Inches(badge_h4))
+
+            plot_top4 = chart_top_m4 + legend_h_m4 + 0.06
+            plot_h4 = chart_h_m4 - legend_h_m4 - 0.1
+            row_gap_m4 = 0.05
+            row_h_m4b = min(0.5, (plot_h4 - (n_rows4 - 1) * row_gap_m4) / n_rows4)
+            label_font_m4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else 7)
+            pct_font_m4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else 7)
+
+            rutin_desc4 = rutin_shown4.iloc[::-1].reset_index(drop=True)
+            for i4, r4 in rutin_desc4.iterrows():
+                y4 = plot_top4 + i4 * (row_h_m4b + row_gap_m4)
+                lbl_tb4 = s.shapes.add_textbox(Inches(label_x4), Inches(y4), Inches(label_w4), Inches(row_h_m4b))
+                ltf4 = lbl_tb4.text_frame; ltf4.word_wrap = True; ltf4.vertical_anchor = MSO_ANCHOR.MIDDLE
+                ltf4.margin_left = 0
+                lp4 = ltf4.paragraphs[0]; lp4.alignment = PP_ALIGN.RIGHT
+                lr4 = lp4.add_run(); lr4.text = r4["label"]
+                lr4.font.size = Pt(label_font_m4); lr4.font.bold = True; lr4.font.color.rgb = TEXT_DARK; lr4.font.name = "Calibri"
+                bar_h4 = row_h_m4b * 0.85
+                bar_y4 = y4 + (row_h_m4b - bar_h4) / 2
+                w_rutin4 = bar_max_w4 * (r4["pct_rutin"] / 100)
+                w_nonrutin4 = bar_max_w4 * (r4["pct_nonrutin"] / 100)
+                seg_rutin4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4), Inches(bar_y4), Inches(max(w_rutin4, 0.01)), Inches(bar_h4))
+                seg_rutin4.fill.solid(); seg_rutin4.fill.fore_color.rgb = TEAL
+                seg_rutin4.line.fill.background(); seg_rutin4.shadow.inherit = False
+                nonrutin_color4 = RED if r4["pct_nonrutin"] > 40 else GOLD
+                seg_nr4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4 + w_rutin4), Inches(bar_y4), Inches(max(w_nonrutin4, 0.01)), Inches(bar_h4))
+                seg_nr4.fill.solid(); seg_nr4.fill.fore_color.rgb = nonrutin_color4
+                seg_nr4.line.fill.background(); seg_nr4.shadow.inherit = False
+                if w_rutin4 > 0.35:
+                    add_textbox(s, bar_x4, bar_y4, w_rutin4, bar_h4, f"{r4['pct_rutin']:.0f}%", size=pct_font_m4, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+                if w_nonrutin4 > 0.35:
+                    add_textbox(s, bar_x4 + w_rutin4, bar_y4, w_nonrutin4, bar_h4, f"{r4['pct_nonrutin']:.0f}%", size=pct_font_m4, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+                cap_dt_val = r4["cap_downtime"]
+                has_dt4 = cap_dt_val is not None and not pd.isna(cap_dt_val)
+                dt_color4 = (RED if cap_dt_val > 100 else GREEN) if has_dt4 else TEXT_MUTED
+                dt_bg4 = (RGBColor(0xFC, 0xE4, 0xE1) if cap_dt_val > 100 else RGBColor(0xDE, 0xF2, 0xE4)) if has_dt4 else RGBColor(0xF1, 0xF2, 0xF5)
+                badge_h4 = min(0.26, row_h_m4b * 0.75)
+                badge4 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(dt_x4 + 0.05), Inches(y4 + row_h_m4b / 2 - badge_h4 / 2), Inches(dt_w4 - 0.1), Inches(badge_h4))
                 badge4.adjustments[0] = 0.5
                 badge4.fill.solid(); badge4.fill.fore_color.rgb = dt_bg4
                 badge4.line.fill.background(); badge4.shadow.inherit = False
-                btf4 = badge4.text_frame; btf4.vertical_anchor = MSO_ANCHOR.MIDDLE
-                btf4.margin_left = 0; btf4.margin_right = 0; btf4.margin_top = 0; btf4.margin_bottom = 0
-                bp4 = btf4.paragraphs[0]; bp4.alignment = PP_ALIGN.CENTER
-                br4 = bp4.add_run(); br4.text = f"{cap_dt_val:.0f}%"
-                br4.font.size = Pt(min(8.5, cat_font_m4)); br4.font.bold = True; br4.font.color.rgb = dt_color4; br4.font.name = "Calibri"
+                if has_dt4:
+                    btf4 = badge4.text_frame; btf4.vertical_anchor = MSO_ANCHOR.MIDDLE
+                    btf4.margin_left = 0; btf4.margin_right = 0; btf4.margin_top = 0; btf4.margin_bottom = 0
+                    bp4 = btf4.paragraphs[0]; bp4.alignment = PP_ALIGN.CENTER
+                    br4 = bp4.add_run(); br4.text = f"{cap_dt_val:.0f}%"
+                    br4.font.size = Pt(min(8.5, pct_font_m4)); br4.font.bold = True; br4.font.color.rgb = dt_color4; br4.font.name = "Calibri"
+
 
         else:
             add_textbox(s, 7.0, chart_top_m4 + 0.1, 5.6, 0.6,
