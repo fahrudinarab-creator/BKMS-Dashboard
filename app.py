@@ -1683,24 +1683,29 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         maint_su4["gap_rp"] = maint_su4["maint_r"] - maint_su4["maint_b"]
         # Diurutkan dari gap Rupiah (over) paling tinggi dulu
         maint_su4 = maint_su4.sort_values("gap_rp", ascending=False)
+        maint_su4_full = maint_su4.copy()  # simpan versi LENGKAP (semua unit) utk analisa insight di bawah, terpisah dari versi tampilan chart
+        n_maint4_total = len(maint_su4)
+        # Fokus ke unit OVER BUDGET saja (gap positif) -- paling relevan utk dianalisa
+        maint_su4 = maint_su4[maint_su4["gap_rp"] > 0]
         n_maint4 = max(len(maint_su4), 1)
 
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Biaya Maintenance (Realisasi) \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Gap Biaya Maintenance (Unit OVER BUDGET) \u2014 per Site & Jenis Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
         note_h4 = 0.95
         chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
         if not maint_su4.empty:
             cd_r4 = CategoryChartData()
             cd_r4.categories = list(maint_su4["label"])
-            cd_r4.add_series("Biaya Maintenance Realisasi", tuple(round(v, 0) for v in maint_su4["maint_r"]))
+            cd_r4.add_series("Gap Biaya Maintenance", tuple(round(v, 0) for v in maint_su4["gap_rp"]))
             gframe_r4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_r4), Inches(5.75), Inches(chart_h_r4), cd_r4)
             chart_r4 = gframe_r4.chart
             chart_r4.series[0].format.fill.solid(); chart_r4.series[0].format.fill.fore_color.rgb = TEAL
             chart_r4.has_title = False
             plot_r4 = chart_r4.plots[0]
             plot_r4.gap_width = 50
-            label_font_r4 = 9 if n_maint4 <= 6 else (7.5 if n_maint4 <= 10 else (6 if n_maint4 <= 16 else (5 if n_maint4 <= 24 else 4.2)))
+            label_font_r4 = 9 if n_maint4 <= 6 else (8 if n_maint4 <= 10 else (7 if n_maint4 <= 16 else 6))
+            from pptx.oxml.ns import qn as _qn_r4
             for i, pt in enumerate(chart_r4.series[0].points):
                 v = maint_su4["cap"].iloc[i]
                 gap_val4 = maint_su4["gap_rp"].iloc[i]
@@ -1710,13 +1715,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dl = pt.data_label
                 dl.has_text_frame = True
                 tf = dl.text_frame
-                # Label 2 baris: nilai Rupiah realisasi (baris 1) + persentase capaian & gap (baris 2)
-                tf.text = fmt_rp(maint_su4["maint_r"].iloc[i])
-                p2 = tf.add_paragraph()
-                p2.text = f"({v:.0f}%, {gap_sign4}{fmt_rp(abs(gap_val4))})"
+                # Label 1 baris: gap Rupiah (nilai yg ditampilkan bar) + persentase capaian sbg konteks
+                tf.text = f"{gap_sign4}{fmt_rp(abs(gap_val4))}  ({v:.0f}%)"
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
+                if n_maint4 > 6:
+                    # Kategori banyak: putar teks label vertikal, supaya tidak numpuk horizontal antar bar
+                    bodyPr = dl.text_frame._txBody.find(_qn_r4('a:bodyPr'))
+                    if bodyPr is not None:
+                        bodyPr.set('rot', '-5400000')
             style_chart_light(chart_r4, legend=False)
             cat_font_r4 = 8 if n_maint4 <= 10 else (6.5 if n_maint4 <= 20 else 5.3)
             chart_r4.category_axis.tick_labels.font.size = Pt(cat_font_r4)
@@ -1724,7 +1732,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_r4.value_axis.tick_labels.number_format = '"Rp"#,,"Jt"'
             chart_r4.value_axis.tick_labels.number_format_is_linked = False
         else:
-            add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
+            add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5,
+                        "Tidak ada unit yang over budget \u2014 seluruh biaya maintenance dalam/di bawah budget." if n_maint4_total > 0 else "Data Biaya Maintenance belum tersedia.",
+                        size=10, italic=True, color=TEXT_MUTED)
 
         # ================= PANEL KANAN: Rekap Maintenance Rutin vs Non-Rutin per Site & Jenis Unit =================
         add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
@@ -1856,8 +1866,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         # ================= INSIGHT: hubungkan Capaian Biaya Maintenance dgn porsi Non-Rutin =================
         insight_top4 = panel_top4 + panel_h4 - note_h4
-        if not maint_su4.empty and not rutin_pivot4.empty:
-            merge4 = maint_su4.merge(rutin_pivot4[["lokasi", "jenis_unit", "pct_nonrutin"]], on=["lokasi", "jenis_unit"], how="inner")
+        if not maint_su4_full.empty and not rutin_pivot4.empty:
+            merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "jenis_unit", "pct_nonrutin"]], on=["lokasi", "jenis_unit"], how="inner")
             over_budget4 = merge4[merge4["cap"] > 100]
             if not over_budget4.empty:
                 worst4 = over_budget4.sort_values("pct_nonrutin", ascending=False).iloc[0]
