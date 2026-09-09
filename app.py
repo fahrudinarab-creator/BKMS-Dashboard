@@ -1668,7 +1668,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             cap_harga_txt3 = f"{top1_3['cap_harga']:.0f}%" if top1_3["cap_harga"] is not None else "data tidak tersedia"
             note_top3b = chart_top_m3b + chart_h_m3b + 0.12
             add_finding_box(s, 0.55, note_top3b, 12.2, note_h3b, "\U0001F4A1",
-                             f"{top1_3['label']} adalah unit dengan dampak Rupiah biaya BBM terbesar ({fmt_rp(top1_3['abs_gap'])} {gap_sign3}) \u2014 "
+                             f"{top1_3['label']} adalah unit dengan dampak Rupiah biaya BBM terbesar ({fmt_rp(abs(top1_3['gap']))} {gap_sign3}) \u2014 "
                              f"penyebab dominannya: {top1_3['penyebab']} (Cap. Prestasi {cap_prestasi_txt3}, "
                              f"Cap. Konsumsi {top1_3['cap']:.0f}%, Cap. Harga BBM {cap_harga_txt3}).",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
