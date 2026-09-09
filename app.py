@@ -1683,66 +1683,100 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         maint_su4["gap_rp"] = maint_su4["maint_r"] - maint_su4["maint_b"]
         # Diurutkan dari gap Rupiah (over) paling tinggi dulu
         maint_su4 = maint_su4.sort_values("gap_rp", ascending=False)
-        maint_su4_full = maint_su4.copy()  # simpan versi LENGKAP (semua unit) utk analisa insight di bawah, terpisah dari versi tampilan chart
+        maint_su4_full = maint_su4.copy()  # simpan versi LENGKAP (semua unit) utk analisa insight di bawah
         n_maint4_total = len(maint_su4)
-        # Fokus ke unit OVER BUDGET saja (gap positif) -- paling relevan utk dianalisa
-        maint_su4 = maint_su4[maint_su4["gap_rp"] > 0]
         n_maint4 = max(len(maint_su4), 1)
 
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Gap Biaya Maintenance (Unit OVER BUDGET) \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Gap Biaya Maintenance (Realisasi vs Budget) \u2014 per Site & Jenis Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
         note_h4 = 0.95
         chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
         if not maint_su4.empty:
             # --- Bar digambar manual (bukan native chart) -- rotasi label data-label native chart
             # terbukti tidak konsisten di PowerPoint, sedangkan rotasi shape textbox biasa jauh lebih reliable ---
-            plot_left4 = 0.75
+            plot_left4 = 0.85
             plot_right4 = 6.2
-            plot_bottom4 = chart_top_r4 + chart_h_r4 - 0.55  # sisakan ruang utk label kategori di bawah
-            plot_top4b = chart_top_r4 + 0.15
-            plot_area_h4 = plot_bottom4 - plot_top4b
+            has_under4 = (maint_su4["gap_rp"] < 0).any()
+            plot_top4b = chart_top_r4 + 1.05  # sisakan ruang di atas utk label nilai (over budget) yg diputar vertikal
+            # Kalau ada unit under-budget, sisakan ruang jauh lebih besar di bawah utk label nilai (rotasi vertikal
+            # butuh ~1.5" tinggi) + label kategori, supaya keduanya tidak tumpang tindih
+            bottom_margin4 = 1.25 if has_under4 else 0.55
+            plot_bottom4b = chart_top_r4 + chart_h_r4 - bottom_margin4
             max_gap4 = maint_su4["gap_rp"].max()
+            min_gap4 = maint_su4["gap_rp"].min()
+
+            # --- Hitung skala sumbu Y "rapi" (kelipatan teratur), sama seperti native chart PowerPoint ---
+            import math as _math4
+            def _nice_step4(v):
+                if v <= 0:
+                    return 20
+                magnitude = 10 ** _math4.floor(_math4.log10(v))
+                for mult in [1, 2, 2.5, 5, 10]:
+                    step = magnitude * mult / 5
+                    if step * 5 >= v:
+                        return step
+                return v / 5
+            axis_pos_max4 = max(max_gap4, 0)
+            axis_neg_max4 = max(-min_gap4, 0)
+            step4 = _nice_step4(max(axis_pos_max4, axis_neg_max4))
+            n_ticks_pos4 = _math4.ceil(axis_pos_max4 / step4) if axis_pos_max4 > 0 else 0
+            n_ticks_neg4 = _math4.ceil(axis_neg_max4 / step4) if axis_neg_max4 > 0 else 0
+            axis_top_val4 = n_ticks_pos4 * step4
+            axis_bot_val4 = -n_ticks_neg4 * step4
+            axis_range4 = axis_top_val4 - axis_bot_val4
+            zero_y4 = plot_bottom4b - (0 - axis_bot_val4) / axis_range4 * (plot_bottom4b - plot_top4b) if axis_range4 else plot_bottom4b
+            plot_area_h4 = plot_bottom4b - plot_top4b
+
             col_w4 = (plot_right4 - plot_left4) / n_maint4
             bar_w4 = col_w4 * 0.55
             cat_font_r4 = 7.5 if n_maint4 <= 10 else (6.5 if n_maint4 <= 16 else 5.5)
             label_font_r4 = 8 if n_maint4 <= 8 else (7 if n_maint4 <= 14 else 6)
-            # Sumbu Y sederhana: garis dasar + label nilai max
-            axis_line4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(plot_left4), Inches(plot_bottom4), Inches(plot_right4 - plot_left4), Pt(1))
-            axis_line4.fill.solid(); axis_line4.fill.fore_color.rgb = RGBColor(0xD0, 0xD4, 0xDC); axis_line4.line.fill.background(); axis_line4.shadow.inherit = False
-            add_textbox(s, 0.15, plot_top4b - 0.1, plot_left4 - 0.2, 0.25, fmt_rp(max_gap4), size=7, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
-            add_textbox(s, 0.15, plot_bottom4 - 0.12, plot_left4 - 0.2, 0.25, "Rp0", size=7, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
+
+            # Sumbu Y: gridlines horizontal + label di tiap kelipatan, dari negatif (under) sampai positif (over)
+            for tk4 in range(-n_ticks_neg4, n_ticks_pos4 + 1):
+                tick_val4 = tk4 * step4
+                tick_y4 = plot_bottom4b - (tick_val4 - axis_bot_val4) / axis_range4 * plot_area_h4
+                grid_color4 = RGBColor(0xB8, 0xBE, 0xC8) if tk4 == 0 else RGBColor(0xEC, 0xEE, 0xF2)
+                grid4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(plot_left4), Inches(tick_y4), Inches(plot_right4 - plot_left4), Pt(0.75))
+                grid4.fill.solid(); grid4.fill.fore_color.rgb = grid_color4
+                grid4.line.fill.background(); grid4.shadow.inherit = False
+                tick_label4 = fmt_rp(tick_val4) if tick_val4 >= 0 else f"-{fmt_rp(abs(tick_val4))}"
+                add_textbox(s, 0.1, tick_y4 - 0.09, plot_left4 - 0.15, 0.18, tick_label4, size=6.5, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
+
             for i4m, (_, r4m) in enumerate(maint_su4.iterrows()):
                 gap_val4 = r4m["gap_rp"]
                 v4 = r4m["cap"]
-                bar_h4 = max(0.03, plot_area_h4 * (gap_val4 / max_gap4)) if max_gap4 else 0.03
+                is_over4 = gap_val4 > 0
+                bar_h4 = max(0.025, abs(gap_val4) / axis_range4 * plot_area_h4) if axis_range4 else 0.025
                 bar_x4 = plot_left4 + i4m * col_w4 + (col_w4 - bar_w4) / 2
-                bar_y4 = plot_bottom4 - bar_h4
+                bar_y4 = zero_y4 - bar_h4 if is_over4 else zero_y4
                 bar4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4), Inches(bar_y4), Inches(bar_w4), Inches(bar_h4))
-                bar4.fill.solid(); bar4.fill.fore_color.rgb = RED
+                bar4.fill.solid(); bar4.fill.fore_color.rgb = RED if is_over4 else TEAL
                 bar4.line.fill.background(); bar4.shadow.inherit = False
-                # Label nilai (dirotasi vertikal via shape.rotation -- properti standar PowerPoint, reliable di semua aplikasi)
-                lbl_txt4 = f"+{fmt_rp(gap_val4)} ({v4:.0f}%)"
-                lbl_w4 = 1.3
-                lbl_h4 = 0.22
-                lbl_tb4 = s.shapes.add_textbox(Inches(bar_x4 + bar_w4 / 2 - lbl_w4 / 2), Inches(bar_y4 - lbl_h4 - 0.02), Inches(lbl_w4), Inches(lbl_h4))
+                # Label nilai (SELALU diputar vertikal via shape.rotation -- properti standar PowerPoint, reliable di semua aplikasi)
+                gap_sign4 = "+" if is_over4 else "-"
+                lbl_txt4 = f"{gap_sign4}{fmt_rp(abs(gap_val4))} ({v4:.0f}%)"
+                lbl_w4 = 1.1
+                lbl_h4 = 0.2
+                # Posisi label: di ATAS bar kalau over budget, di BAWAH bar kalau under budget
+                lbl_cy4 = (bar_y4 - lbl_w4 / 2 - 0.05) if is_over4 else (bar_y4 + bar_h4 + lbl_w4 / 2 + 0.05)
+                lbl_tb4 = s.shapes.add_textbox(Inches(bar_x4 + bar_w4 / 2 - lbl_w4 / 2), Inches(lbl_cy4 - lbl_h4 / 2), Inches(lbl_w4), Inches(lbl_h4))
                 ltf4 = lbl_tb4.text_frame; ltf4.word_wrap = False; ltf4.margin_left = 0; ltf4.margin_right = 0; ltf4.margin_top = 0; ltf4.margin_bottom = 0
                 ltf4.vertical_anchor = MSO_ANCHOR.MIDDLE
                 lp4m = ltf4.paragraphs[0]; lp4m.alignment = PP_ALIGN.CENTER
                 lr4m = lp4m.add_run(); lr4m.text = lbl_txt4
                 lr4m.font.size = Pt(label_font_r4); lr4m.font.bold = True; lr4m.font.color.rgb = TEXT_DARK; lr4m.font.name = "Calibri"
-                if n_maint4 > 6:
-                    lbl_tb4.rotation = -90  # properti rotation shape standar PowerPoint -- konsisten di semua aplikasi
-                # Label kategori di bawah bar
-                cat_tb4 = s.shapes.add_textbox(Inches(bar_x4 - (col_w4 - bar_w4) / 2), Inches(plot_bottom4 + 0.05), Inches(col_w4), Inches(0.5))
+                lbl_tb4.rotation = -90  # properti rotation shape standar PowerPoint -- konsisten di semua aplikasi
+                # Label kategori (ditaruh di bawah, dgn jarak ekstra kalau ada label under-budget yg terotasi ke bawah)
+                cat_top4 = plot_bottom4b + (0.85 if has_under4 else 0.05)
+                cat_tb4 = s.shapes.add_textbox(Inches(bar_x4 - (col_w4 - bar_w4) / 2), Inches(cat_top4), Inches(col_w4), Inches(0.5))
                 ctf4 = cat_tb4.text_frame; ctf4.word_wrap = True; ctf4.margin_left = 0; ctf4.margin_right = 0
                 cp4 = ctf4.paragraphs[0]; cp4.alignment = PP_ALIGN.CENTER
                 cr4 = cp4.add_run(); cr4.text = r4m["label"]
                 cr4.font.size = Pt(cat_font_r4); cr4.font.bold = True; cr4.font.color.rgb = TEXT_DARK; cr4.font.name = "Calibri"
         else:
-            add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5,
-                        "Tidak ada unit yang over budget \u2014 seluruh biaya maintenance dalam/di bawah budget." if n_maint4_total > 0 else "Data Biaya Maintenance belum tersedia.",
-                        size=10, italic=True, color=TEXT_MUTED)
+            add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
         # ================= PANEL KANAN: Rekap Maintenance Rutin vs Non-Rutin per Site & Jenis Unit =================
         add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
