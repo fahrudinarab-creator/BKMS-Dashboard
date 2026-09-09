@@ -619,8 +619,7 @@ if not sasaran_mutu_raw.empty:
     sasaran_mutu_df = sasaran_mutu_raw[
         sasaran_mutu_raw["lokasi"].isin(sel_site) &
         sasaran_mutu_raw["bulan"].isin(sel_month) &
-        sasaran_mutu_raw["kategori"].isin(sel_kat) &
-        (~sasaran_mutu_raw["unit_sewa"])
+        sasaran_mutu_raw["kategori"].isin(sel_kat)
     ].copy()
     if sel_id_unit:
         sasaran_mutu_df["unit_label"] = sasaran_mutu_df["nama_unit"].apply(_unit_label)
