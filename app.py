@@ -1686,14 +1686,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         n_maint4 = max(len(maint_su4), 1)
 
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 % Capaian Biaya Maintenance \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Biaya Maintenance (Realisasi) \u2014 per Site & Jenis Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
         note_h4 = 0.95
         chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
         if not maint_su4.empty:
             cd_r4 = CategoryChartData()
             cd_r4.categories = list(maint_su4["label"])
-            cd_r4.add_series("% Capaian Biaya Maintenance", tuple(round(v, 1) for v in maint_su4["cap"]))
+            cd_r4.add_series("Biaya Maintenance Realisasi", tuple(round(v, 0) for v in maint_su4["maint_r"]))
             gframe_r4 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top_r4), Inches(5.75), Inches(chart_h_r4), cd_r4)
             chart_r4 = gframe_r4.chart
             chart_r4.series[0].format.fill.solid(); chart_r4.series[0].format.fill.fore_color.rgb = TEAL
@@ -1710,11 +1710,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 dl = pt.data_label
                 dl.has_text_frame = True
                 tf = dl.text_frame
-                # Label 2 baris horizontal (TANPA rotasi) -- rotasi ternyata di-render tidak konsisten di PowerPoint,
-                # jadi lebih aman pakai 2 baris biasa. Karena chart ini sudah dibatasi maks 8 kategori, ruang per bar cukup lega.
-                tf.text = f"{v:.0f}%"
+                # Label 2 baris: nilai Rupiah realisasi (baris 1) + persentase capaian & gap (baris 2)
+                tf.text = fmt_rp(maint_su4["maint_r"].iloc[i])
                 p2 = tf.add_paragraph()
-                p2.text = f"({gap_sign4}{fmt_rp(abs(gap_val4))})"
+                p2.text = f"({v:.0f}%, {gap_sign4}{fmt_rp(abs(gap_val4))})"
                 for para in tf.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(label_font_r4); run.font.bold = True; run.font.color.rgb = TEXT_DARK; run.font.name = "Calibri"
@@ -1722,6 +1721,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             cat_font_r4 = 8 if n_maint4 <= 10 else (6.5 if n_maint4 <= 20 else 5.3)
             chart_r4.category_axis.tick_labels.font.size = Pt(cat_font_r4)
             chart_r4.value_axis.tick_labels.font.size = Pt(cat_font_r4)
+            chart_r4.value_axis.tick_labels.number_format = '"Rp"#,,"Jt"'
+            chart_r4.value_axis.tick_labels.number_format_is_linked = False
         else:
             add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
