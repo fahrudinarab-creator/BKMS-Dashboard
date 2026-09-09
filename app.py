@@ -1204,6 +1204,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         au_rows_tetap = [r for r in au_rows if r["kriteria_unit"] == "Tarif Tetap"]
         au_rows_other = [r for r in au_rows if r["kriteria_unit"] not in ("Floating Tarif", "Tarif Tetap")]
         au_rows_floating = au_rows_floating + au_rows_other  # unit tanpa info kriteria digabung ke Floating (default)
+        # Urutkan berdasarkan Gap Pendapatan (Realisasi - Budget) PALING MINUS dulu -- metrik PERSIS SAMA dgn yg
+        # dipakai kotak analisa di bawah chart, supaya urutan chart selalu beririsan dgn unit yg disorot di analisa
+        gap_pend_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+            pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"))
+        gap_pend_unit["site_short_g"] = gap_pend_unit["lokasi"].map(SITE_ABBR).fillna(gap_pend_unit["lokasi"])
+        gap_pend_unit["label_g"] = gap_pend_unit["site_short_g"] + " \u2014 " + gap_pend_unit["jenis_unit"]
+        gap_pend_unit["gap_g"] = gap_pend_unit["pend_r"] - gap_pend_unit["pend_b"]
+        gap_pend_lookup = dict(zip(gap_pend_unit["label_g"], gap_pend_unit["gap_g"]))
+        au_rows_floating = sorted(au_rows_floating, key=lambda r: gap_pend_lookup.get(r["label"], 0))
 
         # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
         mini_w, mini_h, mini_gap, mini_y = 2.32, 1.95, 0.19, 1.05
