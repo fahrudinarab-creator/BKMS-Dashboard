@@ -1628,11 +1628,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         avail_h_m3b = maint_panel_h3 - 0.42 - 0.15
         if not maint_su3.empty:
             unit_label3 = "KM/Ltr" if set(maint_su3["kategori"].unique()) == {"TR"} else ("Ltr/HM" if set(maint_su3["kategori"].unique()) == {"AB"} else "Rate")
-            # Pilih Top N unit dgn dampak Rupiah biaya BBM terbesar (paling relevan utk disorot di chart)
+            # Pilih Top N unit dgn dampak Rupiah biaya BBM OVER BUDGET terbesar (paling relevan utk disorot di chart)
             top_n3 = 7
-            maint_su3["abs_gap"] = maint_su3["gap"].abs()
-            chart_src3 = maint_su3.sort_values("abs_gap", ascending=False).head(top_n3)
-            chart_src3 = chart_src3.sort_values("gap", ascending=False)  # urutkan tampil dari over paling tinggi
+            chart_src3 = maint_su3.sort_values("gap", ascending=False).head(top_n3)
 
             note_h3b = 0.85
             chart_h_m3b = avail_h_m3b - note_h3b - 0.12
@@ -1663,8 +1661,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             chart_m3b.value_axis.tick_labels.font.size = Pt(cat_font_m3b)
             chart_m3b.value_axis.has_major_gridlines = True
 
-            # --- Insight otomatis: unit #1 (dampak Rupiah terbesar) & penyebab dominannya ---
-            top1_3 = chart_src3.sort_values("abs_gap", ascending=False).iloc[0]
+            # --- Insight otomatis: unit #1 (dampak Rupiah OVER BUDGET terbesar) & penyebab dominannya ---
+            top1_3 = chart_src3.sort_values("gap", ascending=False).iloc[0]
             gap_sign3 = "over budget" if top1_3["gap"] > 0 else "hemat"
             cap_prestasi_txt3 = f"{top1_3['cap_prestasi']:.0f}%" if top1_3["cap_prestasi"] is not None else "data tidak tersedia"
             cap_harga_txt3 = f"{top1_3['cap_harga']:.0f}%" if top1_3["cap_harga"] is not None else "data tidak tersedia"
