@@ -1295,7 +1295,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         h_floating = total_h * 0.8
         h_finding = total_h - h_floating - 0.15
 
-        _draw_util_chart(s, au_rows_floating, panel_top, h_floating, "🟢 Capaian Utilisasi & Prestasi — per Site & Jenis Unit")
+        _draw_util_chart(s, au_rows_floating, panel_top, h_floating, "🟢 Capaian Prestasi, Utilisasi & Availability — per Site & Jenis Unit")
 
         # --- Analisa: unit dgn gap pendapatan (realisasi - budget) paling minus, dikaitkan dgn capaian utilisasinya ---
         note_top_au = panel_top + h_floating + 0.1
@@ -2087,8 +2087,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         # --- Panel kiri: % Downtime per Site & Jenis Unit + catatan strategi ---
         add_card_panel(s, 0.4, panel_top5, left_w5, panel_h5, accent_color=RED)
-        add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Jenis Unit (Min Target: " +
-                          (f"{dt_avg_t5:.2f}%" if dt_avg_t5 is not None else "-") + ")", height=0.4)
+        add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Jenis Unit", height=0.4)
         chart_top5 = panel_top5 + 0.45
         note_h5 = 0.85
         chart_h5 = panel_h5 - 0.45 - note_h5 - 0.15
