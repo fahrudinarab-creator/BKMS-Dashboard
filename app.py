@@ -294,7 +294,66 @@ def load_from_upload(uploaded_file) -> pd.DataFrame:
         ))
     return pd.DataFrame(rows)
 
-def load_from_upload_maintenance(uploaded_file) -> pd.DataFrame:
+def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
+    """Parse file upload Realisasi (format sama dgn template Data_Budget: baris 1=header nama kolom,
+    baris 2=label 'Realisasi'/kosong, baris 3=kosong, data mulai baris 4). Nilai yg diupload MENGGABUNG
+    (update) ke base_df yg sudah ada berdasarkan (id_unit, bulan_no) -- HANYA kolom realisasi yg diperbarui,
+    kolom budget & baris lain yg tidak ada di file upload TETAP UTUH tidak berubah."""
+    import openpyxl
+    wb = openpyxl.load_workbook(uploaded_file, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    month_map_id = {'Jan': 'Jan', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Apr', 'Mei': 'May', 'Jun': 'Jun',
+                     'Jul': 'Jul', 'Agt': 'Aug', 'Sep': 'Sep', 'Okt': 'Oct', 'Nov': 'Nov', 'Des': 'Dec'}
+    month_no_map = {'Jan':1,'Feb':2,'Mar':3,'Apr':4,'May':5,'Jun':6,'Jul':7,'Aug':8,'Sep':9,'Oct':10,'Nov':11,'Dec':12}
+    rows = []
+    for r in range(5, ws.max_row + 1):
+        id_unit_raw = ws.cell(row=r, column=1).value
+        if not id_unit_raw:
+            continue
+        bulan_raw = ws.cell(row=r, column=19).value  # kolom 'Status' (bulan)
+        bulan_en = month_map_id.get(str(bulan_raw).strip(), None) if bulan_raw else None
+        if not bulan_en:
+            continue
+        kode_unit = str(id_unit_raw).strip()
+        id_unit = kode_unit.replace("-", "")
+        rows.append(dict(
+            id_unit=id_unit, kode_unit=kode_unit, bulan=bulan_en, bulan_no=month_no_map[bulan_en],
+            prestasi_realisasi=ws.cell(row=r, column=6).value or 0,
+            pendapatan_realisasi=ws.cell(row=r, column=7).value or 0,
+            upah_realisasi=ws.cell(row=r, column=8).value or 0,
+            qty_bbm_realisasi=ws.cell(row=r, column=9).value or 0,
+            harga_bbm_realisasi=ws.cell(row=r, column=10).value or 0,
+            biaya_bbm_realisasi=ws.cell(row=r, column=11).value or 0,
+            maintenance_realisasi=ws.cell(row=r, column=12).value or 0,
+            penyusutan_realisasi=ws.cell(row=r, column=13).value or 0,
+            lainnya_realisasi=ws.cell(row=r, column=14).value or 0,
+            biaya_langsung_realisasi=ws.cell(row=r, column=15).value or 0,
+            biaya_tidak_langsung_realisasi=ws.cell(row=r, column=16).value or 0,
+            total_biaya_realisasi=ws.cell(row=r, column=17).value or 0,
+        ))
+    upload_df = pd.DataFrame(rows)
+    if upload_df.empty:
+        return base_df, 0, 0
+
+    realisasi_cols = ["prestasi_realisasi", "pendapatan_realisasi", "upah_realisasi", "qty_bbm_realisasi",
+                       "harga_bbm_realisasi", "biaya_bbm_realisasi", "maintenance_realisasi", "penyusutan_realisasi",
+                       "lainnya_realisasi", "biaya_langsung_realisasi", "biaya_tidak_langsung_realisasi", "total_biaya_realisasi"]
+
+    result = base_df.copy()
+    result["id_unit"] = result["id_unit"].astype(str)
+    upload_df["id_unit"] = upload_df["id_unit"].astype(str)
+    result = result.set_index(["id_unit", "bulan_no"])
+    upload_idx = upload_df.set_index(["id_unit", "bulan_no"])
+
+    matched_keys = result.index.intersection(upload_idx.index)
+    for col in realisasi_cols:
+        result.loc[matched_keys, col] = upload_idx.loc[matched_keys, col]
+    n_updated = len(matched_keys)
+    n_unmatched = len(upload_idx.index) - len(matched_keys)
+    result = result.reset_index()
+    return result, n_updated, n_unmatched
+
+
     """Parse an uploaded maintenance detail file (e.g. 'Pemeliharaan_sd_Bulan.xls').
     DESCRIPTION format: 'PEMELIHARAAN (RUTIN|NON RUTIN) (kategori) (tipe biaya) (PLANTATION|MINING) (site) - (unit)'
     """
@@ -437,55 +496,52 @@ with st.sidebar:
     DIVISI_MAP = {"Mining": MINING_SITES, "Plantation": PLANTATION_SITES}
 
     st.markdown("### 📁 Sumber Data")
-    uploaded = st.file_uploader("Upload file Gabungan.xlsx terbaru (opsional)", type=["xlsx"])
-    if uploaded is not None:
-        try:
-            df_raw = load_from_upload(uploaded)
-            st.success(f"Berhasil memuat {len(df_raw):,} baris dari file upload.")
-        except Exception as e:
-            st.error(f"Gagal membaca file: {e}")
-            df_raw = load_data(DATA_PATH)
-    else:
-        df_raw = load_data(DATA_PATH)
+    df_raw = load_data(DATA_PATH)
+    maint_raw = load_maintenance_data(MAINT_DATA_PATH)
+    sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
+    mttr_raw = load_mttr_data(MTTR_DATA_PATH)
 
-    uploaded_maint = st.file_uploader("Upload data Maintenance (Pemeliharaan) terbaru (opsional)", type=["xls", "xlsx"])
+    # --- Upload Data Realisasi: MENGGABUNG (update) ke data yg sudah ada (id_unit + bulan) ---
+    # supaya Budget yg sudah ada (sampai Des) tetap utuh, cuma kolom Realisasi yg diperbarui.
+    uploaded_realisasi = st.file_uploader("Upload Data Realisasi (format sama dgn template Budget)", type=["xlsx"])
+    if uploaded_realisasi is not None:
+        try:
+            df_raw, n_upd, n_unmatch = load_from_upload_realisasi(uploaded_realisasi, df_raw)
+            st.success(f"Realisasi ter-update untuk {n_upd:,} baris (id_unit + bulan cocok).")
+            if n_unmatch:
+                st.warning(f"{n_unmatch:,} baris di file upload tidak ditemukan pasangannya (id_unit/bulan) di data existing, dilewati.")
+        except Exception as e:
+            st.error(f"Gagal membaca file Realisasi: {e}")
+
+    uploaded_maint = st.file_uploader("Upload Data Maintenance (Pemeliharaan)", type=["xls", "xlsx"])
     if uploaded_maint is not None:
         try:
             maint_raw = load_from_upload_maintenance(uploaded_maint)
             st.success(f"Berhasil memuat {len(maint_raw):,} baris data maintenance dari file upload.")
         except Exception as e:
             st.error(f"Gagal membaca file maintenance: {e}")
-            maint_raw = load_maintenance_data(MAINT_DATA_PATH)
-    else:
-        maint_raw = load_maintenance_data(MAINT_DATA_PATH)
 
-    uploaded_sparepart = st.file_uploader("Upload data Rincian Pemakaian Sparepart terbaru (opsional)", type=["xls", "xlsx"])
+    uploaded_sparepart = st.file_uploader("Upload Data Pemakaian Sparepart", type=["xls", "xlsx"])
     if uploaded_sparepart is not None:
         try:
             sparepart_raw = load_from_upload_sparepart(uploaded_sparepart)
             st.success(f"Berhasil memuat {len(sparepart_raw):,} baris data pemakaian sparepart dari file upload.")
         except Exception as e:
             st.error(f"Gagal membaca file sparepart: {e}")
-            sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
-    else:
-        sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
 
     uploaded_workshop = st.file_uploader(
-        "Upload data Workshop (jurnal harian, utk MTTR) \u2014 bisa pilih beberapa file sekaligus (opsional, akan pakai data default kalau tidak diisi)",
+        "Upload Data MTTR (jurnal harian Workshop) \u2014 bisa pilih beberapa file sekaligus",
         type=["xls", "xlsx"], accept_multiple_files=True)
     if uploaded_workshop:
         try:
-            mttr_raw = load_workshop_mttr_files(uploaded_workshop, df_raw)
-            if not mttr_raw.empty:
+            mttr_raw_new = load_workshop_mttr_files(uploaded_workshop, df_raw)
+            if not mttr_raw_new.empty:
+                mttr_raw = mttr_raw_new
                 st.success(f"Berhasil memuat data MTTR dari {len(uploaded_workshop)} file workshop ({mttr_raw['lokasi'].nunique()} site).")
             else:
                 st.warning("File workshop terbaca, tapi tidak ada baris perbaikan yang valid ditemukan.")
-                mttr_raw = load_mttr_data(MTTR_DATA_PATH)
         except Exception as e:
             st.error(f"Gagal membaca file workshop: {e}")
-            mttr_raw = load_mttr_data(MTTR_DATA_PATH)
-    else:
-        mttr_raw = load_mttr_data(MTTR_DATA_PATH)
 
     # Tambahkan kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' ke data maintenance & sparepart, dicocokkan lewat
     # nama_unit terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori/jenis unit. Hasilnya disimpan
