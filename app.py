@@ -1322,7 +1322,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
     def render_6_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, kat_suffix):
         r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
-        pr_ = data["prestasi_realisasi"].sum(); pb_ = data["prestasi_budget"].sum()
+        # Prestasi (dipakai utk Capaian Prestasi & rasio Biaya Langsung/Tdk Langsung per Prestasi) HANYA dihitung
+        # dari unit berkriteria "Floating Tarif" -- unit "Tarif Tetap" tidak dipengaruhi Prestasi sama sekali
+        # (pendapatannya tetap flat, tdk berbasis KM/HM), jadi ikut sertakan akan mendistorsi rasio ini.
+        data_floating = data[data["kriteria_unit"] == "Floating Tarif"] if "kriteria_unit" in data.columns else data
+        pr_ = data_floating["prestasi_realisasi"].sum(); pb_ = data_floating["prestasi_budget"].sum()
         bl_r_raw = data["biaya_langsung_realisasi"].sum(); bl_b_raw = data["biaya_langsung_budget"].sum()
         btl_r_raw = data["biaya_tidak_langsung_realisasi"].sum(); btl_b_raw = data["biaya_tidak_langsung_budget"].sum()
         bl_r = (bl_r_raw / pr_) if pr_ else None
@@ -1356,8 +1360,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         avg_util_t = sasaran_mutu_data["utilisasi_target"].mean() if not sasaran_mutu_data.empty else None
         ach_avail = ach_txt_pct(avg_avail_r, avg_avail_t) if (avg_avail_r is not None and avg_avail_t) else None
         ach_util = ach_txt_pct(avg_util_r, avg_util_t) if (avg_util_r is not None and avg_util_t) else None
-        prestasi_r_kpi = data["prestasi_realisasi"].sum() if "prestasi_realisasi" in data.columns else None
-        prestasi_b_kpi = data["prestasi_budget"].sum() if "prestasi_budget" in data.columns else None
+        prestasi_r_kpi = data_floating["prestasi_realisasi"].sum() if "prestasi_realisasi" in data_floating.columns else None
+        prestasi_b_kpi = data_floating["prestasi_budget"].sum() if "prestasi_budget" in data_floating.columns else None
         ach_prestasi_kpi = ach_txt_pct(prestasi_r_kpi, prestasi_b_kpi) if (prestasi_r_kpi is not None and prestasi_b_kpi) else None
 
         # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
