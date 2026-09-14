@@ -660,6 +660,27 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Gagal membaca file workshop: {e}")
 
+    # --- Saring otomatis: baris dgn Realisasi DAN Budget SAMA-SAMA kosong (semua kolom = 0) dianggap
+    # unit yg tidak berlaku (mis. belum ada rencana sama sekali) -- dikecualikan dari SELURUH downstream
+    # (dashboard, download, PPT). AMPAH dikecualikan dari aturan ini krn site tsb memang belum beroperasi. ---
+    if not df_raw.empty:
+        _realisasi_cols_chk = [c for c in ["pendapatan_realisasi", "prestasi_realisasi", "upah_realisasi",
+                                            "qty_bbm_realisasi", "harga_bbm_realisasi", "biaya_bbm_realisasi",
+                                            "maintenance_realisasi", "penyusutan_realisasi", "lainnya_realisasi",
+                                            "biaya_tidak_langsung_realisasi"] if c in df_raw.columns]
+        _budget_cols_chk = [c for c in ["pendapatan_budget", "prestasi_budget", "upah_budget",
+                                         "qty_bbm_budget", "harga_bbm_budget", "biaya_bbm_budget",
+                                         "maintenance_budget", "penyusutan_budget", "lainnya_budget",
+                                         "biaya_tidak_langsung_budget"] if c in df_raw.columns]
+        if _realisasi_cols_chk and _budget_cols_chk:
+            _realisasi_zero = (df_raw[_realisasi_cols_chk].fillna(0) == 0).all(axis=1)
+            _budget_zero = (df_raw[_budget_cols_chk].fillna(0) == 0).all(axis=1)
+            _is_empty_unit = _realisasi_zero & _budget_zero & (df_raw["lokasi"] != "AMPAH")
+            _n_filtered = int(_is_empty_unit.sum())
+            if _n_filtered > 0:
+                df_raw = df_raw[~_is_empty_unit].copy()
+                st.caption(f"ℹ️ {_n_filtered} baris disaring otomatis (Realisasi & Budget sama-sama kosong).")
+
     # Tambahkan kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' ke data maintenance & sparepart, dicocokkan lewat
     # nama_unit terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori/jenis unit. Hasilnya disimpan
     # kembali ke file CSV-nya (data_maintenance.csv & data_sparepart.csv) supaya kolom2 ini permanen di file.
