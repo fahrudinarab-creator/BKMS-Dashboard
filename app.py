@@ -295,41 +295,80 @@ def load_from_upload(uploaded_file) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
-    """Parse file upload Realisasi (format sama dgn template Data_Budget: baris 1=header nama kolom,
-    baris 2=label 'Realisasi'/kosong, baris 3=kosong, data mulai baris 4). Nilai yg diupload MENGGABUNG
-    (update) ke base_df yg sudah ada berdasarkan (id_unit, bulan_no) -- HANYA kolom realisasi yg diperbarui,
-    kolom budget & baris lain yg tidak ada di file upload TETAP UTUH tidak berubah."""
-    import openpyxl
-    wb = openpyxl.load_workbook(uploaded_file, data_only=True)
-    ws = wb[wb.sheetnames[0]]
-    month_map_id = {'Jan': 'Jan', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Apr', 'Mei': 'May', 'Jun': 'Jun',
-                     'Jul': 'Jul', 'Agt': 'Aug', 'Sep': 'Sep', 'Okt': 'Oct', 'Nov': 'Nov', 'Des': 'Dec'}
+    """Parse file upload Realisasi bulanan per site & kategori (mis. 'AB_Tanjung_Juli_2026.xls').
+    Format asli: baris 1=header grup, baris 2=nama kolom, data mulai baris 3, baris TOTAL di akhir (ID Unit kosong).
+    Kolom Status & Kategori di dalam file SENGAJA KOSONG -- bulan & kategori diambil dari NAMA FILE
+    (format: {KATEGORI}_{SITE}_{BulanIndonesia}_{Tahun}.xls[x]). Nilai yg diupload MENGGABUNG (update)
+    ke base_df berdasarkan (id_unit, bulan_no) -- HANYA kolom realisasi yg diperbarui, kolom budget &
+    baris/bulan lain yg tidak ada di file upload TETAP UTUH tidak berubah."""
+    import re as _re
+
+    # --- 1. Ekstrak Kategori & Bulan dari nama file ---
+    fname = Path(getattr(uploaded_file, "name", "")).stem  # tanpa ekstensi
+    # Mapping SEMUA alias yg mungkin (singkatan Inggris, nama lengkap Indonesia, singkatan Indonesia) -> kode bulan Inggris
+    MONTH_ALIASES = {
+        "jan": "Jan", "januari": "Jan",
+        "feb": "Feb", "februari": "Feb",
+        "mar": "Mar", "maret": "Mar",
+        "apr": "Apr", "april": "Apr",
+        "may": "May", "mei": "May",
+        "jun": "Jun", "juni": "Jun",
+        "jul": "Jul", "juli": "Jul",
+        "aug": "Aug", "agt": "Aug", "agustus": "Aug",
+        "sep": "Sep", "sept": "Sep", "september": "Sep",
+        "oct": "Oct", "okt": "Oct", "oktober": "Oct",
+        "nov": "Nov", "november": "Nov",
+        "dec": "Dec", "des": "Dec", "desember": "Dec",
+    }
     month_no_map = {'Jan':1,'Feb':2,'Mar':3,'Apr':4,'May':5,'Jun':6,'Jul':7,'Aug':8,'Sep':9,'Oct':10,'Nov':11,'Dec':12}
+    bulan_en = None
+    tokens = _re.split(r"[_\-\s]+", fname)
+    for tok in tokens:
+        match = MONTH_ALIASES.get(tok.strip().lower())
+        if match:
+            bulan_en = match
+            break
+    kategori_file = None
+    if _re.search(r"(^|[_\s])AB([_\s]|$)", fname, _re.IGNORECASE):
+        kategori_file = "AB"
+    elif _re.search(r"(^|[_\s])TR([_\s]|$)", fname, _re.IGNORECASE):
+        kategori_file = "TR"
+    if bulan_en is None:
+        raise ValueError(f"Tidak bisa mendeteksi nama bulan dari nama file '{fname}'. Pastikan nama file memuat nama/singkatan bulan (mis. Jan, Juli, Agustus) dipisah underscore.")
+
+    # --- Override lokasi utk ID Unit yg kodenya kebetulan sama dgn unit di site LAIN (duplikasi kode unit
+    # antar site) -- supaya realisasinya diarahkan ke site yg benar, bukan ikut site asal file upload ---
+    LOKASI_OVERRIDE = {
+        "312005": "AMPAH", "312006": "AMPAH", "312025": "AMPAH",
+        "342013": "SUNGAI DANAU", "342016": "BUHUT",
+    }
+
+    # --- 2. Baca isi file (pakai pandas.read_excel spy kompatibel .xls maupun .xlsx sekaligus) ---
+    raw = pd.read_excel(uploaded_file, header=None, sheet_name=0)
     rows = []
-    for r in range(5, ws.max_row + 1):
-        id_unit_raw = ws.cell(row=r, column=1).value
-        if not id_unit_raw:
-            continue
-        bulan_raw = ws.cell(row=r, column=19).value  # kolom 'Status' (bulan)
-        bulan_en = month_map_id.get(str(bulan_raw).strip(), None) if bulan_raw else None
-        if not bulan_en:
-            continue
+    for r in range(2, len(raw)):
+        id_unit_raw = raw.iat[r, 0]
+        if pd.isna(id_unit_raw) or str(id_unit_raw).strip() == "":
+            continue  # lewati baris TOTAL/kosong di akhir
         kode_unit = str(id_unit_raw).strip()
+        if kode_unit.endswith(".0"):  # kalau ID Unit terbaca sbg angka float oleh pandas
+            kode_unit = kode_unit[:-2]
         id_unit = kode_unit.replace("-", "")
+        lokasi_cell = raw.iat[r, 14]
+        lokasi_final = LOKASI_OVERRIDE.get(id_unit, str(lokasi_cell).strip().upper() if not pd.isna(lokasi_cell) else None)
+        def _cell(col):
+            v = raw.iat[r, col]
+            return 0 if pd.isna(v) else v
         rows.append(dict(
-            id_unit=id_unit, kode_unit=kode_unit, bulan=bulan_en, bulan_no=month_no_map[bulan_en],
-            prestasi_realisasi=ws.cell(row=r, column=6).value or 0,
-            pendapatan_realisasi=ws.cell(row=r, column=7).value or 0,
-            upah_realisasi=ws.cell(row=r, column=8).value or 0,
-            qty_bbm_realisasi=ws.cell(row=r, column=9).value or 0,
-            harga_bbm_realisasi=ws.cell(row=r, column=10).value or 0,
-            biaya_bbm_realisasi=ws.cell(row=r, column=11).value or 0,
-            maintenance_realisasi=ws.cell(row=r, column=12).value or 0,
-            penyusutan_realisasi=ws.cell(row=r, column=13).value or 0,
-            lainnya_realisasi=ws.cell(row=r, column=14).value or 0,
-            biaya_langsung_realisasi=ws.cell(row=r, column=15).value or 0,
-            biaya_tidak_langsung_realisasi=ws.cell(row=r, column=16).value or 0,
-            total_biaya_realisasi=ws.cell(row=r, column=17).value or 0,
+            id_unit=id_unit, kode_unit=kode_unit,
+            nama_unit=raw.iat[r, 1],
+            lokasi=lokasi_final,
+            bulan=bulan_en, bulan_no=month_no_map[bulan_en],
+            kategori=kategori_file,
+            prestasi_realisasi=_cell(2), pendapatan_realisasi=_cell(3), upah_realisasi=_cell(4),
+            qty_bbm_realisasi=_cell(5), harga_bbm_realisasi=_cell(6), biaya_bbm_realisasi=_cell(7),
+            maintenance_realisasi=_cell(8), penyusutan_realisasi=_cell(9), lainnya_realisasi=_cell(10),
+            biaya_langsung_realisasi=_cell(11), biaya_tidak_langsung_realisasi=_cell(12), total_biaya_realisasi=_cell(13),
         ))
     upload_df = pd.DataFrame(rows)
     if upload_df.empty:
@@ -342,14 +381,34 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
     result = base_df.copy()
     result["id_unit"] = result["id_unit"].astype(str)
     upload_df["id_unit"] = upload_df["id_unit"].astype(str)
-    result = result.set_index(["id_unit", "bulan_no"])
-    upload_idx = upload_df.set_index(["id_unit", "bulan_no"])
+    # PENTING: kunci gabung HARUS menyertakan Lokasi juga, bukan cuma (id_unit, bulan_no) --
+    # ID Unit ternyata BISA SAMA/bertabrakan antar site berbeda (mis. "312005" muncul di AMPAH & di file
+    # upload Tanjung) -- kalau cuma pakai (id_unit, bulan_no), data bisa salah ke-update ke site yg keliru.
+    result = result.set_index(["id_unit", "lokasi", "bulan_no"])
+    upload_idx = upload_df.set_index(["id_unit", "lokasi", "bulan_no"])
 
     matched_keys = result.index.intersection(upload_idx.index)
     for col in realisasi_cols:
         result.loc[matched_keys, col] = upload_idx.loc[matched_keys, col]
     n_updated = len(matched_keys)
-    n_unmatched = len(upload_idx.index) - len(matched_keys)
+
+    # --- Unit yg BELUM ADA di data existing (blm py budget) -- ditambahkan sbg baris BARU, bukan dilewati,
+    # supaya realisasinya tetap tercatat (Budget & kolom lain yg blm diketahui diisi 0/NaN sbg placeholder) ---
+    unmatched_keys = upload_idx.index.difference(result.index)
+    n_unmatched = len(unmatched_keys)
+    if n_unmatched:
+        budget_cols = ["prestasi_budget", "pendapatan_budget", "upah_budget", "qty_bbm_budget", "harga_bbm_budget",
+                       "biaya_bbm_budget", "maintenance_budget", "penyusutan_budget", "lainnya_budget",
+                       "biaya_langsung_budget", "biaya_tidak_langsung_budget", "total_biaya_budget"]
+        new_rows = upload_df[upload_df.set_index(["id_unit", "lokasi", "bulan_no"]).index.isin(unmatched_keys)].copy()
+        for col in budget_cols:
+            new_rows[col] = 0
+        for col in ["nilai_asset", "kriteria_unit", "jenis_unit"]:  # kolom yg tdk ada di file upload realisasi
+            new_rows[col] = None
+        result = result.reset_index()
+        result = pd.concat([result, new_rows], ignore_index=True, sort=False)
+        result = result.set_index(["id_unit", "lokasi", "bulan_no"])
+
     result = result.reset_index()
     return result, n_updated, n_unmatched
 
@@ -384,6 +443,68 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
             keterangan=str(r["FREMARK"]) if pd.notna(r["FREMARK"]) else '',
         ))
     return pd.DataFrame(rows)
+
+def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
+    """Bangun 1 file Excel 'Database Laporan' -- isinya sama dgn export data_bkms (Semua Data + per-site),
+    ditambah sheet Sasaran Mutu & MTTR. Dipakai utk tombol download di sidebar."""
+    import io as _io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    HEADER_FILL = PatternFill(start_color="1A2744", end_color="1A2744", fill_type="solid")
+    HEADER_FONT = Font(name="Arial", bold=True, color="FFFFFF", size=9)
+    NORMAL_FONT = Font(name="Arial", size=9)
+    MISSING_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    thin = Side(style="thin", color="D9D9D9")
+    BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    def _write_sheet(sheet_name, data, highlight_col=None):
+        ws = wb.create_sheet(sheet_name[:31])
+        if data is None or data.empty:
+            ws.cell(row=1, column=1, value="Data belum tersedia.")
+            return
+        cols = list(data.columns)
+        for c, h in enumerate(cols, start=1):
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.fill = HEADER_FILL; cell.font = HEADER_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        highlight_idx = (cols.index(highlight_col) if (highlight_col and highlight_col in cols) else None)
+        for r_i, row in enumerate(data.itertuples(index=False), start=2):
+            is_missing = pd.isna(row[highlight_idx]) if highlight_idx is not None else False
+            for c_i, val in enumerate(row, start=1):
+                cell = ws.cell(row=r_i, column=c_i, value=(None if pd.isna(val) else val))
+                cell.font = NORMAL_FONT
+                cell.border = BORDER
+                if is_missing:
+                    cell.fill = MISSING_FILL
+        for c_i, col in enumerate(cols, start=1):
+            sample = data[col].astype(str).head(200)
+            maxlen = max([len(str(col))] + [len(str(v)) for v in sample])
+            ws.column_dimensions[get_column_letter(c_i)].width = min(max(maxlen + 2, 8), 38)
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+
+    # --- Sheet Data BKMS: Semua Data + per site ---
+    _write_sheet("Semua Data", data_df, highlight_col="jenis_unit")
+    if data_df is not None and not data_df.empty and "lokasi" in data_df.columns:
+        for lokasi in sorted(data_df["lokasi"].dropna().unique()):
+            sub = data_df[data_df["lokasi"] == lokasi].copy()
+            _write_sheet(lokasi.replace(" ", "_"), sub, highlight_col="jenis_unit")
+
+    # --- Sheet Sasaran Mutu ---
+    _write_sheet("Sasaran Mutu", sasaran_mutu_df)
+
+    # --- Sheet MTTR ---
+    _write_sheet("MTTR", mttr_df)
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
 
 def load_from_upload_sparepart(uploaded_file) -> pd.DataFrame:
     """Parse an uploaded spare-part usage detail file (e.g. 'Rincian_Pemakaian.xls').
@@ -576,6 +697,16 @@ with st.sidebar:
                 st.warning(f"Kolom kategori/jenis_unit berhasil ditambahkan, tapi gagal menyimpan ke {SPAREPART_DATA_PATH.name}: {_e_sp_save}")
 
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
+
+    st.markdown("---")
+    st.download_button(
+        "⬇️ Download Database Laporan (Excel)",
+        data=build_database_laporan_excel(df_raw, sasaran_mutu_raw, mttr_raw),
+        file_name="Database_Laporan_BKMS.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        help="Berisi seluruh data BKMS (per site) + Sasaran Mutu + MTTR dalam 1 file Excel.",
+    )
 
     st.markdown("---")
     _download_maint_slot = st.empty()  # diisi belakangan (setelah sel_site dihitung), tapi tampil di atas Divisi
