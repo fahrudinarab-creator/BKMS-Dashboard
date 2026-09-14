@@ -488,12 +488,8 @@ def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = ws.dimensions
 
-    # --- Sheet Data BKMS: Semua Data + per site ---
+    # --- Sheet Data BKMS: Semua Data saja (tidak dipisah per site) ---
     _write_sheet("Semua Data", data_df, highlight_col="jenis_unit")
-    if data_df is not None and not data_df.empty and "lokasi" in data_df.columns:
-        for lokasi in sorted(data_df["lokasi"].dropna().unique()):
-            sub = data_df[data_df["lokasi"] == lokasi].copy()
-            _write_sheet(lokasi.replace(" ", "_"), sub, highlight_col="jenis_unit")
 
     # --- Sheet Sasaran Mutu ---
     _write_sheet("Sasaran Mutu", sasaran_mutu_df)
