@@ -445,10 +445,11 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
         ))
     return pd.DataFrame(rows)
 
-def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list, month_list, kat_list) -> bytes:
+def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_data_raw, site_list, month_list, kat_list) -> bytes:
     """Bangun Excel 'Perhitungan Detail PPT' dgn 3 sheet Ringkasan (Plantation-TR, Plantation-AB, Mining) yang
-    ANGKANYA berupa FORMULA EXCEL (SUMIFS/AVERAGEIFS) merujuk ke sheet detail data mentah -- supaya user bisa
-    klik tiap sel Ringkasan dan langsung lihat/telusuri dari baris data mana angka itu berasal."""
+    ANGKANYA berupa FORMULA EXCEL (SUMIFS/AVERAGEIFS) merujuk ke sheet detail data mentah -- termasuk rincian
+    per Site & Jenis Unit utk Slide 1 (Prestasi/Utilisasi/Availability), Slide 2 (BTL & Analisa BBM),
+    Slide 3 (Gap Maintenance & Rutin/Non-Rutin), Slide 4 (Downtime & Kategori Sparepart)."""
     import io as _io
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -457,10 +458,9 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
     HEADER_FILL = PatternFill(start_color="1A2744", end_color="1A2744", fill_type="solid")
     HEADER_FONT = Font(name="Arial", bold=True, color="FFFFFF", size=10)
     SECTION_FILL = PatternFill(start_color="C98A1E", end_color="C98A1E", fill_type="solid")
+    SUB_FILL = PatternFill(start_color="E8ECF3", end_color="E8ECF3", fill_type="solid")
     NORMAL_FONT = Font(name="Arial", size=10)
     BOLD_FONT = Font(name="Arial", size=10, bold=True)
-    FORMULA_FONT = Font(name="Consolas", size=9, color="6B7480")
-    NOTE_FONT = Font(name="Arial", size=9, italic=True, color="6B7480")
     thin = Side(style="thin", color="D9D9D9")
     BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
 
@@ -483,6 +483,9 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
         sasaran_mutu_raw["lokasi"].isin(site_list) & sasaran_mutu_raw["bulan"].isin(month_list) & sasaran_mutu_raw["kategori"].isin(kat_list)
     ].copy() if (sasaran_mutu_raw is not None and not sasaran_mutu_raw.empty and site_list and month_list and kat_list) else pd.DataFrame()
     mttr_all = mttr_raw[mttr_raw["lokasi"].isin(site_list)].copy() if (mttr_raw is not None and not mttr_raw.empty and "lokasi" in mttr_raw.columns and site_list) else pd.DataFrame()
+    maint_all = maint_data_raw[maint_data_raw["lokasi"].isin(site_list)].copy() if (maint_data_raw is not None and not maint_data_raw.empty and "lokasi" in maint_data_raw.columns and site_list) else pd.DataFrame()
+    if not maint_all.empty and "bulan" in maint_all.columns:
+        maint_all = maint_all[maint_all["bulan"].isin(month_list)]
 
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
@@ -495,11 +498,6 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
     data_all.loc[data_all["lokasi"].isin(MINING_SITES), "kategori"] = "AB"
     if not sasaran_all.empty:
         sasaran_all.loc[sasaran_all["lokasi"].isin(MINING_SITES), "kategori"] = "AB"
-
-    def assign_blok(row_lokasi):
-        if row_lokasi in MINING_SITES:
-            return BLOK_MINING
-        return None  # diisi belakangan berdasar kategori utk Plantation
 
     data_all["_blok"] = None
     data_all.loc[data_all["lokasi"].isin(MINING_SITES), "_blok"] = BLOK_MINING
@@ -515,17 +513,34 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
     if not mttr_all.empty:
         mttr_all["_blok"] = None
         if "kategori" in mttr_all.columns:
-            mttr_all_cat = mttr_all.copy()
-            mttr_all_cat.loc[mttr_all_cat["lokasi"].isin(MINING_SITES), "kategori"] = "AB"
-            mttr_all["_blok"] = None
-            mttr_all.loc[mttr_all_cat["lokasi"].isin(MINING_SITES), "_blok"] = BLOK_MINING
-            mttr_all.loc[(mttr_all_cat["lokasi"].isin(PLANTATION_SITES)) & (mttr_all_cat["kategori"] == "TR"), "_blok"] = BLOK_TR
-            mttr_all.loc[(mttr_all_cat["lokasi"].isin(PLANTATION_SITES)) & (mttr_all_cat["kategori"] == "AB"), "_blok"] = BLOK_AB
+            mttr_cat = mttr_all["kategori"].where(~mttr_all["lokasi"].isin(MINING_SITES), "AB")
+            mttr_all.loc[mttr_all["lokasi"].isin(MINING_SITES), "_blok"] = BLOK_MINING
+            mttr_all.loc[(mttr_all["lokasi"].isin(PLANTATION_SITES)) & (mttr_cat == "TR"), "_blok"] = BLOK_TR
+            mttr_all.loc[(mttr_all["lokasi"].isin(PLANTATION_SITES)) & (mttr_cat == "AB"), "_blok"] = BLOK_AB
         else:
             mttr_all.loc[mttr_all["lokasi"].isin(MINING_SITES), "_blok"] = BLOK_MINING
-            mttr_all.loc[mttr_all["lokasi"].isin(PLANTATION_SITES), "_blok"] = BLOK_TR  # fallback kalau tdk py kategori
+            mttr_all.loc[mttr_all["lokasi"].isin(PLANTATION_SITES), "_blok"] = BLOK_TR
+
+    # Lookup jenis_unit & kategori via nama_unit utk maint_all (data_maintenance.csv tdk selalu py jenis_unit langsung)
+    if not maint_all.empty:
+        unit_lookup = (data_all.dropna(subset=["nama_unit", "jenis_unit"])
+                        .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
+                        .drop_duplicates("_key").set_index("_key"))
+        maint_all["_key"] = maint_all["nama_unit"].astype(str).str.strip().str.upper()
+        maint_all["jenis_unit"] = maint_all["_key"].map(unit_lookup["jenis_unit"]) if "jenis_unit" not in maint_all.columns or maint_all["jenis_unit"].isna().all() else maint_all.get("jenis_unit")
+        maint_all["_blok"] = maint_all["_key"].map(unit_lookup["_blok"]) if "_blok" in unit_lookup.columns else None
+        maint_all = maint_all.dropna(subset=["jenis_unit", "_blok"]) if "jenis_unit" in maint_all.columns else pd.DataFrame()
 
     blok_list = [b for b in [BLOK_TR, BLOK_AB, BLOK_MINING] if (data_all["_blok"] == b).any()]
+
+    def uniq_lokasi_jenis(df_, blok):
+        if df_ is None or df_.empty or "_blok" not in df_.columns or "jenis_unit" not in df_.columns:
+            return []
+        sub = df_[df_["_blok"] == blok]
+        if sub.empty:
+            return []
+        combos = sub.dropna(subset=["jenis_unit"])[["lokasi", "jenis_unit"]].drop_duplicates()
+        return sorted(combos.itertuples(index=False, name=None))
 
     # =============== 2. SHEET DETAIL: Prestasi ===============
     ws_prestasi = wb.create_sheet("Detail - Prestasi")
@@ -539,34 +554,29 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
         for ci, val in enumerate(row, start=1):
             cell = ws_prestasi.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
             cell.border = BORDER; cell.font = NORMAL_FONT
-    ws_prestasi.freeze_panes = "A2"
-    ws_prestasi.auto_filter.ref = ws_prestasi.dimensions
-    n_prestasi = len(prestasi_src)
+    ws_prestasi.freeze_panes = "A2"; ws_prestasi.auto_filter.ref = ws_prestasi.dimensions
 
-    # =============== 3. SHEET DETAIL: Sasaran Mutu (Utilisasi/Availability/Downtime) ===============
+    # =============== 3. SHEET DETAIL: Sasaran Mutu ===============
     ws_sm = wb.create_sheet("Detail - Sasaran Mutu")
     cols_sm = ["Blok", "Lokasi", "Jenis Unit", "Bulan", "Utilisasi Realisasi", "Utilisasi Target",
                "Availability Realisasi", "Availability Target", "Downtime Realisasi", "Downtime Target"]
     for c, h in enumerate(cols_sm, start=1):
         cell = ws_sm.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
-    n_sm = 0
     if not sasaran_all.empty:
         sm_src = sasaran_all[sasaran_all["_blok"].notna()].copy()
-        sm_src["downtime_pct"] = sm_src["downtime_pct"].fillna(0)  # NaN dianggap 0% sesuai aturan
+        sm_src["downtime_pct"] = sm_src["downtime_pct"].fillna(0)
         sm_src = sm_src[["_blok", "lokasi", "jenis_unit", "bulan", "utilisasi_pct", "utilisasi_target",
                           "availability_pct", "availability_target", "downtime_pct", "downtime_target"]]
         for ri, row in enumerate(sm_src.itertuples(index=False), start=2):
             for ci, val in enumerate(row, start=1):
                 cell = ws_sm.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
                 cell.border = BORDER; cell.font = NORMAL_FONT
-        n_sm = len(sm_src)
-    ws_sm.freeze_panes = "A2"
-    ws_sm.auto_filter.ref = ws_sm.dimensions
+    ws_sm.freeze_panes = "A2"; ws_sm.auto_filter.ref = ws_sm.dimensions
 
-    # =============== 4. SHEET DETAIL: Biaya ===============
+    # =============== 4. SHEET DETAIL: Biaya (+ Jenis Unit utk breakdown Maintenance) ===============
     ws_biaya = wb.create_sheet("Detail - Biaya")
-    cols_biaya = ["Blok", "Lokasi", "Kode Unit", "Nama Unit", "Bulan",
+    cols_biaya = ["Blok", "Lokasi", "Kode Unit", "Nama Unit", "Jenis Unit", "Bulan",
                   "Total Biaya Realisasi", "Total Biaya Budget",
                   "Maintenance Realisasi", "Maintenance Budget",
                   "Upah Realisasi", "Upah Budget",
@@ -576,7 +586,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
     for c, h in enumerate(cols_biaya, start=1):
         cell = ws_biaya.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
-    biaya_src = data_all[data_all["_blok"].notna()][["_blok", "lokasi", "kode_unit", "nama_unit", "bulan",
+    biaya_src = data_all[data_all["_blok"].notna()][["_blok", "lokasi", "kode_unit", "nama_unit", "jenis_unit", "bulan",
         "total_biaya_realisasi", "total_biaya_budget", "maintenance_realisasi", "maintenance_budget",
         "upah_realisasi", "upah_budget", "lainnya_realisasi", "lainnya_budget",
         "biaya_langsung_realisasi", "biaya_langsung_budget", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"]]
@@ -584,28 +594,25 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
         for ci, val in enumerate(row, start=1):
             cell = ws_biaya.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
             cell.border = BORDER; cell.font = NORMAL_FONT
-    ws_biaya.freeze_panes = "A2"
-    ws_biaya.auto_filter.ref = ws_biaya.dimensions
-    n_biaya = len(biaya_src)
+    ws_biaya.freeze_panes = "A2"; ws_biaya.auto_filter.ref = ws_biaya.dimensions
 
-    # =============== 5. SHEET DETAIL: BBM (valid saja, sesuai aturan filter kualitas data) ===============
+    # =============== 5. SHEET DETAIL: BBM (valid saja) ===============
     ws_bbm = wb.create_sheet("Detail - BBM (Valid)")
     cols_bbm = ["Blok", "Lokasi", "Kode Unit", "Nama Unit", "Jenis Unit", "Bulan",
-                "Qty BBM Realisasi", "Qty BBM Budget", "Biaya BBM Realisasi", "Biaya BBM Budget"]
+                "Qty BBM Realisasi", "Qty BBM Budget", "Biaya BBM Realisasi", "Biaya BBM Budget",
+                "Prestasi Realisasi", "Prestasi Budget"]
     for c, h in enumerate(cols_bbm, start=1):
         cell = ws_bbm.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
     data_bbm_valid = data_all[data_all["_blok"].notna() & bbm_valid_mask(data_all)]
     bbm_src = data_bbm_valid[["_blok", "lokasi", "kode_unit", "nama_unit", "jenis_unit", "bulan",
-                               "qty_bbm_realisasi", "qty_bbm_budget", "biaya_bbm_realisasi", "biaya_bbm_budget"]]
+                               "qty_bbm_realisasi", "qty_bbm_budget", "biaya_bbm_realisasi", "biaya_bbm_budget",
+                               "prestasi_realisasi", "prestasi_budget"]]
     for ri, row in enumerate(bbm_src.itertuples(index=False), start=2):
         for ci, val in enumerate(row, start=1):
             cell = ws_bbm.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
             cell.border = BORDER; cell.font = NORMAL_FONT
-    ws_bbm.freeze_panes = "A2"
-    ws_bbm.auto_filter.ref = ws_bbm.dimensions
-    n_bbm = len(bbm_src)
-    n_bbm_excluded = len(data_all[data_all["_blok"].notna()]) - n_bbm
+    ws_bbm.freeze_panes = "A2"; ws_bbm.auto_filter.ref = ws_bbm.dimensions
 
     # =============== 6. SHEET DETAIL: MTTR ===============
     ws_mttr = wb.create_sheet("Detail - MTTR")
@@ -613,7 +620,6 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
     for c, h in enumerate(cols_mttr, start=1):
         cell = ws_mttr.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
-    n_mttr = 0
     if not mttr_all.empty and "jumlah_jam" in mttr_all.columns:
         mttr_src = mttr_all[mttr_all["_blok"].notna()].copy()
         for col in ["kode_unit", "nama_unit", "bulan"]:
@@ -624,144 +630,282 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, site_list
             for ci, val in enumerate(row, start=1):
                 cell = ws_mttr.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
                 cell.border = BORDER; cell.font = NORMAL_FONT
-        n_mttr = len(mttr_src)
-    ws_mttr.freeze_panes = "A2"
-    ws_mttr.auto_filter.ref = ws_mttr.dimensions
+    ws_mttr.freeze_panes = "A2"; ws_mttr.auto_filter.ref = ws_mttr.dimensions
 
-    # =============== 7. SHEET RINGKASAN (formula-driven) x3 ===============
+    # =============== 7. SHEET DETAIL: Maintenance Log (Rutin/NonRutin & Sparepart) ===============
+    ws_ml = wb.create_sheet("Detail - Maintenance Log")
+    cols_ml = ["Blok", "Lokasi", "Jenis Unit", "Bulan", "Jenis Pemeliharaan", "Kategori Sparepart", "Biaya"]
+    for c, h in enumerate(cols_ml, start=1):
+        cell = ws_ml.cell(row=1, column=c, value=h)
+        cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
+    if not maint_all.empty:
+        ml_cols = ["_blok", "lokasi", "jenis_unit", "bulan", "jenis_pemeliharaan", "kategori_sparepart", "biaya"]
+        ml_cols = [c for c in ml_cols if c in maint_all.columns]
+        ml_src = maint_all[ml_cols]
+        for ri, row in enumerate(ml_src.itertuples(index=False), start=2):
+            for ci, val in enumerate(row, start=1):
+                cell = ws_ml.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
+                cell.border = BORDER; cell.font = NORMAL_FONT
+    ws_ml.freeze_panes = "A2"; ws_ml.auto_filter.ref = ws_ml.dimensions
+
+    # =============== 8. SHEET RINGKASAN (formula-driven) x3 ===============
     SHEET_PRESTASI = "'Detail - Prestasi'"
     SHEET_SM = "'Detail - Sasaran Mutu'"
     SHEET_BIAYA = "'Detail - Biaya'"
     SHEET_BBM = "'Detail - BBM (Valid)'"
     SHEET_MTTR = "'Detail - MTTR'"
+    SHEET_ML = "'Detail - Maintenance Log'"
 
     def build_ringkasan_sheet(sheet_title, blok_name, has_data):
         ws = wb.create_sheet(sheet_title)
         r = [1]
+        B = blok_name.replace('"', '""')
 
         def sect(title):
             row = r[0]
             ws.cell(row=row, column=1, value=title)
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
             c = ws.cell(row=row, column=1)
             c.fill = SECTION_FILL; c.font = Font(name="Arial", bold=True, color="FFFFFF", size=12)
             c.alignment = Alignment(vertical="center", horizontal="left", indent=1)
             ws.row_dimensions[row].height = 22
             r[0] += 2
 
-        def header():
+        def subsect(title):
             row = r[0]
-            for c, h in enumerate(["Metrik", "Realisasi", "Budget", "Hasil", "Formula (klik sel Realisasi/Budget utk lihat rumus)", "Catatan"], start=1):
+            ws.cell(row=row, column=1, value=title)
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+            c = ws.cell(row=row, column=1)
+            c.fill = SUB_FILL; c.font = Font(name="Arial", bold=True, color="1A2744", size=10.5)
+            c.alignment = Alignment(vertical="center", horizontal="left", indent=1)
+            r[0] += 1
+
+        def header(cols=("Metrik", "Realisasi", "Budget", "Hasil")):
+            row = r[0]
+            for c, h in enumerate(cols, start=1):
                 cell = ws.cell(row=row, column=c, value=h)
                 cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
             r[0] += 1
 
-        def metric_row(nama, formula_real, formula_budget, formula_hasil, catatan="", fmt_real=None, fmt_hasil='0.0"%"'):
+        def metric_row(nama, formula_real, formula_budget, fmt_real=None, fmt_hasil='0.0"%"', hasil_formula=None):
             row = r[0]
             ws.cell(row=row, column=1, value=nama).font = NORMAL_FONT
-            c_real = ws.cell(row=row, column=2, value=formula_real); c_real.font = NORMAL_FONT
-            c_budget = ws.cell(row=row, column=3, value=formula_budget); c_budget.font = NORMAL_FONT
-            c_hasil = ws.cell(row=row, column=4, value=formula_hasil); c_hasil.font = BOLD_FONT
+            # Bungkus otomatis dgn IFERROR(...,0) supaya tdk muncul #DIV/0!/#N/A kalau tdk ada data yg cocok
+            fr = formula_real[1:] if formula_real.startswith("=") else formula_real
+            fb = formula_budget[1:] if formula_budget.startswith("=") else formula_budget
+            c_real = ws.cell(row=row, column=2, value=f'=IFERROR({fr},0)'); c_real.font = NORMAL_FONT
+            c_budget = ws.cell(row=row, column=3, value=f'=IFERROR({fb},0)'); c_budget.font = NORMAL_FONT
+            hf = hasil_formula if hasil_formula else f'=IFERROR(B{row}/C{row}*100,"-")'
+            c_hasil = ws.cell(row=row, column=4, value=hf); c_hasil.font = BOLD_FONT
             if fmt_real: c_real.number_format = fmt_real; c_budget.number_format = fmt_real
             if fmt_hasil: c_hasil.number_format = fmt_hasil
-            ws.cell(row=row, column=5, value=f"=B{row}&\" / \"&C{row}").font = FORMULA_FONT
-            ws.cell(row=row, column=6, value=catatan).font = NOTE_FONT
-            for c in range(1, 7):
+            for c in range(1, 5):
                 ws.cell(row=row, column=c).border = BORDER
-                ws.cell(row=row, column=c).alignment = Alignment(vertical="center", wrap_text=(c == 6))
+                ws.cell(row=row, column=c).alignment = Alignment(vertical="center")
             r[0] += 1
 
         if not has_data:
             ws.cell(row=1, column=1, value=f"Tidak ada data untuk blok {blok_name} sesuai filter yang dipilih.")
             return
 
-        B = blok_name.replace('"', '""')
-
-        sect(f"📊 {blok_name} — KPI Dashboard (Slide 1)")
+        # ============ SLIDE 1: KPI Dashboard ============
+        sect(f"\U0001F4CA {blok_name} \u2014 KPI Dashboard (Slide 1)")
         header()
         metric_row("Capaian Prestasi",
             f'=SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif")',
-            f'=SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")',
-            "Hanya unit kriteria 'Floating Tarif'. Sumber: sheet 'Detail - Prestasi'", fmt_real="#,##0")
+            f'=SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif")', fmt_real="#,##0")
         metric_row("Avg Utilisasi",
             f'=AVERAGEIFS({SHEET_SM}!E:E,{SHEET_SM}!A:A,"{B}")',
-            f'=AVERAGEIFS({SHEET_SM}!F:F,{SHEET_SM}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")',
-            "Rata-rata dari sheet 'Detail - Sasaran Mutu'", fmt_real="0.00")
+            f'=AVERAGEIFS({SHEET_SM}!F:F,{SHEET_SM}!A:A,"{B}")', fmt_real="0.00")
         metric_row("Avg Availability",
             f'=AVERAGEIFS({SHEET_SM}!G:G,{SHEET_SM}!A:A,"{B}")',
-            f'=AVERAGEIFS({SHEET_SM}!H:H,{SHEET_SM}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")',
-            "Rata-rata dari sheet 'Detail - Sasaran Mutu'", fmt_real="0.00")
+            f'=AVERAGEIFS({SHEET_SM}!H:H,{SHEET_SM}!A:A,"{B}")', fmt_real="0.00")
         row_bl = r[0]
         metric_row("Biaya Langsung / Prestasi",
-            f'=IFERROR(SUMIFS({SHEET_BIAYA}!N:N,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
-            f'=IFERROR(SUMIFS({SHEET_BIAYA}!O:O,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
-            f'=IFERROR(B{row_bl}/C{row_bl}*100,"-")',
-            "= Σ Biaya Langsung ÷ Σ Prestasi (Floating Tarif). Rp per satuan Prestasi", fmt_real="#,##0")
+            f'=IFERROR(SUMIFS({SHEET_BIAYA}!O:O,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
+            f'=IFERROR(SUMIFS({SHEET_BIAYA}!P:P,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
+            fmt_real="#,##0", hasil_formula=f'=IFERROR(B{row_bl}/C{row_bl}*100,"-")')
         row_btl = r[0]
         metric_row("Biaya T.Langsung / Prestasi",
-            f'=IFERROR(SUMIFS({SHEET_BIAYA}!P:P,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
-            f'=IFERROR(SUMIFS({SHEET_BIAYA}!Q:Q,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
-            f'=IFERROR(B{row_btl}/C{row_btl}*100,"-")',
-            "= Σ Biaya Tdk Langsung ÷ Σ Prestasi (Floating Tarif)", fmt_real="#,##0")
+            f'=IFERROR(SUMIFS({SHEET_BIAYA}!Q:Q,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
+            f'=IFERROR(SUMIFS({SHEET_BIAYA}!R:R,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
+            fmt_real="#,##0", hasil_formula=f'=IFERROR(B{row_btl}/C{row_btl}*100,"-")')
         r[0] += 1
 
-        sect(f"💰 {blok_name} — Biaya Operasional (Slide 2)")
+        # --- Breakdown per Site & Jenis Unit (Chart Slide 1) ---
+        subsect("\u25B8 Per Site & Jenis Unit (Floating Tarif) \u2014 Prestasi / Utilisasi / Availability")
+        header(("Site \u2014 Jenis Unit", "Cap. Prestasi", "Cap. Utilisasi", "Cap. Availability"))
+        prestasi_floating = data_all[(data_all["_blok"] == blok_name) & (data_all["kriteria_unit"] == "Floating Tarif")]
+        combos1 = uniq_lokasi_jenis(prestasi_floating, blok_name)
+        for lok, ju in combos1:
+            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
+            f_prest = (f'=IFERROR(SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!E:E,"{ju_e}",{SHEET_PRESTASI}!F:F,"Floating Tarif")'
+                       f'/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!E:E,"{ju_e}",{SHEET_PRESTASI}!F:F,"Floating Tarif")*100,"-")')
+            f_util = (f'=IFERROR(AVERAGEIFS({SHEET_SM}!E:E,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")'
+                      f'/AVERAGEIFS({SHEET_SM}!F:F,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")*100,"-")')
+            f_avail = (f'=IFERROR(AVERAGEIFS({SHEET_SM}!G:G,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")'
+                       f'/AVERAGEIFS({SHEET_SM}!H:H,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")*100,"-")')
+            for ci, f in enumerate([f_prest, f_util, f_avail], start=2):
+                cell = ws.cell(row=row, column=ci, value=f); cell.font = NORMAL_FONT; cell.number_format = '0.0"%"'
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        # ============ SLIDE 2: Biaya Operasional ============
+        sect(f"\U0001F4B0 {blok_name} \u2014 Biaya Operasional (Slide 2)")
         header()
         metric_row("Total Biaya",
-            f'=SUMIFS({SHEET_BIAYA}!F:F,{SHEET_BIAYA}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BIAYA}!G:G,{SHEET_BIAYA}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")', "Sumber: sheet 'Detail - Biaya'", fmt_real='"Rp"#,##0')
+            f'=SUMIFS({SHEET_BIAYA}!H:H,{SHEET_BIAYA}!A:A,"{B}")', fmt_real='"Rp"#,##0')
         metric_row("Biaya Maintenance",
-            f'=SUMIFS({SHEET_BIAYA}!H:H,{SHEET_BIAYA}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BIAYA}!I:I,{SHEET_BIAYA}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")', "Cap. Fisik = Capaian Downtime (lihat baris di bawah)", fmt_real='"Rp"#,##0')
+            f'=SUMIFS({SHEET_BIAYA}!J:J,{SHEET_BIAYA}!A:A,"{B}")', fmt_real='"Rp"#,##0')
         metric_row("Biaya BBM",
             f'=SUMIFS({SHEET_BBM}!I:I,{SHEET_BBM}!A:A,"{B}")',
-            f'=SUMIFS({SHEET_BBM}!J:J,{SHEET_BBM}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")',
-            "Hanya dari baris valid (Qty>0 tp Biaya=0 dikecualikan). Sumber: 'Detail - BBM (Valid)'", fmt_real='"Rp"#,##0')
-        row_capfisikbbm = r[0]
-        metric_row("↳ Cap. Fisik BBM (Qty)",
+            f'=SUMIFS({SHEET_BBM}!J:J,{SHEET_BBM}!A:A,"{B}")', fmt_real='"Rp"#,##0')
+        row_cf = r[0]
+        metric_row("\u21B3 Cap. Fisik BBM (Qty)",
             f'=SUMIFS({SHEET_BBM}!G:G,{SHEET_BBM}!A:A,"{B}")',
-            f'=SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}")',
-            f'=IFERROR(B{row_capfisikbbm}/C{row_capfisikbbm}*100,"-")',
-            "= Σ Qty BBM Realisasi ÷ Σ Qty BBM Budget (Liter)", fmt_real="#,##0")
+            f'=SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}")', fmt_real="#,##0")
         metric_row("Upah Operator",
-            f'=SUMIFS({SHEET_BIAYA}!J:J,{SHEET_BIAYA}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BIAYA}!K:K,{SHEET_BIAYA}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")', "Tidak ada Cap. Fisik", fmt_real='"Rp"#,##0')
+            f'=SUMIFS({SHEET_BIAYA}!L:L,{SHEET_BIAYA}!A:A,"{B}")', fmt_real='"Rp"#,##0')
         metric_row("Biaya Lainnya",
-            f'=SUMIFS({SHEET_BIAYA}!L:L,{SHEET_BIAYA}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BIAYA}!M:M,{SHEET_BIAYA}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")', "Tidak ada Cap. Fisik", fmt_real='"Rp"#,##0')
+            f'=SUMIFS({SHEET_BIAYA}!N:N,{SHEET_BIAYA}!A:A,"{B}")', fmt_real='"Rp"#,##0')
         r[0] += 1
 
-        sect(f"⏱ {blok_name} — Key Insights Downtime (Slide 4)")
+        subsect("\u25B8 BTL (Biaya Tidak Langsung) per Site")
+        header(("Lokasi", "Budget", "Aktual", "% Target"))
+        btl_lokasi = sorted(data_all[data_all["_blok"] == blok_name]["lokasi"].dropna().unique().tolist())
+        for lok in btl_lokasi:
+            lok_e = lok.replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=lok).font = NORMAL_FONT
+            c_b = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BIAYA}!R:R,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}")')
+            c_a = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BIAYA}!Q:Q,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}")')
+            c_h = ws.cell(row=row, column=4, value=f'=IFERROR(C{row}/B{row}*100,"-")')
+            c_b.number_format = '"Rp"#,##0'; c_a.number_format = '"Rp"#,##0'; c_h.number_format = '0.0"%"'
+            for c in [c_b, c_a]: c.font = NORMAL_FONT
+            c_h.font = BOLD_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        subsect("\u25B8 Analisa Kenaikan Biaya BBM per Site & Jenis Unit")
+        header(("Site \u2014 Jenis Unit", "Qty Realisasi", "Qty Budget", "Cap. Konsumsi"))
+        combos_bbm = uniq_lokasi_jenis(data_bbm_valid, blok_name)
+        for lok, ju in combos_bbm:
+            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
+            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BBM}!G:G,{SHEET_BBM}!A:A,"{B}",{SHEET_BBM}!B:B,"{lok_e}",{SHEET_BBM}!E:E,"{ju_e}")')
+            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}",{SHEET_BBM}!B:B,"{lok_e}",{SHEET_BBM}!E:E,"{ju_e}")')
+            c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
+            c_r.number_format = "#,##0"; c_b.number_format = "#,##0"; c_h.number_format = '0.0"%"'
+            for c in [c_r, c_b]: c.font = NORMAL_FONT
+            c_h.font = BOLD_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        # ============ SLIDE 3: Analisis Biaya Maintenance ============
+        sect(f"\U0001F527 {blok_name} \u2014 Analisis Biaya Maintenance (Slide 3)")
+        subsect("\u25B8 Gap Biaya Maintenance (Realisasi \u2212 Budget) per Site & Jenis Unit")
+        header(("Site \u2014 Jenis Unit", "Realisasi", "Budget", "Gap (Rp)"))
+        combos_maint = uniq_lokasi_jenis(data_all[data_all["_blok"] == blok_name], blok_name)
+        for lok, ju in combos_maint:
+            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
+            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BIAYA}!I:I,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}",{SHEET_BIAYA}!E:E,"{ju_e}")')
+            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BIAYA}!J:J,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}",{SHEET_BIAYA}!E:E,"{ju_e}")')
+            c_g = ws.cell(row=row, column=4, value=f'=B{row}-C{row}')
+            for c in [c_r, c_b, c_g]:
+                c.number_format = '"Rp"#,##0'; c.font = NORMAL_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        subsect("\u25B8 Maintenance Rutin vs Non-Rutin per Site & Jenis Unit")
+        header(("Site \u2014 Jenis Unit", "Biaya Rutin", "Biaya Non-Rutin", "% Rutin"))
+        combos_ml = uniq_lokasi_jenis(maint_all, blok_name) if not maint_all.empty else []
+        for lok, ju in combos_ml:
+            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
+            c_rt = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!C:C,"{ju_e}",{SHEET_ML}!E:E,"RUTIN")')
+            c_nr = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!C:C,"{ju_e}",{SHEET_ML}!E:E,"NON RUTIN")')
+            c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/(B{row}+C{row})*100,"-")')
+            c_rt.number_format = '"Rp"#,##0'; c_nr.number_format = '"Rp"#,##0'; c_h.number_format = '0.0"%"'
+            for c in [c_rt, c_nr]: c.font = NORMAL_FONT
+            c_h.font = BOLD_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        # ============ SLIDE 4: Key Insights Downtime ============
+        sect(f"\u23F1 {blok_name} \u2014 Key Insights Downtime (Slide 4)")
         header()
         metric_row("% Capaian Realisasi Downtime",
             f'=AVERAGEIFS({SHEET_SM}!I:I,{SHEET_SM}!A:A,"{B}")',
-            f'=AVERAGEIFS({SHEET_SM}!J:J,{SHEET_SM}!A:A,"{B}")',
-            f'=IFERROR(B{r[0]}/C{r[0]}*100,"-")', "NaN dianggap 0% (lihat sheet 'Detail - Sasaran Mutu')", fmt_real="0.00")
+            f'=AVERAGEIFS({SHEET_SM}!J:J,{SHEET_SM}!A:A,"{B}")', fmt_real="0.00")
         row_mttr = r[0]
         metric_row("MTTR (jam)",
             f'=IFERROR(SUMIFS({SHEET_MTTR}!F:F,{SHEET_MTTR}!A:A,"{B}")/COUNTIFS({SHEET_MTTR}!A:A,"{B}"),"-")',
-            f'=COUNTIFS({SHEET_MTTR}!A:A,"{B}")',
-            f'=B{row_mttr}',
-            "Realisasi = Rata-rata jam per kejadian. Budget menampilkan jumlah kejadian", fmt_real="0.0", fmt_hasil="0.0")
+            f'=COUNTIFS({SHEET_MTTR}!A:A,"{B}")', fmt_real="0.0", fmt_hasil="0.0", hasil_formula=f'=B{row_mttr}')
+        r[0] += 1
 
-        for c, w in zip("ABCDEF", [30, 16, 16, 12, 45, 45]):
+        subsect("\u25B8 % Downtime per Site & Jenis Unit")
+        header(("Site \u2014 Jenis Unit", "Realisasi", "Target", "Cap. Downtime"))
+        combos_dt = uniq_lokasi_jenis(sasaran_all, blok_name)
+        for lok, ju in combos_dt:
+            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
+            c_r = ws.cell(row=row, column=2, value=f'=IFERROR(AVERAGEIFS({SHEET_SM}!I:I,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}"),0)')
+            c_t = ws.cell(row=row, column=3, value=f'=IFERROR(AVERAGEIFS({SHEET_SM}!J:J,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}"),0)')
+            c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
+            c_r.number_format = "0.00"; c_t.number_format = "0.00"; c_h.number_format = '0.0"%"'
+            for c in [c_r, c_t]: c.font = NORMAL_FONT
+            c_h.font = BOLD_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        subsect("\u25B8 Kategori Sparepart per Site")
+        header(("Kategori Sparepart \u2014 Lokasi", "Biaya", "", ""))
+        if not maint_all.empty:
+            ml_blok = maint_all[maint_all["_blok"] == blok_name]
+            combos_sp = sorted(ml_blok.dropna(subset=["kategori_sparepart"])[["kategori_sparepart", "lokasi"]].drop_duplicates().itertuples(index=False, name=None)) if "kategori_sparepart" in ml_blok.columns else []
+            for kat, lok in combos_sp:
+                kat_e = str(kat).replace('"', '""'); lok_e = lok.replace('"', '""')
+                row = r[0]
+                ws.cell(row=row, column=1, value=f"{kat} \u2014 {lok}").font = NORMAL_FONT
+                c_b = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!F:F,"{kat_e}")')
+                c_b.number_format = '"Rp"#,##0'; c_b.font = NORMAL_FONT
+                for c in range(1, 5):
+                    ws.cell(row=row, column=c).border = BORDER
+                r[0] += 1
+
+        for c, w in zip("ABCD", [42, 18, 18, 16]):
             ws.column_dimensions[c].width = w
 
     build_ringkasan_sheet("1. Ringkasan - Plantation TR", BLOK_TR, BLOK_TR in blok_list)
     build_ringkasan_sheet("2. Ringkasan - Plantation AB", BLOK_AB, BLOK_AB in blok_list)
     build_ringkasan_sheet("3. Ringkasan - Mining", BLOK_MINING, BLOK_MINING in blok_list)
 
-    # Susun ulang urutan sheet: 3 Ringkasan dulu, baru Detail
     order = ["1. Ringkasan - Plantation TR", "2. Ringkasan - Plantation AB", "3. Ringkasan - Mining",
-             "Detail - Prestasi", "Detail - Sasaran Mutu", "Detail - Biaya", "Detail - BBM (Valid)", "Detail - MTTR"]
+             "Detail - Prestasi", "Detail - Sasaran Mutu", "Detail - Biaya", "Detail - BBM (Valid)",
+             "Detail - MTTR", "Detail - Maintenance Log"]
     wb._sheets = [wb[name] for name in order if name in wb.sheetnames]
 
     buf = _io.BytesIO()
@@ -1088,7 +1232,7 @@ with st.sidebar:
         if sel_site and sel_month and sel_kat:
             st.download_button(
                 "⬇️ Download Perhitungan Detail PPT (Excel)",
-                data=build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, sel_site, sel_month, sel_kat),
+                data=build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_raw, sel_site, sel_month, sel_kat),
                 file_name="Perhitungan_Detail_PPT_BKMS.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
@@ -1674,6 +1818,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     tgl_laporan = f"{_bulan_id[_now.month-1]} {_now.year}"
 
     def render_6_slides(data, sasaran_mutu_data, snum1, snum2, snum3, snum4, kat_suffix):
+        # Site scope KHUSUS blok ini (bukan site_list global) -- penting saat kedua Divisi dipilih sekaligus,
+        # supaya data Maintenance/MTTR/Sparepart tdk "bocor" dari site di blok LAIN (mis. Tanjung ikut kefilter
+        # ke blok Plantation gara2 site_list global masih berisi Tanjung juga).
+        block_site_list = sorted(data["lokasi"].dropna().unique().tolist())
         r_ = data["pendapatan_realisasi"].sum(); b_ = data["pendapatan_budget"].sum()
         # Prestasi (dipakai utk Capaian Prestasi & rasio Biaya Langsung/Tdk Langsung per Prestasi) HANYA dihitung
         # dari unit berkriteria "Floating Tarif" -- unit "Tarif Tetap" tidak dipengaruhi Prestasi sama sekali
@@ -2366,8 +2514,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         rutin_pivot4 = pd.DataFrame()
         if maint_data is not None and not maint_data.empty and "jenis_pemeliharaan" in maint_data.columns:
             m4 = maint_data.copy()
-            if "lokasi" in m4.columns and site_list:
-                m4 = m4[m4["lokasi"].isin(site_list)]
+            if "lokasi" in m4.columns and block_site_list:
+                m4 = m4[m4["lokasi"].isin(block_site_list)]
             if "bulan" in m4.columns and month_list:
                 m4 = m4[m4["bulan"].isin(month_list)]
             kat_scope4 = set(data["kategori"].dropna().unique())
@@ -2532,8 +2680,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         mttr_per_site5 = []
         if mttr_data is not None and not mttr_data.empty:
             m5mttr = mttr_data.copy()
-            if site_list:
-                m5mttr = m5mttr[m5mttr["lokasi"].isin(site_list)]
+            if block_site_list:
+                m5mttr = m5mttr[m5mttr["lokasi"].isin(block_site_list)]
             if month_list:
                 m5mttr = m5mttr[m5mttr["bulan"].isin(month_list)]
             kat_scope5mttr = set(data["kategori"].dropna().unique())
@@ -2608,8 +2756,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         site_nonrutin_vals5 = []  # list of (site_short, pct_nonrutin) utk baris "Non Rutin"
         if maint_data is not None and not maint_data.empty and "jenis_pemeliharaan" in maint_data.columns:
             m5kpi = maint_data.copy()
-            if "lokasi" in m5kpi.columns and site_list:
-                m5kpi = m5kpi[m5kpi["lokasi"].isin(site_list)]
+            if "lokasi" in m5kpi.columns and block_site_list:
+                m5kpi = m5kpi[m5kpi["lokasi"].isin(block_site_list)]
             if "bulan" in m5kpi.columns and month_list:
                 m5kpi = m5kpi[m5kpi["bulan"].isin(month_list)]
             kat_scope5kpi = set(data["kategori"].dropna().unique())
@@ -2733,8 +2881,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         site_order5 = []
         if maint_data is not None and not maint_data.empty and "kategori_sparepart" in maint_data.columns:
             m5 = maint_data.copy()
-            if "lokasi" in m5.columns and site_list:
-                m5 = m5[m5["lokasi"].isin(site_list)]
+            if "lokasi" in m5.columns and block_site_list:
+                m5 = m5[m5["lokasi"].isin(block_site_list)]
             if "bulan" in m5.columns and month_list:
                 m5 = m5[m5["bulan"].isin(month_list)]
             kat_scope5 = set(data["kategori"].dropna().unique())
