@@ -776,11 +776,6 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         metric_row("\u21B3 Cap. Fisik BBM (Qty)",
             f'=SUMIFS({SHEET_BBM}!G:G,{SHEET_BBM}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}")', fmt_real="#,##0")
-        row_ch = r[0]
-        metric_row("\u21B3 Cap. Harga BBM (Rp/Ltr)",
-            f'=IFERROR(SUMIFS({SHEET_BBM}!I:I,{SHEET_BBM}!A:A,"{B}")/SUMIFS({SHEET_BBM}!G:G,{SHEET_BBM}!A:A,"{B}"),0)',
-            f'=IFERROR(SUMIFS({SHEET_BBM}!J:J,{SHEET_BBM}!A:A,"{B}")/SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}"),0)',
-            fmt_real='"Rp"#,##0', hasil_formula=f'=IFERROR(B{row_ch}/C{row_ch}*100,"-")')
         metric_row("Upah Operator",
             f'=SUMIFS({SHEET_BIAYA}!K:K,{SHEET_BIAYA}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BIAYA}!L:L,{SHEET_BIAYA}!A:A,"{B}")', fmt_real='"Rp"#,##0')
@@ -808,19 +803,24 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         r[0] += 1
 
         subsect("\u25B8 Analisa Kenaikan Biaya BBM per Site & Jenis Unit")
-        header(("Site \u2014 Jenis Unit", "Qty Realisasi", "Qty Budget", "Cap. Konsumsi"))
+        header(("Site \u2014 Jenis Unit", "Qty Realisasi", "Qty Budget", "Cap. Konsumsi", "Harga Realisasi (Rp/Ltr)", "Harga Budget (Rp/Ltr)", "Cap. Harga BBM"))
         combos_bbm = uniq_lokasi_jenis(data_bbm_valid, blok_name)
         for lok, ju in combos_bbm:
             lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
             row = r[0]
             ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
-            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BBM}!G:G,{SHEET_BBM}!A:A,"{B}",{SHEET_BBM}!B:B,"{lok_e}",{SHEET_BBM}!E:E,"{ju_e}")')
-            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}",{SHEET_BBM}!B:B,"{lok_e}",{SHEET_BBM}!E:E,"{ju_e}")')
+            crit = f'{SHEET_BBM}!A:A,"{B}",{SHEET_BBM}!B:B,"{lok_e}",{SHEET_BBM}!E:E,"{ju_e}"'
+            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BBM}!G:G,{crit})')
+            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BBM}!H:H,{crit})')
             c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
+            c_hr = ws.cell(row=row, column=5, value=f'=IFERROR(SUMIFS({SHEET_BBM}!I:I,{crit})/B{row},0)')
+            c_hb = ws.cell(row=row, column=6, value=f'=IFERROR(SUMIFS({SHEET_BBM}!J:J,{crit})/C{row},0)')
+            c_ch = ws.cell(row=row, column=7, value=f'=IFERROR(E{row}/F{row}*100,"-")')
             c_r.number_format = "#,##0"; c_b.number_format = "#,##0"; c_h.number_format = '0.0"%"'
-            for c in [c_r, c_b]: c.font = NORMAL_FONT
-            c_h.font = BOLD_FONT
-            for c in range(1, 5):
+            c_hr.number_format = '"Rp"#,##0'; c_hb.number_format = '"Rp"#,##0'; c_ch.number_format = '0.0"%"'
+            for c in [c_r, c_b, c_hr, c_hb]: c.font = NORMAL_FONT
+            c_h.font = BOLD_FONT; c_ch.font = BOLD_FONT
+            for c in range(1, 8):
                 ws.cell(row=row, column=c).border = BORDER
             r[0] += 1
         r[0] += 1
@@ -941,7 +941,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
                         ws.cell(row=row, column=c).border = BORDER
                     r[0] += 1
                 sp_col_count = total_col
-        max_col_used = max(4, sp_col_count)
+        max_col_used = max(7, sp_col_count)
         col_widths_final = [42] + [16] * (max_col_used - 1)
         for i, w in enumerate(col_widths_final, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
