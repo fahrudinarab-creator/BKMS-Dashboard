@@ -1771,8 +1771,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         # --- Filter khusus BBM: baris dgn qty_bbm ada TAPI biaya_bbm ATAU prestasi tidak ada -> jangan dihitung ---
         def _bbm_valid_mask(df_):
-            bad_r = (df_["qty_bbm_realisasi"] > 0) & ((df_["biaya_bbm_realisasi"].fillna(0) == 0) | (df_["prestasi_realisasi"].fillna(0) == 0))
-            bad_b = (df_["qty_bbm_budget"] > 0) & ((df_["biaya_bbm_budget"].fillna(0) == 0) | (df_["prestasi_budget"].fillna(0) == 0))
+            # Qty BBM Realisasi HANYA dikecualikan kalau Biaya BBM Realisasi-nya kosong (Qty>0 tapi Biaya=0 = data
+            # tidak masuk akal, kemungkinan salah input). Pendapatan/Prestasi kosong TIDAK membuat baris dikecualikan
+            # -- unit tetap bisa mengisi BBM meski blm ada pendapatan tercatat di bulan itu.
+            bad_r = (df_["qty_bbm_realisasi"] > 0) & (df_["biaya_bbm_realisasi"].fillna(0) == 0)
+            bad_b = (df_["qty_bbm_budget"] > 0) & (df_["biaya_bbm_budget"].fillna(0) == 0)
             return ~(bad_r | bad_b)
 
         data_bbm_ok = data[_bbm_valid_mask(data)]
