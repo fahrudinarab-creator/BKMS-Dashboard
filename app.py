@@ -608,7 +608,7 @@ def load_workshop_mttr_files(uploaded_files, unit_lookup_df=None) -> pd.DataFram
     return pd.DataFrame(rows)
 
 with st.sidebar:
-    MINING_SITES = ["TANJUNG", "BUHUT", "BUHUT LHL"]
+    MINING_SITES = ["TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"]
     PLANTATION_SITES = ["SUNGAI DANAU", "KUMAI"]
     DIVISI_MAP = {"Mining": MINING_SITES, "Plantation": PLANTATION_SITES}
 
@@ -921,15 +921,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     from pptx.enum.dml import MSO_LINE_DASH_STYLE
     import io as _io
 
-    # Khusus site TANJUNG: gabungkan kategori TR ke AB (tidak dipisah AB/TR di seluruh chart PPTX)
+    # Khusus site Mining (TANJUNG, BUHUT, BUHUT LHL, AMPAH): gabungkan kategori TR ke AB (dianggap AB dulu utk
+    # sementara) -- tidak dipisah AB/TR di seluruh chart PPTX utk site2 ini.
+    MINING_SITES_MERGE = ["TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"]
     data = data.copy()
-    data.loc[data["lokasi"] == "TANJUNG", "kategori"] = "AB"
+    data.loc[data["lokasi"].isin(MINING_SITES_MERGE), "kategori"] = "AB"
     if mttr_data is None:
         mttr_data = pd.DataFrame()
     if sasaran_mutu_data is not None and not sasaran_mutu_data.empty:
         sasaran_mutu_data = sasaran_mutu_data.copy()
-        sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "kategori"] = "AB"
-        sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"] == "TANJUNG", "Jenis_Sarmut"] = "Sarmut Kelompok Alat Berat"
+        sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"].isin(MINING_SITES_MERGE), "kategori"] = "AB"
+        sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"].isin(MINING_SITES_MERGE), "Jenis_Sarmut"] = "Sarmut Kelompok Alat Berat"
         # Baris kosong (NaN) pada downtime_pct dianggap 0% (tidak pernah downtime), bukan diabaikan dari rata-rata --
         # supaya unit yg sebagian besar datanya belum terisi tidak jadi timpang krn cuma 1-2 baris yg kebetulan terisi
         if "downtime_pct" in sasaran_mutu_data.columns:
@@ -959,7 +961,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         return JENIS_UNIT_TO_SARMUT.get(jenis_unit, "Alat Berat")
 
     # Deteksi divisi (Mining/Plantation) berdasarkan site yang difilter
-    MINING_SITES_PPTX = {"TANJUNG", "BUHUT", "BUHUT LHL"}
+    MINING_SITES_PPTX = {"TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"}
     PLANTATION_SITES_PPTX = {"SUNGAI DANAU", "KUMAI"}
     site_set = set(site_list) if site_list else set()
     if site_set and site_set.issubset(MINING_SITES_PPTX):
@@ -2452,21 +2454,58 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
 
 
-    # Jika filter kategori mencakup AB & TR sekaligus DAN keduanya benar-benar punya data, pisah jadi 2 blok:
-    # TRANSPORTASI dulu (01-04), baru ALAT BERAT (05-08). Kalau salah satu kategori kosong (mis. Mining -> TR kosong
-    # krn Tanjung digabung ke AB), render sebagai satu blok tunggal seperti biasa (tanpa penomoran 05-08 & label kosong).
+    # Penomoran & pembagian blok slide:
+    # - Kalau site yg dipilih mencakup KEDUA divisi (Plantation & Mining) sekaligus -> 3 blok berurutan:
+    #   01-04 Plantation-Transportasi, 05-08 Plantation-Alat Berat, 09-12 Mining-Alat Berat (Tanjung/Buhut/Buhut LHL/Ampah)
+    # - Kalau cuma 1 divisi yg dipilih -> pakai logika lama (pisah AB/TR kalau keduanya ada, kalau tidak 1 blok saja)
     kat_set_render = set(kat_list) if kat_list else set()
-    data_tr_check = data[data["kategori"] == "TR"]
-    data_ab_check = data[data["kategori"] == "AB"]
-    if {"AB", "TR"}.issubset(kat_set_render) and not data_tr_check.empty and not data_ab_check.empty:
-        data_tr = data_tr_check.copy()
-        data_ab = data_ab_check.copy()
-        sm_tr = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "TR"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
-        sm_ab = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "AB"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
-        render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", " · TRANSPORTASI")
-        render_6_slides(data_ab, sm_ab, "05", "06", "07", "08", " · ALAT BERAT")
+    plantation_sites_sel = [s for s in site_list if s in PLANTATION_SITES_PPTX]
+    mining_sites_sel = [s for s in site_list if s in MINING_SITES_PPTX]
+    both_divisi_selected = bool(plantation_sites_sel) and bool(mining_sites_sel)
+
+    _slide_counter = [1]  # dibungkus list spy bisa di-mutate dari dalam helper closure
+
+    def _next_slide_nums(n=4):
+        nums = [f"{i:02d}" for i in range(_slide_counter[0], _slide_counter[0] + n)]
+        _slide_counter[0] += n
+        return nums
+
+    def _render_divisi_block(data_divisi, sasaran_mutu_divisi, label_divisi):
+        """Render 4 slide utk satu divisi -- pisah AB/TR kalau keduanya ada datanya, kalau tidak 1 blok saja."""
+        d_tr = data_divisi[data_divisi["kategori"] == "TR"]
+        d_ab = data_divisi[data_divisi["kategori"] == "AB"]
+        if {"AB", "TR"}.issubset(kat_set_render) and not d_tr.empty and not d_ab.empty:
+            sm_tr_ = sasaran_mutu_divisi[sasaran_mutu_divisi["kategori"] == "TR"].copy() if (sasaran_mutu_divisi is not None and not sasaran_mutu_divisi.empty) else sasaran_mutu_divisi
+            sm_ab_ = sasaran_mutu_divisi[sasaran_mutu_divisi["kategori"] == "AB"].copy() if (sasaran_mutu_divisi is not None and not sasaran_mutu_divisi.empty) else sasaran_mutu_divisi
+            n1, n2, n3, n4 = _next_slide_nums(4)
+            render_6_slides(d_tr.copy(), sm_tr_, n1, n2, n3, n4, f"{label_divisi} · TRANSPORTASI")
+            n1, n2, n3, n4 = _next_slide_nums(4)
+            render_6_slides(d_ab.copy(), sm_ab_, n1, n2, n3, n4, f"{label_divisi} · ALAT BERAT")
+        else:
+            n1, n2, n3, n4 = _next_slide_nums(4)
+            render_6_slides(data_divisi.copy(), sasaran_mutu_divisi, n1, n2, n3, n4, label_divisi)
+
+    if both_divisi_selected:
+        data_plantation = data[data["lokasi"].isin(PLANTATION_SITES_PPTX)]
+        data_mining = data[data["lokasi"].isin(MINING_SITES_PPTX)]
+        sm_plantation = sasaran_mutu_data[sasaran_mutu_data["lokasi"].isin(PLANTATION_SITES_PPTX)].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
+        sm_mining = sasaran_mutu_data[sasaran_mutu_data["lokasi"].isin(MINING_SITES_PPTX)].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
+        if not data_plantation.empty:
+            _render_divisi_block(data_plantation, sm_plantation, " · PLANTATION")
+        if not data_mining.empty:
+            _render_divisi_block(data_mining, sm_mining, " · MINING")
     else:
-        render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "")
+        data_tr_check = data[data["kategori"] == "TR"]
+        data_ab_check = data[data["kategori"] == "AB"]
+        if {"AB", "TR"}.issubset(kat_set_render) and not data_tr_check.empty and not data_ab_check.empty:
+            data_tr = data_tr_check.copy()
+            data_ab = data_ab_check.copy()
+            sm_tr = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "TR"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
+            sm_ab = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "AB"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
+            render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", " · TRANSPORTASI")
+            render_6_slides(data_ab, sm_ab, "05", "06", "07", "08", " · ALAT BERAT")
+        else:
+            render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "")
 
     buf = _io.BytesIO()
     prs.save(buf)
