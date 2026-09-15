@@ -221,6 +221,7 @@ MAINT_DATA_PATH = Path(__file__).parent / "data_maintenance.csv"
 SPAREPART_DATA_PATH = Path(__file__).parent / "data_sparepart.csv"
 SASARAN_MUTU_PATH = Path(__file__).parent / "data_sasaran_mutu.csv"
 MTTR_DATA_PATH = Path(__file__).parent / "data_mttr.csv"
+METODOLOGI_PPT_PATH = Path(__file__).parent / "Metodologi_Laporan_RTM_BKMS.pptx"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Transportasi (TR)"}
 
@@ -724,6 +725,16 @@ with st.sidebar:
         use_container_width=True,
         help="Berisi seluruh data BKMS (per site) + Sasaran Mutu + MTTR dalam 1 file Excel.",
     )
+    if METODOLOGI_PPT_PATH.exists():
+        with open(METODOLOGI_PPT_PATH, "rb") as _f_metodologi:
+            st.download_button(
+                "⬇️ Download Panduan Metodologi (PPT)",
+                data=_f_metodologi.read(),
+                file_name="Metodologi_Laporan_RTM_BKMS.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True,
+                help="Penjelasan format & cara perhitungan setiap angka di laporan PPTX RTM.",
+            )
 
     st.markdown("---")
     _download_maint_slot = st.empty()  # diisi belakangan (setelah sel_site dihitung), tapi tampil di atas Divisi
