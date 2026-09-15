@@ -445,6 +445,7 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
         ))
     return pd.DataFrame(rows)
 
+@st.cache_data
 def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_data_raw, site_list, month_list, kat_list) -> bytes:
     """Bangun Excel 'Perhitungan Detail PPT' dgn 3 sheet Ringkasan (Plantation-TR, Plantation-AB, Mining) yang
     ANGKANYA berupa FORMULA EXCEL (SUMIFS/AVERAGEIFS) merujuk ke sheet detail data mentah -- termasuk rincian
@@ -912,6 +913,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     wb.save(buf)
     return buf.getvalue()
 
+@st.cache_data
 def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
     """Bangun 1 file Excel 'Database Laporan' -- isinya sama dgn export data_bkms (Semua Data + per-site),
     ditambah sheet Sasaran Mutu & MTTR. Dipakai utk tombol download di sidebar."""
@@ -1152,7 +1154,13 @@ with st.sidebar:
     # Tambahkan kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' ke data maintenance & sparepart, dicocokkan lewat
     # nama_unit terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori/jenis unit. Hasilnya disimpan
     # kembali ke file CSV-nya (data_maintenance.csv & data_sparepart.csv) supaya kolom2 ini permanen di file.
-    if not df_raw.empty and "nama_unit" in df_raw.columns and "kategori" in df_raw.columns:
+    # PENTING: proses ini (termasuk clear cache) HANYA dijalankan kalau kolomnya benar2 belum lengkap -- supaya
+    # tidak menulis ulang file & menghapus cache di SETIAP rerun (yg bikin dashboard jadi berat/lambat).
+    _maint_needs_fill = (not maint_raw.empty and "nama_unit" in maint_raw.columns and
+                         any(c not in maint_raw.columns or maint_raw[c].isna().any() for c in ["kategori", "jenis_unit", "id_unit"]))
+    _sp_needs_fill = (not sparepart_raw.empty and "nama_unit" in sparepart_raw.columns and
+                      any(c not in sparepart_raw.columns or sparepart_raw[c].isna().any() for c in ["kategori", "jenis_unit", "id_unit"]))
+    if not df_raw.empty and "nama_unit" in df_raw.columns and "kategori" in df_raw.columns and (_maint_needs_fill or _sp_needs_fill):
         _unit_lookup_cols = [c for c in ["kategori", "jenis_unit", "id_unit"] if c in df_raw.columns]
         _kategori_lookup = (
             df_raw.dropna(subset=["nama_unit"])
@@ -1160,7 +1168,7 @@ with st.sidebar:
             .drop_duplicates(subset=["_nama_unit_key"])
             .set_index("_nama_unit_key")[_unit_lookup_cols]
         )
-        if not maint_raw.empty and "nama_unit" in maint_raw.columns:
+        if _maint_needs_fill:
             maint_raw = maint_raw.copy()
             _maint_key = maint_raw["nama_unit"].astype(str).str.strip().str.upper()
             for _col in _unit_lookup_cols:
@@ -1170,7 +1178,7 @@ with st.sidebar:
                 load_maintenance_data.clear()
             except Exception as _e_maint_save:
                 st.warning(f"Kolom kategori/jenis_unit berhasil ditambahkan, tapi gagal menyimpan ke {MAINT_DATA_PATH.name}: {_e_maint_save}")
-        if not sparepart_raw.empty and "nama_unit" in sparepart_raw.columns:
+        if _sp_needs_fill:
             sparepart_raw = sparepart_raw.copy()
             _sp_key = sparepart_raw["nama_unit"].astype(str).str.strip().str.upper()
             for _col in _unit_lookup_cols:
