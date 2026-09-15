@@ -916,17 +916,6 @@ with st.sidebar:
         use_container_width=True,
         help="Berisi seluruh data BKMS (per site) + Sasaran Mutu + MTTR dalam 1 file Excel.",
     )
-    if METODOLOGI_PPT_PATH.exists():
-        with open(METODOLOGI_PPT_PATH, "rb") as _f_metodologi:
-            st.download_button(
-                "⬇️ Download Panduan Metodologi (PPT)",
-                data=_f_metodologi.read(),
-                file_name="Metodologi_Laporan_RTM_BKMS.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                use_container_width=True,
-                help="Penjelasan format & cara perhitungan setiap angka di laporan PPTX RTM.",
-            )
-    _download_perhitungan_slot = st.empty()  # diisi belakangan setelah filter Site/Bulan/Kategori dihitung
 
     st.markdown("---")
     _download_maint_slot = st.empty()  # diisi belakangan (setelah sel_site dihitung), tapi tampil di atas Divisi
@@ -960,32 +949,6 @@ with st.sidebar:
     kat_labels = [KATEGORI_LABEL.get(k, k) for k in kat_opts]
     sel_kat_labels = st.multiselect("Kategori Unit", kat_labels, default=kat_labels)
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
-
-    # --- Isi slot download "Perhitungan Detail" (butuh data yg SUDAH difilter Site/Bulan/Kategori) ---
-    with _download_perhitungan_slot.container():
-        _data_for_calc = df_raw[
-            df_raw["lokasi"].isin(sel_site) & df_raw["bulan"].isin(sel_month) & df_raw["kategori"].isin(sel_kat)
-        ].copy() if (sel_site and sel_month and sel_kat) else pd.DataFrame()
-        _sasaran_for_calc = sasaran_mutu_raw[
-            sasaran_mutu_raw["lokasi"].isin(sel_site) & sasaran_mutu_raw["bulan"].isin(sel_month) & sasaran_mutu_raw["kategori"].isin(sel_kat)
-        ].copy() if (not sasaran_mutu_raw.empty and sel_site and sel_month and sel_kat) else pd.DataFrame()
-        _mttr_for_calc = mttr_raw[mttr_raw["lokasi"].isin(sel_site)].copy() if (not mttr_raw.empty and "lokasi" in mttr_raw.columns and sel_site) else mttr_raw
-        # Terapkan aturan yg SAMA persis dgn build_pptx: site Mining (Tanjung/Buhut/Buhut LHL/Ampah) kategori TR
-        # digabung jadi AB -- supaya angka di file ini KONSISTEN dgn yg tampil di laporan PPTX.
-        _MINING_SITES_CALC = ["TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"]
-        if not _data_for_calc.empty:
-            _data_for_calc.loc[_data_for_calc["lokasi"].isin(_MINING_SITES_CALC), "kategori"] = "AB"
-        if not _sasaran_for_calc.empty:
-            _sasaran_for_calc.loc[_sasaran_for_calc["lokasi"].isin(_MINING_SITES_CALC), "kategori"] = "AB"
-        if not _data_for_calc.empty:
-            st.download_button(
-                "⬇️ Download Perhitungan Detail (Excel)",
-                data=build_perhitungan_detail_excel(_data_for_calc, _sasaran_for_calc, _mttr_for_calc),
-                file_name="Perhitungan_Detail_BKMS.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                help="Angka REAL di balik tiap metrik laporan (Capaian Prestasi, Biaya, Downtime, dll), dihitung ulang dari data sesuai filter Site/Bulan/Kategori yg SEDANG aktif.",
-            )
 
     kriteria_scope_df = df_raw[df_raw["lokasi"].isin(sel_site) & df_raw["kategori"].isin(sel_kat)]
     kriteria_opts_raw = sorted(kriteria_scope_df["kriteria_unit"].dropna().unique().tolist()) if "kriteria_unit" in df_raw.columns else []
