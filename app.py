@@ -1035,9 +1035,23 @@ def fmt_rp(x):
     return f"Rp {x:,.0f}"
 
 def achievement(real, budget):
-    if budget == 0:
+    if budget == 0 or pd.isna(real) or pd.isna(budget):
         return None
     return real / budget * 100
+
+def _safe_chart_val(v, ndigits=1):
+    """Pengaman universal utk nilai yg dikirim ke chart PPTX (native chart XLSX-embedded) -- xlsxwriter akan
+    ERROR keras (TypeError) kalau ada NaN/Inf yg lolos, jadi SEMUA nilai numerik yg dikirim ke add_series()
+    HARUS lewat fungsi ini dulu. Aman dipanggil dgn v=None, NaN, Inf, string, atau angka biasa."""
+    if v is None or pd.isna(v):
+        return 0
+    try:
+        fv = float(v)
+    except (TypeError, ValueError):
+        return 0
+    if fv in (float("inf"), float("-inf")):
+        return 0
+    return round(fv, ndigits)
 
 # ---------------------------------------------------------------
 # HEADER
@@ -1501,7 +1515,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         return bar
 
     def ach_txt_pct(real, budget):
-        if budget == 0:
+        if budget == 0 or pd.isna(real) or pd.isna(budget):
             return None
         return real / budget * 100
 
@@ -1583,18 +1597,24 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             prestasi_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
                 prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
-            prestasi_unit["cap"] = prestasi_unit.apply(lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
+            def _safe_cap(r, col_r="prestasi_r", col_b="prestasi_b"):
+                real_v = r[col_r]; budget_v = r[col_b]
+                if pd.isna(real_v) or pd.isna(budget_v) or budget_v == 0:
+                    return None
+                result = real_v / budget_v * 100
+                return result if pd.notna(result) and not (result == float("inf") or result == float("-inf")) else None
+            prestasi_unit["cap"] = prestasi_unit.apply(_safe_cap, axis=1)
             prestasi_lookup_unit = {(r["lokasi"], r["kategori"], r["jenis_unit"]): r["cap"] for _, r in prestasi_unit.iterrows()}
 
             # Fallback ke level site+kategori kalau kombinasi jenis_unit spesifik tidak ada datanya
             prestasi_sk1 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
                 prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
-            prestasi_sk1["cap"] = prestasi_sk1.apply(lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
+            prestasi_sk1["cap"] = prestasi_sk1.apply(_safe_cap, axis=1)
             prestasi_lookup = {(r["lokasi"], r["kategori"]): r["cap"] for _, r in prestasi_sk1.iterrows()}
 
             for _, r in au_tbl.iterrows():
-                util_cap = (r["util_r"] / r["util_t"] * 100) if r["util_t"] else None
-                avail_cap = (r["avail_r"] / r["avail_t"] * 100) if r["avail_t"] else None
+                util_cap = _safe_cap(r, "util_r", "util_t")
+                avail_cap = _safe_cap(r, "avail_r", "avail_t")
                 prestasi_cap = prestasi_lookup_unit.get((r["lokasi"], r["kategori"], r["jenis_unit"]))
                 if prestasi_cap is None:
                     prestasi_cap = prestasi_lookup.get((r["lokasi"], r["kategori"]))
@@ -1662,9 +1682,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     util_label_x = "% Capaian Utilisasi"
                 cd_x = CategoryChartData()
                 cd_x.categories = [r["label"] for r in rows]
-                cd_x.add_series("% Capaian Prestasi", tuple(round(r["prestasi_cap"], 1) if r["prestasi_cap"] is not None else 0 for r in rows))
-                cd_x.add_series(util_label_x, tuple(round(r["util_cap"], 1) if r["util_cap"] is not None else 0 for r in rows))
-                cd_x.add_series("% Capaian Availability", tuple(round(r["avail_cap"], 1) if r["avail_cap"] is not None else 0 for r in rows))
+                cd_x.add_series("% Capaian Prestasi", tuple(_safe_chart_val(r["prestasi_cap"]) for r in rows))
+                cd_x.add_series(util_label_x, tuple(_safe_chart_val(r["util_cap"]) for r in rows))
+                cd_x.add_series("% Capaian Availability", tuple(_safe_chart_val(r["avail_cap"]) for r in rows))
                 gframe_x = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_x), Inches(12.2), Inches(chart_h_x), cd_x)
                 chart_x = gframe_x.chart
                 PRESTASI_COLOR = RGBColor(0x2E, 0x6D, 0xB4)  # disamakan dgn warna ikon kartu KPI "Capaian Prestasi"
@@ -2039,9 +2059,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             cd_m3b = CategoryChartData()
             cd_m3b.categories = list(chart_src3["label"])
-            cd_m3b.add_series("Cap. Prestasi", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_prestasi"]))
-            cd_m3b.add_series(f"Cap. Konsumsi ({unit_label3})", tuple(round(v, 0) for v in chart_src3["cap"]))
-            cd_m3b.add_series("Capaian Harga BBM (Rp/Ltr)", tuple(round(v, 0) if v is not None else 0 for v in chart_src3["cap_harga"]))
+            cd_m3b.add_series("Cap. Prestasi", tuple(_safe_chart_val(v, 0) for v in chart_src3["cap_prestasi"]))
+            cd_m3b.add_series(f"Cap. Konsumsi ({unit_label3})", tuple(_safe_chart_val(v, 0) for v in chart_src3["cap"]))
+            cd_m3b.add_series("Capaian Harga BBM (Rp/Ltr)", tuple(_safe_chart_val(v, 0) for v in chart_src3["cap_harga"]))
             gframe_m3b = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_m3b), Inches(12.1), Inches(chart_h_m3b), cd_m3b)
             chart_m3b = gframe_m3b.chart
             SERIES_COLORS3 = [RGBColor(0x7B, 0x5C, 0xC9), RGBColor(0xD9, 0x8A, 0x2E), RGBColor(0x3F, 0xA8, 0x6B)]  # Prestasi=ungu terang, Konsumsi=oranye keemasan, Harga=hijau segar
@@ -2507,7 +2527,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if not dt_su5.empty:
             cd_dt5 = CategoryChartData()
             cd_dt5.categories = list(dt_su5["label"])
-            cd_dt5.add_series("% Capaian Downtime", tuple(round(v, 1) for v in dt_su5["cap"]))
+            cd_dt5.add_series("% Capaian Downtime", tuple(_safe_chart_val(v) for v in dt_su5["cap"]))
             gframe_dt5 = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.55), Inches(chart_top5), Inches(7.0), Inches(chart_h5), cd_dt5)
             chart_dt5 = gframe_dt5.chart
             chart_dt5.series[0].format.fill.solid(); chart_dt5.series[0].format.fill.fore_color.rgb = RED
