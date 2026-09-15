@@ -560,15 +560,20 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     # =============== 3. SHEET DETAIL: Sasaran Mutu ===============
     ws_sm = wb.create_sheet("Detail - Sasaran Mutu")
     cols_sm = ["Blok", "Lokasi", "Jenis Unit", "Bulan", "Utilisasi Realisasi", "Utilisasi Target",
-               "Availability Realisasi", "Availability Target", "Downtime Realisasi", "Downtime Target"]
+               "Availability Realisasi", "Availability Target", "Downtime Realisasi", "Downtime Target",
+               "ID Unit", "Kode Unit", "Nama Unit"]
     for c, h in enumerate(cols_sm, start=1):
         cell = ws_sm.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
     if not sasaran_all.empty:
         sm_src = sasaran_all[sasaran_all["_blok"].notna()].copy()
         sm_src["downtime_pct"] = sm_src["downtime_pct"].fillna(0)
+        for col in ["id_unit", "kode_unit", "nama_unit"]:
+            if col not in sm_src.columns:
+                sm_src[col] = None
         sm_src = sm_src[["_blok", "lokasi", "jenis_unit", "bulan", "utilisasi_pct", "utilisasi_target",
-                          "availability_pct", "availability_target", "downtime_pct", "downtime_target"]]
+                          "availability_pct", "availability_target", "downtime_pct", "downtime_target",
+                          "id_unit", "kode_unit", "nama_unit"]]
         for ri, row in enumerate(sm_src.itertuples(index=False), start=2):
             for ci, val in enumerate(row, start=1):
                 cell = ws_sm.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -771,6 +776,11 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         metric_row("\u21B3 Cap. Fisik BBM (Qty)",
             f'=SUMIFS({SHEET_BBM}!G:G,{SHEET_BBM}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}")', fmt_real="#,##0")
+        row_ch = r[0]
+        metric_row("\u21B3 Cap. Harga BBM (Rp/Ltr)",
+            f'=IFERROR(SUMIFS({SHEET_BBM}!I:I,{SHEET_BBM}!A:A,"{B}")/SUMIFS({SHEET_BBM}!G:G,{SHEET_BBM}!A:A,"{B}"),0)',
+            f'=IFERROR(SUMIFS({SHEET_BBM}!J:J,{SHEET_BBM}!A:A,"{B}")/SUMIFS({SHEET_BBM}!H:H,{SHEET_BBM}!A:A,"{B}"),0)',
+            fmt_real='"Rp"#,##0', hasil_formula=f'=IFERROR(B{row_ch}/C{row_ch}*100,"-")')
         metric_row("Upah Operator",
             f'=SUMIFS({SHEET_BIAYA}!K:K,{SHEET_BIAYA}!A:A,"{B}")',
             f'=SUMIFS({SHEET_BIAYA}!L:L,{SHEET_BIAYA}!A:A,"{B}")', fmt_real='"Rp"#,##0')
@@ -858,11 +868,24 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         metric_row("% Capaian Realisasi Downtime",
             f'=AVERAGEIFS({SHEET_SM}!I:I,{SHEET_SM}!A:A,"{B}")',
             f'=AVERAGEIFS({SHEET_SM}!J:J,{SHEET_SM}!A:A,"{B}")', fmt_real="0.00")
-        row_mttr = r[0]
-        metric_row("MTTR (jam)",
-            f'=IFERROR(SUMIFS({SHEET_MTTR}!F:F,{SHEET_MTTR}!A:A,"{B}")/COUNTIFS({SHEET_MTTR}!A:A,"{B}"),"-")',
-            f'=COUNTIFS({SHEET_MTTR}!A:A,"{B}")', fmt_real="0.0", fmt_hasil="0.0", hasil_formula=f'=B{row_mttr}')
         r[0] += 1
+
+        subsect("\u25B8 MTTR (Mean Time To Repair) \u2014 format berbeda dari Capaian %")
+        header(("Metrik", "Nilai", "", ""))
+        row_mttr = r[0]
+        ws.cell(row=row_mttr, column=1, value="MTTR (rata-rata jam per kejadian)").font = NORMAL_FONT
+        c_mttr = ws.cell(row=row_mttr, column=2, value=f'=IFERROR(SUMIFS({SHEET_MTTR}!F:F,{SHEET_MTTR}!A:A,"{B}")/COUNTIFS({SHEET_MTTR}!A:A,"{B}"),"-")')
+        c_mttr.number_format = "0.0"; c_mttr.font = BOLD_FONT
+        for c in range(1, 5):
+            ws.cell(row=row_mttr, column=c).border = BORDER
+        r[0] += 1
+        row_kej = r[0]
+        ws.cell(row=row_kej, column=1, value="Jumlah Kejadian Perbaikan").font = NORMAL_FONT
+        c_kej = ws.cell(row=row_kej, column=2, value=f'=COUNTIFS({SHEET_MTTR}!A:A,"{B}")')
+        c_kej.number_format = "#,##0"; c_kej.font = BOLD_FONT
+        for c in range(1, 5):
+            ws.cell(row=row_kej, column=c).border = BORDER
+        r[0] += 2
 
         subsect("\u25B8 % Downtime per Site & Jenis Unit")
         header(("Site \u2014 Jenis Unit", "Realisasi", "Target", "Cap. Downtime"))
@@ -882,23 +905,46 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             r[0] += 1
         r[0] += 1
 
-        subsect("\u25B8 Kategori Sparepart per Site")
-        header(("Kategori Sparepart \u2014 Lokasi", "Biaya", "", ""))
+        subsect("\u25B8 Kategori Sparepart per Site (Site sebagai kolom)")
+        sp_col_count = 4
         if not maint_all.empty:
             ml_blok = maint_all[maint_all["_blok"] == blok_name]
-            combos_sp = sorted(ml_blok.dropna(subset=["kategori_sparepart"])[["kategori_sparepart", "lokasi"]].drop_duplicates().itertuples(index=False, name=None)) if "kategori_sparepart" in ml_blok.columns else []
-            for kat, lok in combos_sp:
-                kat_e = str(kat).replace('"', '""'); lok_e = lok.replace('"', '""')
-                row = r[0]
-                ws.cell(row=row, column=1, value=f"{kat} \u2014 {lok}").font = NORMAL_FONT
-                c_b = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!F:F,"{kat_e}")')
-                c_b.number_format = '"Rp"#,##0'; c_b.font = NORMAL_FONT
-                for c in range(1, 5):
-                    ws.cell(row=row, column=c).border = BORDER
+            sp_lokasi_list = sorted(ml_blok["lokasi"].dropna().unique().tolist()) if "lokasi" in ml_blok.columns else []
+            sp_kategori_list = sorted(ml_blok.dropna(subset=["kategori_sparepart"])["kategori_sparepart"].unique().tolist()) if "kategori_sparepart" in ml_blok.columns else []
+            if sp_lokasi_list and sp_kategori_list:
+                header_row = r[0]
+                ws.cell(row=header_row, column=1, value="Kategori Sparepart").fill = HEADER_FILL
+                ws.cell(row=header_row, column=1).font = HEADER_FONT
+                for ci, lok in enumerate(sp_lokasi_list, start=2):
+                    cell = ws.cell(row=header_row, column=ci, value=lok)
+                    cell.fill = HEADER_FILL; cell.font = HEADER_FONT
+                total_col = len(sp_lokasi_list) + 2
+                cell = ws.cell(row=header_row, column=total_col, value="Total")
+                cell.fill = HEADER_FILL; cell.font = HEADER_FONT
+                for c in range(1, total_col + 1):
+                    ws.cell(row=header_row, column=c).border = BORDER
                 r[0] += 1
-
-        for c, w in zip("ABCD", [42, 18, 18, 16]):
-            ws.column_dimensions[c].width = w
+                for kat in sp_kategori_list:
+                    kat_e = str(kat).replace('"', '""')
+                    row = r[0]
+                    ws.cell(row=row, column=1, value=kat).font = NORMAL_FONT
+                    site_cell_refs = []
+                    for ci, lok in enumerate(sp_lokasi_list, start=2):
+                        lok_e = lok.replace('"', '""')
+                        col_letter = get_column_letter(ci)
+                        cell = ws.cell(row=row, column=ci, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!F:F,"{kat_e}")')
+                        cell.number_format = '"Rp"#,##0'; cell.font = NORMAL_FONT
+                        site_cell_refs.append(f"{col_letter}{row}")
+                    total_cell = ws.cell(row=row, column=total_col, value=f'={"+".join(site_cell_refs)}')
+                    total_cell.number_format = '"Rp"#,##0'; total_cell.font = BOLD_FONT
+                    for c in range(1, total_col + 1):
+                        ws.cell(row=row, column=c).border = BORDER
+                    r[0] += 1
+                sp_col_count = total_col
+        max_col_used = max(4, sp_col_count)
+        col_widths_final = [42] + [16] * (max_col_used - 1)
+        for i, w in enumerate(col_widths_final, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
 
     build_ringkasan_sheet("1. Ringkasan - Plantation TR", BLOK_TR, BLOK_TR in blok_list)
     build_ringkasan_sheet("2. Ringkasan - Plantation AB", BLOK_AB, BLOK_AB in blok_list)
