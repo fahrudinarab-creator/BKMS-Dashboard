@@ -2107,8 +2107,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         tot_biaya_r3 = data["total_biaya_realisasi"].sum()
         tot_biaya_b3 = data["total_biaya_budget"].sum()
         cap_biaya3 = (tot_biaya_r3 / tot_biaya_b3 * 100) if tot_biaya_b3 else None
-        prestasi_r3 = data["prestasi_realisasi"].sum()
-        prestasi_b3 = data["prestasi_budget"].sum()
+        prestasi_r3 = data_floating["prestasi_realisasi"].sum()
+        prestasi_b3 = data_floating["prestasi_budget"].sum()
         cap_fisik_biaya3 = (prestasi_r3 / prestasi_b3 * 100) if prestasi_b3 else None
 
         upah_r3 = data["upah_realisasi"].sum()
