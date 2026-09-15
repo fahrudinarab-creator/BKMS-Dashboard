@@ -1238,17 +1238,6 @@ with st.sidebar:
     sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
 
     st.markdown("---")
-    st.download_button(
-        "⬇️ Download Database Laporan (Excel)",
-        data=build_database_laporan_excel(df_raw, sasaran_mutu_raw, mttr_raw),
-        file_name="Database_Laporan_BKMS.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        help="Berisi seluruh data BKMS (per site) + Sasaran Mutu + MTTR dalam 1 file Excel.",
-    )
-    _download_perhitungan_slot = st.empty()  # diisi belakangan setelah filter Site/Bulan/Kategori dihitung
-
-    st.markdown("---")
     _download_maint_slot = st.empty()  # diisi belakangan (setelah sel_site dihitung), tapi tampil di atas Divisi
 
     st.markdown("---")
@@ -1280,18 +1269,6 @@ with st.sidebar:
     kat_labels = [KATEGORI_LABEL.get(k, k) for k in kat_opts]
     sel_kat_labels = st.multiselect("Kategori Unit", kat_labels, default=kat_labels)
     sel_kat = [k for k in kat_opts if KATEGORI_LABEL.get(k, k) in sel_kat_labels]
-
-    # --- Isi slot download "Perhitungan Detail" (butuh data yg SUDAH difilter Site/Bulan/Kategori) ---
-    with _download_perhitungan_slot.container():
-        if sel_site and sel_month and sel_kat:
-            st.download_button(
-                "⬇️ Download Perhitungan Detail PPT (Excel)",
-                data=build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_raw, sel_site, sel_month, sel_kat),
-                file_name="Perhitungan_Detail_PPT_BKMS.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                help="Format laporan PPTX dalam bentuk Excel: menunjukkan angka REAL & sumber data di balik setiap metrik (Capaian Prestasi, Biaya, Downtime, dll), sesuai struktur blok Divisi & filter Site/Bulan/Kategori yg sedang aktif.",
-            )
 
     kriteria_scope_df = df_raw[df_raw["lokasi"].isin(sel_site) & df_raw["kategori"].isin(sel_kat)]
     kriteria_opts_raw = sorted(kriteria_scope_df["kriteria_unit"].dropna().unique().tolist()) if "kriteria_unit" in df_raw.columns else []
@@ -3076,11 +3053,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 colX, colY = st.columns([5, 1.4])
 with colY:
     if st.button("📽️ Buat Presentasi (PPTX)", use_container_width=True, type="primary"):
-        with st.spinner("Menyusun slide presentasi..."):
+        with st.spinner("Menyusun slide presentasi & database pendukung..."):
             maint_for_pptx = maint_df_site_bulan if not maint_raw.empty else pd.DataFrame()
             sparepart_for_pptx = sparepart_df_site_bulan if not sparepart_raw.empty else pd.DataFrame()
             pptx_bytes = build_pptx(df, maint_for_pptx, sparepart_for_pptx, sel_site, sel_month, sel_kat, sasaran_mutu_df, mttr_raw)
-        st.session_state["pptx_bytes"] = pptx_bytes
+            st.session_state["pptx_bytes"] = pptx_bytes
+            st.session_state["database_laporan_bytes"] = build_database_laporan_excel(df_raw, sasaran_mutu_raw, mttr_raw)
+            st.session_state["perhitungan_detail_bytes"] = build_perhitungan_detail_excel(
+                df_raw, sasaran_mutu_raw, mttr_raw, maint_raw, sel_site, sel_month, sel_kat
+            )
     if "pptx_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh PPTX untuk RTM",
@@ -3088,6 +3069,24 @@ with colY:
             file_name="Laporan_Biaya_Pendapatan_BKMS.pptx",
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             use_container_width=True,
+        )
+    if "database_laporan_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Unduh Database Laporan (Excel)",
+            data=st.session_state["database_laporan_bytes"],
+            file_name="Database_Laporan_BKMS.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="Berisi seluruh data BKMS (Semua Data) + Sasaran Mutu + MTTR dalam 1 file Excel.",
+        )
+    if "perhitungan_detail_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Unduh Perhitungan Detail PPT (Excel)",
+            data=st.session_state["perhitungan_detail_bytes"],
+            file_name="Perhitungan_Detail_PPT_BKMS.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="Format laporan PPTX dalam bentuk Excel: menunjukkan angka REAL & sumber data di balik setiap metrik, sesuai struktur blok Divisi & filter Site/Bulan/Kategori saat tombol 'Buat Presentasi' diklik.",
         )
 
 st.markdown("---")
