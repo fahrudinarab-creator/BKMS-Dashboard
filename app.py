@@ -1040,6 +1040,62 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     return buf.getvalue()
 
 @st.cache_data
+@st.cache_data
+def build_sasaran_mutu_excel(sasaran_mutu_df) -> bytes:
+    """Bangun file Excel 'Data Sasaran Mutu' -- Semua Data + per-site, dgn baris kuning menandai yg belum
+    py data detail (Efektif/Standby/Breakdown/Ideal) supaya gampang dilacak yg masih perlu dilengkapi."""
+    import io as _io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    HEADER_FILL = PatternFill(start_color="1A2744", end_color="1A2744", fill_type="solid")
+    HEADER_FONT = Font(name="Arial", bold=True, color="FFFFFF", size=9)
+    NORMAL_FONT = Font(name="Arial", size=9)
+    MISSING_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    thin = Side(style="thin", color="D9D9D9")
+    BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    def write_sheet(sheet_name, data):
+        ws = wb.create_sheet(sheet_name[:31])
+        if data is None or data.empty:
+            ws.cell(row=1, column=1, value="Data belum tersedia.")
+            return
+        cols = list(data.columns)
+        highlight_col = "efektif_hm_km_realisasi" if "efektif_hm_km_realisasi" in cols else None
+        highlight_idx = cols.index(highlight_col) if highlight_col else None
+        for c, h in enumerate(cols, start=1):
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.fill = HEADER_FILL; cell.font = HEADER_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        for r_i, row in enumerate(data.itertuples(index=False), start=2):
+            is_missing = pd.isna(row[highlight_idx]) if highlight_idx is not None else False
+            for c_i, val in enumerate(row, start=1):
+                cell = ws.cell(row=r_i, column=c_i, value=(None if pd.isna(val) else val))
+                cell.font = NORMAL_FONT
+                cell.border = BORDER
+                if is_missing:
+                    cell.fill = MISSING_FILL
+        for c_i, col in enumerate(cols, start=1):
+            sample = data[col].astype(str).head(200)
+            maxlen = max([len(str(col))] + [len(str(v)) for v in sample])
+            ws.column_dimensions[get_column_letter(c_i)].width = min(max(maxlen + 2, 8), 38)
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+
+    write_sheet("Semua Data", sasaran_mutu_df)
+    if sasaran_mutu_df is not None and not sasaran_mutu_df.empty and "lokasi" in sasaran_mutu_df.columns:
+        for lokasi in sorted(sasaran_mutu_df["lokasi"].dropna().unique()):
+            sub = sasaran_mutu_df[sasaran_mutu_df["lokasi"] == lokasi].copy()
+            write_sheet(lokasi.replace(" ", "_"), sub)
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
 def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
     """Bangun 1 file Excel 'Database Laporan' -- isinya sama dgn export data_bkms (Semua Data + per-site),
     ditambah sheet Sasaran Mutu & MTTR. Dipakai utk tombol download di sidebar."""
@@ -3164,6 +3220,7 @@ with colY:
             st.session_state["perhitungan_detail_bytes"] = build_perhitungan_detail_excel(
                 df_raw, sasaran_mutu_raw, mttr_raw, maint_raw, sel_site, sel_month, sel_kat
             )
+            st.session_state["sasaran_mutu_excel_bytes"] = build_sasaran_mutu_excel(sasaran_mutu_raw)
     if "pptx_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh PPTX untuk RTM",
@@ -3189,6 +3246,15 @@ with colY:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             help="Format laporan PPTX dalam bentuk Excel: menunjukkan angka REAL & sumber data di balik setiap metrik, sesuai struktur blok Divisi & filter Site/Bulan/Kategori saat tombol 'Buat Presentasi' diklik.",
+        )
+    if "sasaran_mutu_excel_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Unduh Data Sasaran Mutu (Excel)",
+            data=st.session_state["sasaran_mutu_excel_bytes"],
+            file_name="Data_Sasaran_Mutu_BKMS.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="Seluruh data Sasaran Mutu (Utilisasi/Availability/Downtime) per site. Baris kuning = belum ada data detail (Efektif/Standby/Breakdown/Ideal).",
         )
 
 st.markdown("---")
