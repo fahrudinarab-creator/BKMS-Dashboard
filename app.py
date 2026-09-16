@@ -620,6 +620,32 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             cell.border = BORDER; cell.font = NORMAL_FONT
     ws_bbm.freeze_panes = "A2"; ws_bbm.auto_filter.ref = ws_bbm.dimensions
 
+    # =============== 5b. SHEET DETAIL: BBM utk Analisa Kenaikan (aturan filter & rumus BEDA dari di atas,
+    # PERSIS mengikuti kode PPT: Qty/Biaya/Prestasi per baris HARUS lengkap ketiganya (realisasi & budget
+    # dicek terpisah) -- kalau cuma sebagian yg terisi, qty & prestasi baris itu di-NOL-kan, bukan dibuang) ===
+    ws_bbm3 = wb.create_sheet("Detail - BBM Analisa Konsumsi")
+    cols_bbm3 = ["Blok", "Lokasi", "Kategori", "Kode Unit", "Nama Unit", "Jenis Unit", "Bulan",
+                 "Qty BBM Realisasi", "Qty BBM Budget", "Prestasi Realisasi", "Prestasi Budget",
+                 "Biaya BBM Realisasi", "Biaya BBM Budget"]
+    for c, h in enumerate(cols_bbm3, start=1):
+        cell = ws_bbm3.cell(row=1, column=c, value=h)
+        cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
+    data_bbm3 = data_all[data_all["_blok"].notna()].copy()
+    valid_r3 = (data_bbm3["qty_bbm_realisasi"].fillna(0) > 0) & (data_bbm3["biaya_bbm_realisasi"].fillna(0) > 0) & (data_bbm3["prestasi_realisasi"].fillna(0) > 0)
+    partial_r3 = (~valid_r3) & ((data_bbm3["qty_bbm_realisasi"].fillna(0) > 0) | (data_bbm3["prestasi_realisasi"].fillna(0) > 0))
+    data_bbm3.loc[partial_r3, ["qty_bbm_realisasi", "prestasi_realisasi"]] = 0
+    valid_b3 = (data_bbm3["qty_bbm_budget"].fillna(0) > 0) & (data_bbm3["biaya_bbm_budget"].fillna(0) > 0) & (data_bbm3["prestasi_budget"].fillna(0) > 0)
+    partial_b3 = (~valid_b3) & ((data_bbm3["qty_bbm_budget"].fillna(0) > 0) | (data_bbm3["prestasi_budget"].fillna(0) > 0))
+    data_bbm3.loc[partial_b3, ["qty_bbm_budget", "prestasi_budget"]] = 0
+    bbm3_src = data_bbm3[["_blok", "lokasi", "kategori", "kode_unit", "nama_unit", "jenis_unit", "bulan",
+                           "qty_bbm_realisasi", "qty_bbm_budget", "prestasi_realisasi", "prestasi_budget",
+                           "biaya_bbm_realisasi", "biaya_bbm_budget"]]
+    for ri, row in enumerate(bbm3_src.itertuples(index=False), start=2):
+        for ci, val in enumerate(row, start=1):
+            cell = ws_bbm3.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
+            cell.border = BORDER; cell.font = NORMAL_FONT
+    ws_bbm3.freeze_panes = "A2"; ws_bbm3.auto_filter.ref = ws_bbm3.dimensions
+
     # =============== 6. SHEET DETAIL: MTTR ===============
     ws_mttr = wb.create_sheet("Detail - MTTR")
     cols_mttr = ["Blok", "Lokasi", "Kode Unit", "Nama Unit", "Bulan", "Jumlah Jam"]
@@ -659,6 +685,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     SHEET_SM = "'Detail - Sasaran Mutu'"
     SHEET_BIAYA = "'Detail - Biaya'"
     SHEET_BBM = "'Detail - BBM (Valid)'"
+    SHEET_BBM3 = "'Detail - BBM Analisa Konsumsi'"
     SHEET_MTTR = "'Detail - MTTR'"
     SHEET_ML = "'Detail - Maintenance Log'"
 
@@ -804,17 +831,30 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
 
         subsect("\u25B8 Analisa Kenaikan Biaya BBM per Site & Jenis Unit")
         header(("Site \u2014 Jenis Unit", "Qty Realisasi", "Qty Budget", "Cap. Konsumsi", "Harga Realisasi (Rp/Ltr)", "Harga Budget (Rp/Ltr)", "Cap. Harga BBM"))
-        combos_bbm = uniq_lokasi_jenis(data_bbm_valid, blok_name)
+        data_bbm3_blok = data_bbm3[(data_bbm3["_blok"] == blok_name) & ((data_bbm3["qty_bbm_realisasi"] > 0) | (data_bbm3["qty_bbm_budget"] > 0))]
+        combos_bbm = uniq_lokasi_jenis(data_bbm3_blok.rename(columns={"_blok": "_blok"}), blok_name) if not data_bbm3_blok.empty else []
+        kategori_lookup_bbm3 = data_bbm3_blok.drop_duplicates(subset=["lokasi", "jenis_unit"]).set_index(["lokasi", "jenis_unit"])["kategori"].to_dict()
         for lok, ju in combos_bbm:
             lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+            kat_unit = kategori_lookup_bbm3.get((lok, ju), "TR")
             row = r[0]
             ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
-            crit = f'{SHEET_BBM}!A:A,"{B}",{SHEET_BBM}!B:B,"{lok_e}",{SHEET_BBM}!E:E,"{ju_e}"'
-            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BBM}!G:G,{crit})')
-            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BBM}!H:H,{crit})')
-            c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
-            c_hr = ws.cell(row=row, column=5, value=f'=IFERROR(SUMIFS({SHEET_BBM}!I:I,{crit})/B{row},0)')
-            c_hb = ws.cell(row=row, column=6, value=f'=IFERROR(SUMIFS({SHEET_BBM}!J:J,{crit})/C{row},0)')
+            crit = f'{SHEET_BBM3}!A:A,"{B}",{SHEET_BBM3}!B:B,"{lok_e}",{SHEET_BBM3}!F:F,"{ju_e}"'
+            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BBM3}!H:H,{crit})')
+            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BBM3}!I:I,{crit})')
+            # Cap. Konsumsi = rasio EFISIENSI (bukan sekedar Qty R/B) -- persis rumus di PPT:
+            # TR = (Prestasi/Qty) KM per Liter; AB = (Qty/Prestasi) Liter per HM
+            sum_prestasi_r = f'SUMIFS({SHEET_BBM3}!J:J,{crit})'
+            sum_prestasi_b = f'SUMIFS({SHEET_BBM3}!K:K,{crit})'
+            if kat_unit == "AB":
+                rate_r_expr = f'(B{row}/{sum_prestasi_r})'
+                rate_b_expr = f'(C{row}/{sum_prestasi_b})'
+            else:
+                rate_r_expr = f'({sum_prestasi_r}/B{row})'
+                rate_b_expr = f'({sum_prestasi_b}/C{row})'
+            c_h = ws.cell(row=row, column=4, value=f'=IFERROR({rate_r_expr}/{rate_b_expr}*100,"-")')
+            c_hr = ws.cell(row=row, column=5, value=f'=IFERROR(SUMIFS({SHEET_BBM3}!L:L,{crit})/B{row},0)')
+            c_hb = ws.cell(row=row, column=6, value=f'=IFERROR(SUMIFS({SHEET_BBM3}!M:M,{crit})/C{row},0)')
             c_ch = ws.cell(row=row, column=7, value=f'=IFERROR(E{row}/F{row}*100,"-")')
             c_r.number_format = "#,##0"; c_b.number_format = "#,##0"; c_h.number_format = '0.0"%"'
             c_hr.number_format = '"Rp"#,##0'; c_hb.number_format = '"Rp"#,##0'; c_ch.number_format = '0.0"%"'
@@ -952,7 +992,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
 
     order = ["1. Ringkasan - Plantation TR", "2. Ringkasan - Plantation AB", "3. Ringkasan - Mining",
              "Detail - Prestasi", "Detail - Sasaran Mutu", "Detail - Biaya", "Detail - BBM (Valid)",
-             "Detail - MTTR", "Detail - Maintenance Log"]
+             "Detail - BBM Analisa Konsumsi", "Detail - MTTR", "Detail - Maintenance Log"]
     wb._sheets = [wb[name] for name in order if name in wb.sheetnames]
 
     buf = _io.BytesIO()
@@ -1372,6 +1412,31 @@ def _safe_chart_val(v, ndigits=1):
     if fv in (float("inf"), float("-inf")):
         return 0
     return round(fv, ndigits)
+
+def capaian_per_target_group(df, realisasi_col, target_col):
+    """Metodologi perhitungan Capaian utk Utilisasi/Availability/Downtime (BUKAN average langsung semua baris) --
+    krn 1 blok (mis. Plantation Transportasi) bisa punya BEBERAPA target berbeda (mis. 3 target Utilisasi: 35/95/100)
+    tergantung jenis unit, & average langsung akan bias ke target dgn jumlah unit TERBANYAK. Metodologi yg benar:
+      1. Kelompokkan baris berdasarkan nilai TARGET yg unik (bukan per unit/per baris)
+      2. Rata-ratakan Realisasi DI DALAM tiap kelompok target tsb
+      3. Hitung Capaian tiap kelompok = (avg Realisasi kelompok) / (target kelompok) x 100%
+      4. Hasil akhir (Realisasi, Target, Capaian) yg ditampilkan = rata-rata SEDERHANA dari nilai per-kelompok
+         (setiap kelompok target dapat bobot yg SAMA, terlepas dari jumlah unit di dalamnya)
+    Return: (avg_realisasi_display, avg_target_display, avg_capaian) -- ketiganya None kalau data kosong."""
+    if df is None or df.empty or target_col not in df.columns or realisasi_col not in df.columns:
+        return None, None, None
+    valid = df.dropna(subset=[target_col])
+    if valid.empty:
+        return None, None, None
+    grouped = valid.groupby(target_col)[realisasi_col].mean()  # avg Realisasi per kelompok target unik
+    if grouped.empty:
+        return None, None, None
+    targets_unik = grouped.index.to_series()
+    capaian_per_grup = grouped / targets_unik.values * 100
+    avg_realisasi_display = grouped.mean()       # rata2 dari rata2-tiap-kelompok (bukan rata2 semua baris)
+    avg_target_display = targets_unik.mean()     # rata2 dari NILAI TARGET UNIK (bukan rata2 semua baris)
+    avg_capaian = capaian_per_grup.mean()        # rata2 dari Capaian tiap kelompok (bukan realisasi/target akhir)
+    return avg_realisasi_display, avg_target_display, avg_capaian
 
 # ---------------------------------------------------------------
 # HEADER
@@ -1886,12 +1951,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         data["satuan_lokal"] = data.apply(klasifikasi_satuan_lokal, axis=1)
 
-        avg_avail_r = sasaran_mutu_data["availability_pct"].mean() if not sasaran_mutu_data.empty else None
-        avg_avail_t = sasaran_mutu_data["availability_target"].mean() if not sasaran_mutu_data.empty else None
-        avg_util_r = sasaran_mutu_data["utilisasi_pct"].mean() if not sasaran_mutu_data.empty else None
-        avg_util_t = sasaran_mutu_data["utilisasi_target"].mean() if not sasaran_mutu_data.empty else None
-        ach_avail = ach_txt_pct(avg_avail_r, avg_avail_t) if (avg_avail_r is not None and avg_avail_t) else None
-        ach_util = ach_txt_pct(avg_util_r, avg_util_t) if (avg_util_r is not None and avg_util_t) else None
+        avg_avail_r, avg_avail_t, ach_avail = capaian_per_target_group(sasaran_mutu_data, "availability_pct", "availability_target")
+        avg_util_r, avg_util_t, ach_util = capaian_per_target_group(sasaran_mutu_data, "utilisasi_pct", "utilisasi_target")
         prestasi_r_kpi = data_floating["prestasi_realisasi"].sum() if "prestasi_realisasi" in data_floating.columns else None
         prestasi_b_kpi = data_floating["prestasi_budget"].sum() if "prestasi_budget" in data_floating.columns else None
         ach_prestasi_kpi = ach_txt_pct(prestasi_r_kpi, prestasi_b_kpi) if (prestasi_r_kpi is not None and prestasi_b_kpi) else None
@@ -2180,9 +2241,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # Cap. Fisik utk Biaya Maintenance = Capaian Downtime (Realisasi vs Target Downtime, dari Sasaran Mutu)
         cap_fisik_maint3 = None
         if not sasaran_mutu_data.empty:
-            dt_avg_r3 = sasaran_mutu_data["downtime_pct"].mean()
-            dt_avg_t3 = sasaran_mutu_data["downtime_target"].mean()
-            cap_fisik_maint3 = (dt_avg_r3 / dt_avg_t3 * 100) if dt_avg_t3 else None
+            _sm_dt3 = sasaran_mutu_data.copy()
+            _sm_dt3["downtime_pct"] = _sm_dt3["downtime_pct"].fillna(0)
+            _, _, cap_fisik_maint3 = capaian_per_target_group(_sm_dt3, "downtime_pct", "downtime_target")
 
         # Cap. Fisik utk Biaya BBM = % Capaian Qty BBM (Realisasi Qty vs Budget Qty, murni volume)
         cap_fisik_bbm_qty3 = (bbm_qty_r3 / bbm_qty_b3 * 100) if bbm_qty_b3 else None
@@ -2697,9 +2758,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # ================= SLIDE 4: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
         s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum4}{divisi_label}{kat_suffix}")
 
-        dt_avg_r5 = sasaran_mutu_data["downtime_pct"].mean() if not sasaran_mutu_data.empty else None
-        dt_avg_t5 = sasaran_mutu_data["downtime_target"].mean() if not sasaran_mutu_data.empty else None
-        cap_dt5 = (dt_avg_r5 / dt_avg_t5 * 100) if (dt_avg_r5 is not None and dt_avg_t5) else None
+        _sm_dt5 = sasaran_mutu_data.copy()
+        if not _sm_dt5.empty:
+            _sm_dt5["downtime_pct"] = _sm_dt5["downtime_pct"].fillna(0)
+        dt_avg_r5, dt_avg_t5, cap_dt5 = capaian_per_target_group(_sm_dt5, "downtime_pct", "downtime_target")
         varian_dt5 = (dt_avg_r5 - dt_avg_t5) if (dt_avg_r5 is not None and dt_avg_t5 is not None) else None
         good_dt5 = varian_dt5 is not None and varian_dt5 <= 0
         avail_target5 = (100 - dt_avg_t5) if dt_avg_t5 is not None else None
