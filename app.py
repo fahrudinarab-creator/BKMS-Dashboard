@@ -1534,6 +1534,49 @@ def capaian_per_target_group(df, realisasi_col, target_col):
     avg_capaian = capaian_per_grup.mean()        # rata2 dari Capaian tiap kelompok (bukan realisasi/target akhir)
     return avg_realisasi_display, avg_target_display, avg_capaian
 
+def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelompok_col="kelompok_unit", jenis_unit_col="jenis_unit", unit_sewa_col="unit_sewa"):
+    """Metodologi Capaian Utilisasi/Availability BERBASIS KELOMPOK UNIT & FORMULA MENTAH (bukan target-value spt
+    capaian_per_target_group, dan bukan pakai kolom persentase yg sudah jadi). Langkah:
+      1. KECUALIKAN unit berkriteria 'Tarif Tetap' & unit_sewa=True -- pendapatannya tdk terpengaruh Utilisasi/
+         Availability, jadi tdk relevan dihitung.
+      2. Kelompokkan sisa baris berdasarkan KELOMPOK UNIT (mis. 'Dump Truck', 'Truck Arm Roll', dst).
+      3. Utk tiap Kelompok Unit: Realisasi dihitung dari FORMULA mentah = Sum(Efektif/Tersedia) / Sum(Ideal) x 100
+         (BUKAN mengambil rata-rata kolom persentase yg sudah dihitung sebelumnya).
+      4. Target tiap Kelompok Unit = rata-rata target persentase (mis. utilisasi_target) DI DALAM kelompok itu.
+      5. Capaian tiap Kelompok Unit = Realisasi kelompok / Target kelompok x 100.
+      6. Hasil akhir (Realisasi, Target, Capaian) = rata-rata SEDERHANA dari nilai per-Kelompok-Unit (bobot sama
+         per kelompok, bukan per unit individual).
+    Return: (avg_realisasi_display, avg_target_display, avg_capaian) -- None kalau data kosong/kolom tdk ada."""
+    required = [efektif_col, ideal_col, target_pct_col, kelompok_col]
+    if df is None or df.empty or any(c not in df.columns for c in required):
+        return None, None, None
+    valid = df.copy()
+    if jenis_unit_col in valid.columns:
+        valid = valid[valid[jenis_unit_col] != "Tarif Tetap"]
+    if unit_sewa_col in valid.columns:
+        valid = valid[valid[unit_sewa_col] != True]
+    valid = valid.dropna(subset=[kelompok_col])
+    if valid.empty:
+        return None, None, None
+
+    def _grp(g):
+        sum_efektif = g[efektif_col].sum()
+        sum_ideal = g[ideal_col].sum()
+        realisasi_formula = (sum_efektif / sum_ideal * 100) if sum_ideal else None
+        target_avg = g[target_pct_col].mean()
+        return pd.Series({"realisasi": realisasi_formula, "target": target_avg})
+
+    grouped = valid.groupby(kelompok_col).apply(_grp)
+    grouped = grouped.dropna(subset=["realisasi", "target"])
+    if grouped.empty:
+        return None, None, None
+    grouped["capaian"] = grouped["realisasi"] / grouped["target"] * 100
+
+    avg_realisasi_display = grouped["realisasi"].mean()
+    avg_target_display = grouped["target"].mean()
+    avg_capaian = grouped["capaian"].mean()
+    return avg_realisasi_display, avg_target_display, avg_capaian
+
 # ---------------------------------------------------------------
 # HEADER
 # ---------------------------------------------------------------
@@ -2047,8 +2090,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         data["satuan_lokal"] = data.apply(klasifikasi_satuan_lokal, axis=1)
 
-        avg_avail_r, avg_avail_t, ach_avail = capaian_per_target_group(sasaran_mutu_data, "availability_pct", "availability_target")
-        avg_util_r, avg_util_t, ach_util = capaian_per_target_group(sasaran_mutu_data, "utilisasi_pct", "utilisasi_target")
+        avg_avail_r, avg_avail_t, ach_avail = capaian_per_kelompok_unit(sasaran_mutu_data, "tersedia_hm_km_realisasi", "hm_km_ideal_target", "availability_target")
+        avg_util_r, avg_util_t, ach_util = capaian_per_kelompok_unit(sasaran_mutu_data, "efektif_hm_km_realisasi", "hm_km_ideal_target", "utilisasi_target")
         prestasi_r_kpi = data_floating["prestasi_realisasi"].sum() if "prestasi_realisasi" in data_floating.columns else None
         prestasi_b_kpi = data_floating["prestasi_budget"].sum() if "prestasi_budget" in data_floating.columns else None
         ach_prestasi_kpi = ach_txt_pct(prestasi_r_kpi, prestasi_b_kpi) if (prestasi_r_kpi is not None and prestasi_b_kpi) else None
