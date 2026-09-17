@@ -1076,6 +1076,62 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             ws.cell(row=row_kej, column=c).border = BORDER
         r[0] += 2
 
+        # --- Breakdown PER SITE (bukan per Site+Kelompok Unit) utk 3 metrik KPI Slide 4 -- persis spt subtitle
+        # kartu KPI di PPT (mis. "KUMAI 153% . S.DANAU 61%"), supaya angka subtitle itu bisa ditelusuri di Excel ---
+        _site_list_blok4 = sorted(set(lok for lok, _ in _kelompok_list_blok)) if _kelompok_list_blok else []
+
+        subsect("\u25B8 % Capaian Realisasi Downtime \u2014 per Site")
+        header(("Site", "Realisasi", "Target", "Cap. Downtime"))
+        for lok in _site_list_blok4:
+            lok_e = lok.replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=lok).font = NORMAL_FONT
+            crit_dtsite = f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"'
+            c_r = ws.cell(row=row, column=2, value=f'=IFERROR(SUMIFS({SHEET_SM}!R:R,{crit_dtsite})/SUMIFS({SHEET_SM}!T:T,{crit_dtsite})*100,0)')
+            c_t = ws.cell(row=row, column=3, value=f'=IFERROR(AVERAGEIFS({SHEET_SM}!J:J,{crit_dtsite}),0)')
+            c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
+            c_r.number_format = "0.00"; c_t.number_format = "0.00"; c_h.number_format = '0.0"%"'
+            for c in [c_r, c_t]: c.font = NORMAL_FONT
+            c_h.font = BOLD_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        subsect("\u25B8 MTTR (Mean Time To Repair) \u2014 per Site")
+        header(("Site", "Total Jam", "Jumlah Kejadian", "MTTR (jam)"))
+        for lok in _site_list_blok4:
+            lok_e = lok.replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=lok).font = NORMAL_FONT
+            c_jam = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_MTTR}!F:F,{SHEET_MTTR}!A:A,"{B}",{SHEET_MTTR}!B:B,"{lok_e}")')
+            c_n = ws.cell(row=row, column=3, value=f'=COUNTIFS({SHEET_MTTR}!A:A,"{B}",{SHEET_MTTR}!B:B,"{lok_e}")')
+            c_mttr_site = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row},"-")')
+            c_jam.number_format = "#,##0.0"; c_n.number_format = "#,##0"
+            for c in [c_jam, c_n]: c.font = NORMAL_FONT
+            c_mttr_site.number_format = "0.0"; c_mttr_site.font = BOLD_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        subsect("\u25B8 Maintenance Rutin vs Non-Rutin \u2014 per Site (%)")
+        header(("Site", "Biaya Rutin", "Biaya Non-Rutin", "% Rutin"))
+        for lok in _site_list_blok4:
+            lok_e = lok.replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=lok).font = NORMAL_FONT
+            c_rt = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!E:E,"RUTIN")')
+            c_nr = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!E:E,"NON RUTIN")')
+            c_pr = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/(B{row}+C{row})*100,"-")')
+            c_rt.number_format = '"Rp"#,##0'; c_nr.number_format = '"Rp"#,##0'
+            for c in [c_rt, c_nr]: c.font = NORMAL_FONT
+            c_pr.number_format = '0.0"%"'; c_pr.font = BOLD_FONT
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
         subsect("\u25B8 % Downtime per Site & Kelompok Unit")
         header(("Site \u2014 Jenis Unit", "Realisasi", "Target", "Cap. Downtime"))
         combos_dt = uniq_lokasi_jenis(sasaran_all, blok_name)
