@@ -1047,7 +1047,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             ws.cell(row=row_kej, column=c).border = BORDER
         r[0] += 2
 
-        subsect("\u25B8 % Downtime per Site & Jenis Unit")
+        subsect("\u25B8 % Downtime per Site & Kelompok Unit")
         header(("Site \u2014 Jenis Unit", "Realisasi", "Target", "Cap. Downtime"))
         combos_dt = uniq_lokasi_jenis(sasaran_all, blok_name)
         for lok, ju in combos_dt:
@@ -2345,17 +2345,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         _draw_util_chart(s, au_rows_floating, panel_top, h_floating, "🟢 Capaian Prestasi, Utilisasi & Availability — per Site & Kelompok Unit")
 
         # --- Analisa: unit dgn gap pendapatan (realisasi - budget) paling minus, dikaitkan dgn capaian utilisasinya ---
-        # (Kotak ini TETAP per Jenis Unit spesifik -- beda dgn chart di atas yg per Kelompok Unit -- krn tujuannya
-        # menyorot 1 unit paling bermasalah scr spesifik, bukan perbandingan Kelompok Unit antar site.)
+        # (Kotak ini SEKARANG per KELOMPOK UNIT -- konsisten dgn chart di atas yg jg per Site & Kelompok Unit.)
         note_top_au = panel_top + h_floating + 0.1
         note_h_au = panel_bottom - note_top_au
-        gap_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+        gap_unit = data_k.groupby(["lokasi", "kategori", "kelompok_unit"], as_index=False).agg(
             pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"),
-            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
+            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum")) if "kelompok_unit" in data_k.columns else pd.DataFrame(columns=["lokasi","kategori","kelompok_unit","pend_r","pend_b","prestasi_r","prestasi_b"])
         gap_unit = gap_unit[(gap_unit["pend_r"] > 0) | (gap_unit["pend_b"] > 0)].copy()
         gap_unit["gap"] = gap_unit["pend_r"] - gap_unit["pend_b"]
         gap_unit["site_short"] = gap_unit["lokasi"].map(SITE_ABBR).fillna(gap_unit["lokasi"])
-        gap_unit["label"] = gap_unit["site_short"] + " — " + gap_unit["jenis_unit"]
+        gap_unit["label"] = gap_unit["site_short"] + " — " + gap_unit["kelompok_unit"]
         def _safe_cap_gap(r):
             real_v = r["prestasi_r"]; budget_v = r["prestasi_b"]
             if pd.isna(real_v) or pd.isna(budget_v) or budget_v == 0:
@@ -2970,35 +2969,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
                         size=10, italic=True, color=TEXT_MUTED)
 
-        # ================= INSIGHT: hubungkan Capaian Biaya Maintenance dgn porsi Non-Rutin =================
-        insight_top4 = panel_top4 + panel_h4 - note_h4
-        if not maint_su4_full.empty and not rutin_pivot4.empty:
-            merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "kelompok_unit", "pct_nonrutin"]], on=["lokasi", "kelompok_unit"], how="inner")
-            over_budget4 = merge4[merge4["cap"] > 100]
-            if not over_budget4.empty:
-                worst4 = over_budget4.sort_values("gap_rp", ascending=False).iloc[0]
-                avg_nonrutin_over4 = over_budget4["pct_nonrutin"].mean()
-                under_budget4 = merge4[merge4["cap"] <= 100]
-                avg_nonrutin_under4 = under_budget4["pct_nonrutin"].mean() if not under_budget4.empty else None
-                if avg_nonrutin_under4 is not None and avg_nonrutin_over4 > avg_nonrutin_under4:
-                    banding_txt4 = (f"Rata-rata porsi Non-Rutin pada unit yang OVER BUDGET ({avg_nonrutin_over4:.0f}%) lebih tinggi dibanding "
-                                     f"unit yang sesuai/di bawah budget ({avg_nonrutin_under4:.0f}%) \u2014 mengindikasikan preventive maintenance "
-                                     f"yang belum memadai menjadi salah satu penyebab pembengkakan biaya.")
-                else:
-                    banding_txt4 = "Perlu ditelusuri lebih lanjut apakah ada korelasi antara porsi Non-Rutin dan pembengkakan biaya maintenance."
-                add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\U0001F4A1",
-                                 f"{worst4['label']} adalah unit dengan dampak Rupiah biaya OVER BUDGET terbesar ({fmt_rp(worst4['gap_rp'])}, Capaian {worst4['cap']:.0f}%), "
-                                 f"dengan porsi Non-Rutin {worst4['pct_nonrutin']:.0f}%. {banding_txt4}",
-                                 GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
-            else:
-                add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2705",
-                                 "Tidak ada unit yang over budget pada biaya maintenance \u2014 seluruh unit berada dalam/di bawah budget.",
-                                 GREEN_BG, GREEN, GREEN)
-        else:
-            add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2139\ufe0f",
-                             "Data belum cukup lengkap untuk analisis korelasi antara Capaian Biaya Maintenance dan porsi Non-Rutin.",
-                             GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
-
         # ================= SLIDE 4: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
         s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum4}{divisi_label}{kat_suffix}")
 
@@ -3042,7 +3012,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # --- Breakdown % Capaian Downtime per site ---
         cap_dt_per_site5 = []
         if not sasaran_mutu_data.empty and sasaran_mutu_data["lokasi"].nunique() > 1:
-            site_dt_agg5 = sasaran_mutu_data.groupby("lokasi").agg(dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
+            _sm_dtsite5 = sasaran_mutu_data.copy()
+            if "jenis_unit" in _sm_dtsite5.columns:
+                _sm_dtsite5 = _sm_dtsite5[_sm_dtsite5["jenis_unit"] != "Tarif Tetap"]
+            if "unit_sewa" in _sm_dtsite5.columns:
+                _sm_dtsite5 = _sm_dtsite5[_sm_dtsite5["unit_sewa"] != True]
+            if "breakdown_hm_km_realisasi" in _sm_dtsite5.columns:
+                _sm_dtsite5["breakdown_hm_km_realisasi"] = _sm_dtsite5["breakdown_hm_km_realisasi"].fillna(0)
+            def _dtsite5_grp(g):
+                sum_ideal = g["hm_km_ideal_target"].sum() if "hm_km_ideal_target" in g.columns else None
+                dt_r_formula = (g["breakdown_hm_km_realisasi"].sum() / sum_ideal * 100) if (sum_ideal and "breakdown_hm_km_realisasi" in g.columns) else None
+                return pd.Series({"dt_r": dt_r_formula, "dt_t": g["downtime_target"].mean()})
+            site_dt_agg5 = _sm_dtsite5.groupby("lokasi").apply(_dtsite5_grp)
             site_dt_agg5 = site_dt_agg5.sort_values("dt_r", ascending=False)
             for site5d, row5d in site_dt_agg5.iterrows():
                 if not row5d["dt_t"]:
@@ -3052,12 +3033,25 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 cap_dt_per_site5.append(f"{site_short5d} {cap_dt_site5:.0f}%")
 
         # --- Hitung per Site & Jenis Unit lebih awal, dipakai baik di kartu KPI maupun chart di bawah ---
+        # Realisasi Downtime dihitung dari FORMULA data mentah (Sum Breakdown / Sum Ideal), BUKAN average kolom
+        # persentase yg sudah jadi -- konsisten dgn metodologi kartu KPI "% Capaian Realisasi Downtime" di atas.
+        # Tarif Tetap & unit_sewa dikecualikan (tdk relevan dihitung Downtime-nya).
         dt_su5 = pd.DataFrame()
         if not sasaran_mutu_data.empty:
-            dt_su5 = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-                dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
+            _sm_dt5b = sasaran_mutu_data.dropna(subset=["kelompok_unit"]).copy() if "kelompok_unit" in sasaran_mutu_data.columns else pd.DataFrame()
+            if "jenis_unit" in _sm_dt5b.columns:
+                _sm_dt5b = _sm_dt5b[_sm_dt5b["jenis_unit"] != "Tarif Tetap"]
+            if "unit_sewa" in _sm_dt5b.columns:
+                _sm_dt5b = _sm_dt5b[_sm_dt5b["unit_sewa"] != True]
+            if "breakdown_hm_km_realisasi" in _sm_dt5b.columns:
+                _sm_dt5b["breakdown_hm_km_realisasi"] = _sm_dt5b["breakdown_hm_km_realisasi"].fillna(0)
+            def _dt5_grp(g):
+                sum_ideal = g["hm_km_ideal_target"].sum() if "hm_km_ideal_target" in g.columns else None
+                dt_r_formula = (g["breakdown_hm_km_realisasi"].sum() / sum_ideal * 100) if (sum_ideal and "breakdown_hm_km_realisasi" in g.columns) else None
+                return pd.Series({"dt_r": dt_r_formula, "dt_t": g["downtime_target"].mean()})
+            dt_su5 = _sm_dt5b.groupby(["lokasi", "kategori", "kelompok_unit"]).apply(_dt5_grp).reset_index() if "kelompok_unit" in _sm_dt5b.columns else pd.DataFrame()
             dt_su5["site_short"] = dt_su5["lokasi"].map(SITE_ABBR).fillna(dt_su5["lokasi"])
-            dt_su5["label"] = dt_su5["site_short"] + " \u2014 " + dt_su5["jenis_unit"]
+            dt_su5["label"] = dt_su5["site_short"] + " \u2014 " + dt_su5["kelompok_unit"]
             dt_su5["cap"] = dt_su5.apply(lambda r: (r["dt_r"] / r["dt_t"] * 100) if r["dt_t"] else None, axis=1)
             dt_su5 = dt_su5.dropna(subset=["cap"])
             dt_su5 = dt_su5.sort_values("cap", ascending=False)
@@ -3151,9 +3145,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         right_x5 = 7.9
         right_w5 = 5.0
 
-        # --- Panel kiri: % Downtime per Site & Jenis Unit + catatan strategi ---
+        # --- Panel kiri: % Downtime per Site & Kelompok Unit + catatan strategi ---
         add_card_panel(s, 0.4, panel_top5, left_w5, panel_h5, accent_color=RED)
-        add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 0.4, panel_top5, left_w5, "\u23f8 % Downtime \u2014 per Site & Kelompok Unit", height=0.4)
         chart_top5 = panel_top5 + 0.45
         note_h5 = 0.85
         chart_h5 = panel_h5 - 0.45 - note_h5 - 0.15
