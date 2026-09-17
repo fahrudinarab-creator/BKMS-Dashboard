@@ -617,15 +617,17 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
                   "Upah Realisasi", "Upah Budget",
                   "Lainnya Realisasi", "Lainnya Budget",
                   "Biaya Langsung Realisasi", "Biaya Langsung Budget",
-                  "Biaya T.Langsung Realisasi", "Biaya T.Langsung Budget", "Kelompok Unit"]
+                  "Biaya T.Langsung Realisasi", "Biaya T.Langsung Budget", "Kelompok Unit",
+                  "Pendapatan Realisasi", "Pendapatan Budget"]
     for c, h in enumerate(cols_biaya, start=1):
         cell = ws_biaya.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
     biaya_src = data_all[data_all["_blok"].notna()][["_blok", "lokasi", "kode_unit", "nama_unit", "jenis_unit", "bulan",
         "total_biaya_realisasi", "total_biaya_budget", "maintenance_realisasi", "maintenance_budget",
         "upah_realisasi", "upah_budget", "lainnya_realisasi", "lainnya_budget",
-        "biaya_langsung_realisasi", "biaya_langsung_budget", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"]].copy()
-    biaya_src["kelompok_unit"] = data_all.loc[data_all["_blok"].notna(), _kelompok_col_bkms] if _kelompok_col_bkms else None
+        "biaya_langsung_realisasi", "biaya_langsung_budget", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget",
+        "pendapatan_realisasi", "pendapatan_budget"]].copy()
+    biaya_src.insert(18, "kelompok_unit", data_all.loc[data_all["_blok"].notna(), _kelompok_col_bkms] if _kelompok_col_bkms else None)
     for ri, row in enumerate(biaya_src.itertuples(index=False), start=2):
         for ci, val in enumerate(row, start=1):
             cell = ws_biaya.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -905,6 +907,33 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             for ci, f in enumerate([f_prest, f_util, f_avail], start=2):
                 cell = ws.cell(row=row, column=ci, value=f); cell.font = NORMAL_FONT; cell.number_format = '0.0"%"'
             for c in range(1, 5):
+                ws.cell(row=row, column=c).border = BORDER
+            r[0] += 1
+        r[0] += 1
+
+        # --- Laporan Pendapatan, Biaya Langsung, Biaya T.Langsung & Laba Operasional per Site & Kelompok Unit ---
+        subsect("\u25B8 Laporan Pendapatan & Laba Operasional \u2014 per Site & Kelompok Unit (Realisasi vs Budget)")
+        header(("Site \u2014 Kelompok Unit", "Pendapatan R", "Pendapatan B", "Biaya Langsung R", "Biaya Langsung B",
+                "Biaya T.Langsung R", "Biaya T.Langsung B", "Laba Operasional R", "Laba Operasional B"))
+        combos_laba = uniq_lokasi_kelompok(data_all[data_all["_blok"] == blok_name], blok_name, exclude_tarif_tetap=False, exclude_unit_sewa=False)
+        for lok, kel in combos_laba:
+            lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
+            row = r[0]
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {kel}").font = NORMAL_FONT
+            crit_laba = f'{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}",{SHEET_BIAYA}!S:S,"{kel_e}"'
+            c_pr = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BIAYA}!T:T,{crit_laba})')
+            c_pb = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BIAYA}!U:U,{crit_laba})')
+            c_blr = ws.cell(row=row, column=4, value=f'=SUMIFS({SHEET_BIAYA}!O:O,{crit_laba})')
+            c_blb = ws.cell(row=row, column=5, value=f'=SUMIFS({SHEET_BIAYA}!P:P,{crit_laba})')
+            c_btr = ws.cell(row=row, column=6, value=f'=SUMIFS({SHEET_BIAYA}!Q:Q,{crit_laba})')
+            c_btb = ws.cell(row=row, column=7, value=f'=SUMIFS({SHEET_BIAYA}!R:R,{crit_laba})')
+            c_labar = ws.cell(row=row, column=8, value=f'=B{row}-D{row}-F{row}')
+            c_labab = ws.cell(row=row, column=9, value=f'=C{row}-E{row}-G{row}')
+            for c in [c_pr, c_pb, c_blr, c_blb, c_btr, c_btb]:
+                c.number_format = '"Rp"#,##0'; c.font = NORMAL_FONT
+            for c in [c_labar, c_labab]:
+                c.number_format = '"Rp"#,##0'; c.font = BOLD_FONT
+            for c in range(1, 10):
                 ws.cell(row=row, column=c).border = BORDER
             r[0] += 1
         r[0] += 1
