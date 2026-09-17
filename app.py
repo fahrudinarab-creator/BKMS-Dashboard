@@ -2506,32 +2506,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                   status_col=[3, 4], col_widths=[1.7, 1.15, 1.15, 0.95, 0.95], font_size=10, header_size=10,
                   fill_badge=True)
 
-        # --- Catatan otomatis: metrik biaya mana yang paling over budget ---
-        cap_map3 = {"Total Biaya": cap_biaya3, "Upah Operator": cap_upah3, "Biaya BBM": cap_bbm3,
-                    "Biaya Maintenance": cap_maint3, "Biaya Lainnya": cap_lain3}
-        over_items3 = {k: v for k, v in cap_map3.items() if v is not None and v > 100 and k != "Total Biaya"}
+        # --- Catatan otomatis: metrik biaya mana yang paling over budget (DIHAPUS sesuai permintaan) ---
         note_top3 = tbl3_top + tbl3_h + 0.1
         note_h3 = 0.65
-        if over_items3:
-            worst_label3 = max(over_items3, key=over_items3.get)
-            worst_val3 = over_items3[worst_label3]
-            if worst_label3 == "Biaya Maintenance" and cap_fisik_maint3 is not None:
-                if cap_fisik_maint3 > 100:
-                    fisik_txt3 = f"sejalan dengan Downtime yang juga OVER ({cap_fisik_maint3:.1f}%)."
-                else:
-                    fisik_txt3 = f"namun Downtime justru DALAM TARGET ({cap_fisik_maint3:.1f}%)."
-                add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u26A0",
-                                 f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%), {fisik_txt3}",
-                                 RED_BG, RED, RED)
-            else:
-                add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u26A0",
-                                 f"{worst_label3} OVER BUDGET ({worst_val3:.1f}%) \u2014 perlu efisiensi biaya s/d {period}.",
-                                 RED_BG, RED, RED)
-        else:
-            add_finding_box(s, 0.4, note_top3, 5.9, note_h3, "\u2705",
-                             "Seluruh komponen biaya berada dalam/di bawah budget.",
-                             GREEN_BG, GREEN, GREEN)
-        left_col_bottom3 = note_top3 + note_h3
+        left_col_bottom3 = tbl3_top + tbl3_h
 
         # ================= PANEL KANAN ATAS: BTL per Site & Kategori =================
         btl_sk3 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
@@ -2968,6 +2946,35 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             add_textbox(s, 7.0, chart_top_m4 + 0.1, 5.6, 0.6,
                         "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
                         size=10, italic=True, color=TEXT_MUTED)
+
+        # ================= INSIGHT: hubungkan Capaian Biaya Maintenance dgn porsi Non-Rutin =================
+        insight_top4 = panel_top4 + panel_h4 - note_h4
+        if not maint_su4_full.empty and not rutin_pivot4.empty:
+            merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "kelompok_unit", "pct_nonrutin"]], on=["lokasi", "kelompok_unit"], how="inner")
+            over_budget4 = merge4[merge4["cap"] > 100]
+            if not over_budget4.empty:
+                worst4 = over_budget4.sort_values("gap_rp", ascending=False).iloc[0]
+                avg_nonrutin_over4 = over_budget4["pct_nonrutin"].mean()
+                under_budget4 = merge4[merge4["cap"] <= 100]
+                avg_nonrutin_under4 = under_budget4["pct_nonrutin"].mean() if not under_budget4.empty else None
+                if avg_nonrutin_under4 is not None and avg_nonrutin_over4 > avg_nonrutin_under4:
+                    banding_txt4 = (f"Rata-rata porsi Non-Rutin pada unit yang OVER BUDGET ({avg_nonrutin_over4:.0f}%) lebih tinggi dibanding "
+                                     f"unit yang sesuai/di bawah budget ({avg_nonrutin_under4:.0f}%) \u2014 mengindikasikan preventive maintenance "
+                                     f"yang belum memadai menjadi salah satu penyebab pembengkakan biaya.")
+                else:
+                    banding_txt4 = "Perlu ditelusuri lebih lanjut apakah ada korelasi antara porsi Non-Rutin dan pembengkakan biaya maintenance."
+                add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\U0001F4A1",
+                                 f"{worst4['label']} adalah unit dengan dampak Rupiah biaya OVER BUDGET terbesar ({fmt_rp(worst4['gap_rp'])}, Capaian {worst4['cap']:.0f}%), "
+                                 f"dengan porsi Non-Rutin {worst4['pct_nonrutin']:.0f}%. {banding_txt4}",
+                                 GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
+            else:
+                add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2705",
+                                 "Tidak ada unit yang over budget pada biaya maintenance \u2014 seluruh unit berada dalam/di bawah budget.",
+                                 GREEN_BG, GREEN, GREEN)
+        else:
+            add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2139\ufe0f",
+                             "Data belum cukup lengkap untuk analisis korelasi antara Capaian Biaya Maintenance dan porsi Non-Rutin.",
+                             GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
         # ================= SLIDE 4: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
         s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum4}{divisi_label}{kat_suffix}")
