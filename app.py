@@ -3283,14 +3283,26 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             col_w5 = val_area_w5 / n_val_cols5
 
             # --- Header kolom (nama site & "Total"), ditulis SEKALI di atas, bukan diulang tiap baris ---
+            # word_wrap DIMATIKAN & font mengecil otomatis kalau kolom site byk (mis. Mining ada 4 site) --
+            # supaya nama site panjang (mis. "TANJUNG") tetap 1 baris, tdk wrap yg bikin baris jadi tdk rapi.
+            header_font5 = 7 if n_val_cols5 <= 3 else (6.2 if n_val_cols5 <= 5 else 5.5)
             header_h5 = 0.22 if len(site_order5) > 1 else 0
+            def _add_nowrap_text(target_s, x, y, w, h, text, size, bold=False, color=TEXT_DARK, align=PP_ALIGN.CENTER):
+                tb_nw = target_s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+                tf_nw = tb_nw.text_frame; tf_nw.word_wrap = False
+                tf_nw.margin_left = 0; tf_nw.margin_right = 0; tf_nw.margin_top = 0; tf_nw.margin_bottom = 0
+                tf_nw.vertical_anchor = MSO_ANCHOR.MIDDLE
+                p_nw = tf_nw.paragraphs[0]; p_nw.alignment = align
+                r_nw = p_nw.add_run(); r_nw.text = text
+                r_nw.font.size = Pt(size); r_nw.font.bold = bold; r_nw.font.color.rgb = color; r_nw.font.name = "Calibri"
+                return tb_nw
             if len(site_order5) > 1:
                 for ci5, site5h in enumerate(site_order5):
                     site_short5h = SITE_ABBR.get(site5h, site5h)
                     hx5 = val_area_x5 + ci5 * col_w5
-                    add_textbox(s, hx5, list_top5, col_w5, header_h5, site_short5h, size=7, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+                    _add_nowrap_text(s, hx5, list_top5, col_w5, header_h5, site_short5h, size=header_font5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
                 hx5_total = val_area_x5 + len(site_order5) * col_w5
-                add_textbox(s, hx5_total, list_top5, col_w5, header_h5, "Total", size=7, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+                _add_nowrap_text(s, hx5_total, list_top5, col_w5, header_h5, "Total", size=header_font5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
             list_top5b = list_top5 + header_h5
             list_avail5b = list_avail5 - header_h5
 
@@ -3317,15 +3329,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 # --- Nilai per site & Total, ditaruh di kolom masing2 (tanpa label nama site diulang) ---
                 kat_rows5 = kat_site_agg5[kat_site_agg5["kategori_sparepart"] == r5["kategori_sparepart"]]
                 site_val_lookup5 = {row5b["lokasi"]: row5b["biaya"] for _, row5b in kat_rows5.iterrows()}
-                val_font5 = max(6.5, font_row5 - 1.5)
+                val_font5 = max(5.5, font_row5 - 1.5) if n_val_cols5 <= 3 else max(5, font_row5 - 2.5)
                 if len(site_order5) > 1:
                     for ci5, site5v in enumerate(site_order5):
                         vx5 = val_area_x5 + ci5 * col_w5
                         v5 = site_val_lookup5.get(site5v)
                         v_txt5 = fmt_rp(v5) if v5 else "-"
-                        add_textbox(s, vx5, ry5c, col_w5, text_h5, v_txt5, size=val_font5, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+                        _add_nowrap_text(s, vx5, ry5c, col_w5, text_h5, v_txt5, size=val_font5, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
                     total_x5 = val_area_x5 + len(site_order5) * col_w5
-                    add_textbox(s, total_x5, ry5c, col_w5, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD, align=PP_ALIGN.CENTER)
+                    _add_nowrap_text(s, total_x5, ry5c, col_w5, text_h5, fmt_rp(r5["biaya"]), size=max(val_font5, font_row5 - 1), bold=True, color=GOLD, align=PP_ALIGN.CENTER)
                 else:
                     add_textbox(s, val_area_x5, ry5c, val_area_w5, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD, align=PP_ALIGN.RIGHT)
         else:
