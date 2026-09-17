@@ -2748,7 +2748,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # Margin bawah diperbesar signifikan supaya ada RUANG CUKUP di antara plot & kotak analisa di bawahnya
             # utk menampung label nilai (rotasi vertikal ~1.1") + label kategori (rotasi diagonal) tanpa tumpang
             # tindih dgn kotak analisa/insight.
-            bottom_margin4 = 2.0
+            bottom_margin4 = 2.25
             plot_bottom4b = chart_top_r4 + chart_h_r4 - bottom_margin4
             max_gap4 = maint_su4["gap_rp"].max()
             min_gap4 = maint_su4["gap_rp"].min()
