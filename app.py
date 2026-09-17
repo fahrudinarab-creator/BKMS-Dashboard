@@ -2765,8 +2765,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             col_w4 = (plot_right4 - plot_left4) / n_maint4
             bar_w4 = col_w4 * 0.55
-            cat_font_r4 = 7.5 if n_maint4 <= 10 else (6.5 if n_maint4 <= 16 else 5.5)
+            cat_font_r4 = 7 if n_maint4 <= 8 else (6 if n_maint4 <= 12 else (5 if n_maint4 <= 16 else 4.5))
             label_font_r4 = 8 if n_maint4 <= 8 else (7 if n_maint4 <= 14 else 6)
+            # Lebar box & SUDUT kemiringan label diagonal HARUS menyesuaikan jumlah bar -- makin banyak bar,
+            # kolom makin sempit, jadi label perlu makin CURAM (mendekati vertikal) & box makin kecil supaya
+            # jangkauan horizontalnya tdk tumpang tindih dgn label bar di sebelahnya.
+            cat_w4 = 1.6 if n_maint4 <= 8 else (1.3 if n_maint4 <= 12 else (1.1 if n_maint4 <= 16 else 0.95))
+            cat_rotation4 = -45 if n_maint4 <= 6 else (-70 if n_maint4 <= 12 else -80)
 
             # Sumbu Y: gridlines horizontal + label di tiap kelipatan, dari negatif (under) sampai positif (over)
             for tk4 in range(-n_ticks_neg4, n_ticks_pos4 + 1):
@@ -2805,14 +2810,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 lbl_tb4.rotation = -90  # properti rotation shape standar PowerPoint -- konsisten di semua aplikasi
                 # Label kategori (dibuat MIRING/diagonal -45° biar tidak wrap ke banyak baris & lebih mudah dibaca)
                 # Jarak ekstra ke bawah kalau ada label under-budget (nilai Rupiah terotasi vertikal di bawah bar)
-                cat_top4 = plot_bottom4b + (0.95 if has_under4 else 0.1)
-                cat_w4 = 1.7
+                cat_top4 = plot_bottom4b + (1.3 if has_under4 else 0.1)
                 cat_tb4 = s.shapes.add_textbox(Inches(bar_x4 + bar_w4 / 2 - cat_w4 + 0.15), Inches(cat_top4), Inches(cat_w4), Inches(0.28))
                 ctf4 = cat_tb4.text_frame; ctf4.word_wrap = False; ctf4.margin_left = 0; ctf4.margin_right = 0; ctf4.margin_top = 0; ctf4.margin_bottom = 0
                 cp4 = ctf4.paragraphs[0]; cp4.alignment = PP_ALIGN.RIGHT
                 cr4 = cp4.add_run(); cr4.text = r4m["label"]
                 cr4.font.size = Pt(cat_font_r4); cr4.font.bold = True; cr4.font.color.rgb = TEXT_DARK; cr4.font.name = "Calibri"
-                cat_tb4.rotation = -45  # miring 45 derajat, spy label panjang (Site + Kelompok Unit) tetap 1 baris & terbaca
+                cat_tb4.rotation = cat_rotation4  # sudut adaptif (lihat cat_rotation4 di atas) -- makin banyak bar makin curam
         else:
             add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
