@@ -824,21 +824,22 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             for c in range(1, 5):
                 ws.cell(row=main_row, column=c).border = BORDER
 
-        def write_grouped_kelompok_metric(nama_metrik, efektif_col, ideal_col, target_col, kelompok_list, fmt_real="0.00"):
+        def write_grouped_kelompok_metric(nama_metrik, efektif_col, ideal_col, target_col, site_kelompok_list, fmt_real="0.00"):
             """Metodologi Capaian Utilisasi/Availability/Downtime yg BARU & KONSISTEN dgn PPT (capaian_per_kelompok_unit):
-            kelompokkan per KELOMPOK UNIT (bukan per nilai target), Realisasi dihitung dari FORMULA data mentah
-            (Sum Efektif/Tersedia/Breakdown / Sum Ideal), exclude Tarif Tetap & Unit Sewa (sudah difilter di
-            kelompok_list). Target tiap kelompok = average target di dlm kelompok itu. Capaian tiap kelompok =
-            Realisasi/Target. Hasil akhir = average SEDERHANA dari nilai per-kelompok (bobot sama per kelompok)."""
+            kelompokkan per KOMBINASI SITE + KELOMPOK UNIT (mis. 'KUMAI-Dump Truck' & 'S.DANAU-Dump Truck' dihitung
+            TERPISAH, tdk digabung lintas site), Realisasi dihitung dari FORMULA data mentah (Sum Efektif/Tersedia/
+            Breakdown / Sum Ideal) DI DALAM kombinasi Site+Kelompok itu saja. Target = average target di dlm
+            kombinasi itu. Capaian = Realisasi/Target. Hasil akhir = average SEDERHANA dari nilai per-kombinasi
+            Site+Kelompok (PERSIS SAMA dgn baris2 breakdown per Site & Kelompok Unit di bawahnya)."""
             main_row = r[0]
             r[0] += 1  # baris utama ditulis di akhir, reserve dulu nomor barisnya
             group_rows = []
             EXCL = f'{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"'
-            for kel in kelompok_list:
-                kel_e = str(kel).replace('"', '""')
+            for lok, kel in site_kelompok_list:
+                lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
                 row = r[0]
-                ws.cell(row=row, column=1, value=f"   \u21B3 Kelompok Unit = {kel}").font = Font(name="Arial", size=9.5, italic=True, color="6B7480")
-                crit = f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!N:N,"{kel_e}",{EXCL}'
+                ws.cell(row=row, column=1, value=f"   \u21B3 {lok} \u2014 {kel}").font = Font(name="Arial", size=9.5, italic=True, color="6B7480")
+                crit = f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!N:N,"{kel_e}",{EXCL}'
                 c_r = ws.cell(row=row, column=2, value=f'=IFERROR(SUMIFS({SHEET_SM}!{efektif_col}:{efektif_col},{crit})/SUMIFS({SHEET_SM}!{ideal_col}:{ideal_col},{crit})*100,0)')
                 c_t = ws.cell(row=row, column=3, value=f'=AVERAGEIFS({SHEET_SM}!{target_col}:{target_col},{crit})')
                 c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
@@ -869,9 +870,8 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
 
         _sm_blok = sasaran_all[sasaran_all["_blok"] == blok_name] if not sasaran_all.empty else pd.DataFrame()
         _kelompok_list_blok = sorted(uniq_lokasi_kelompok(_sm_blok.assign(_blok=blok_name) if not _sm_blok.empty else _sm_blok, blok_name)) if not _sm_blok.empty else []
-        _kelompok_names_blok = sorted(set(k for _, k in _kelompok_list_blok))
-        write_grouped_kelompok_metric("Avg Utilisasi", "P", "T", "F", _kelompok_names_blok)
-        write_grouped_kelompok_metric("Avg Availability", "S", "T", "H", _kelompok_names_blok)
+        write_grouped_kelompok_metric("Avg Utilisasi", "P", "T", "F", _kelompok_list_blok)
+        write_grouped_kelompok_metric("Avg Availability", "S", "T", "H", _kelompok_list_blok)
         row_bl = r[0]
         metric_row("Biaya Langsung / Prestasi",
             f'=IFERROR(SUMIFS({SHEET_BIAYA}!O:O,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
@@ -1027,7 +1027,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         # ============ SLIDE 4: Key Insights Downtime ============
         sect(f"\u23F1 {blok_name} \u2014 Key Insights Downtime (Slide 4)")
         header()
-        write_grouped_kelompok_metric("% Capaian Realisasi Downtime", "R", "T", "J", _kelompok_names_blok)
+        write_grouped_kelompok_metric("% Capaian Realisasi Downtime", "R", "T", "J", _kelompok_list_blok)
         r[0] += 1
 
         subsect("\u25B8 MTTR (Mean Time To Repair) \u2014 format berbeda dari Capaian %")
@@ -1614,20 +1614,22 @@ def capaian_per_target_group(df, realisasi_col, target_col):
     avg_capaian = capaian_per_grup.mean()        # rata2 dari Capaian tiap kelompok (bukan realisasi/target akhir)
     return avg_realisasi_display, avg_target_display, avg_capaian
 
-def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelompok_col="kelompok_unit", jenis_unit_col="jenis_unit", unit_sewa_col="unit_sewa"):
-    """Metodologi Capaian Utilisasi/Availability BERBASIS KELOMPOK UNIT & FORMULA MENTAH (bukan target-value spt
-    capaian_per_target_group, dan bukan pakai kolom persentase yg sudah jadi). Langkah:
+def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelompok_col="kelompok_unit", jenis_unit_col="jenis_unit", unit_sewa_col="unit_sewa", lokasi_col="lokasi"):
+    """Metodologi Capaian Utilisasi/Availability BERBASIS SITE + KELOMPOK UNIT & FORMULA MENTAH (bukan target-value
+    spt capaian_per_target_group, dan bukan pakai kolom persentase yg sudah jadi). Langkah:
       1. KECUALIKAN unit berkriteria 'Tarif Tetap' & unit_sewa=True -- pendapatannya tdk terpengaruh Utilisasi/
          Availability, jadi tdk relevan dihitung.
-      2. Kelompokkan sisa baris berdasarkan KELOMPOK UNIT (mis. 'Dump Truck', 'Truck Arm Roll', dst).
-      3. Utk tiap Kelompok Unit: Realisasi dihitung dari FORMULA mentah = Sum(Efektif/Tersedia) / Sum(Ideal) x 100
-         (BUKAN mengambil rata-rata kolom persentase yg sudah dihitung sebelumnya).
-      4. Target tiap Kelompok Unit = rata-rata target persentase (mis. utilisasi_target) DI DALAM kelompok itu.
-      5. Capaian tiap Kelompok Unit = Realisasi kelompok / Target kelompok x 100.
-      6. Hasil akhir (Realisasi, Target, Capaian) = rata-rata SEDERHANA dari nilai per-Kelompok-Unit (bobot sama
-         per kelompok, bukan per unit individual).
+      2. Kelompokkan sisa baris berdasarkan KOMBINASI SITE + KELOMPOK UNIT (mis. 'KUMAI-Dump Truck' & 'S.DANAU-
+         Dump Truck' dihitung sbg 2 kelompok TERPISAH, tdk digabung jadi 1 'Dump Truck' lintas site).
+      3. Utk tiap kombinasi Site+Kelompok: Realisasi dihitung dari FORMULA mentah = Sum(Efektif/Tersedia) / Sum
+         (Ideal) x 100 (BUKAN mengambil rata-rata kolom persentase yg sudah dihitung sebelumnya).
+      4. Target tiap kombinasi = rata-rata target persentase (mis. utilisasi_target) DI DALAM kombinasi itu.
+      5. Capaian tiap kombinasi = Realisasi / Target x 100.
+      6. Hasil akhir (Realisasi, Target, Capaian) = rata-rata SEDERHANA dari nilai per-kombinasi Site+Kelompok
+         (bobot sama per kombinasi, PERSIS SAMA dgn baris2 yg tampil di chart/tabel breakdown per Site & Kelompok
+         Unit -- jadi kartu KPI ini adalah rata-rata dari baris2 breakdown tsb).
     Return: (avg_realisasi_display, avg_target_display, avg_capaian) -- None kalau data kosong/kolom tdk ada."""
-    required = [efektif_col, ideal_col, target_pct_col, kelompok_col]
+    required = [efektif_col, ideal_col, target_pct_col, kelompok_col, lokasi_col]
     if df is None or df.empty or any(c not in df.columns for c in required):
         return None, None, None
     valid = df.copy()
@@ -1646,7 +1648,7 @@ def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelomp
         target_avg = g[target_pct_col].mean()
         return pd.Series({"realisasi": realisasi_formula, "target": target_avg})
 
-    grouped = valid.groupby(kelompok_col).apply(_grp)
+    grouped = valid.groupby([lokasi_col, kelompok_col]).apply(_grp)
     grouped = grouped.dropna(subset=["realisasi", "target"])
     if grouped.empty:
         return None, None, None
