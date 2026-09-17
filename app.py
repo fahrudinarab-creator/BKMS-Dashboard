@@ -2803,13 +2803,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 lr4m = lp4m.add_run(); lr4m.text = lbl_txt4
                 lr4m.font.size = Pt(label_font_r4); lr4m.font.bold = True; lr4m.font.color.rgb = TEXT_DARK; lr4m.font.name = "Calibri"
                 lbl_tb4.rotation = -90  # properti rotation shape standar PowerPoint -- konsisten di semua aplikasi
-                # Label kategori (ditaruh di bawah, dgn jarak ekstra kalau ada label under-budget yg terotasi ke bawah)
-                cat_top4 = plot_bottom4b + (0.85 if has_under4 else 0.05)
-                cat_tb4 = s.shapes.add_textbox(Inches(bar_x4 - (col_w4 - bar_w4) / 2), Inches(cat_top4), Inches(col_w4), Inches(0.5))
-                ctf4 = cat_tb4.text_frame; ctf4.word_wrap = True; ctf4.margin_left = 0; ctf4.margin_right = 0
-                cp4 = ctf4.paragraphs[0]; cp4.alignment = PP_ALIGN.CENTER
+                # Label kategori (dibuat MIRING/diagonal -45° biar tidak wrap ke banyak baris & lebih mudah dibaca)
+                # Jarak ekstra ke bawah kalau ada label under-budget (nilai Rupiah terotasi vertikal di bawah bar)
+                cat_top4 = plot_bottom4b + (0.95 if has_under4 else 0.1)
+                cat_w4 = 1.7
+                cat_tb4 = s.shapes.add_textbox(Inches(bar_x4 + bar_w4 / 2 - cat_w4 + 0.15), Inches(cat_top4), Inches(cat_w4), Inches(0.28))
+                ctf4 = cat_tb4.text_frame; ctf4.word_wrap = False; ctf4.margin_left = 0; ctf4.margin_right = 0; ctf4.margin_top = 0; ctf4.margin_bottom = 0
+                cp4 = ctf4.paragraphs[0]; cp4.alignment = PP_ALIGN.RIGHT
                 cr4 = cp4.add_run(); cr4.text = r4m["label"]
                 cr4.font.size = Pt(cat_font_r4); cr4.font.bold = True; cr4.font.color.rgb = TEXT_DARK; cr4.font.name = "Calibri"
+                cat_tb4.rotation = -45  # miring 45 derajat, spy label panjang (Site + Kelompok Unit) tetap 1 baris & terbaca
         else:
             add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
