@@ -2713,7 +2713,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum")) if "kelompok_unit" in data.columns else pd.DataFrame(columns=["lokasi","kelompok_unit","maint_r","maint_b"])
         maint_su4 = maint_su4[maint_su4["maint_b"] > 0].copy()
         maint_su4["site_short"] = maint_su4["lokasi"].map(SITE_ABBR).fillna(maint_su4["lokasi"])
-        maint_su4["label"] = maint_su4["site_short"] + " \u2014 " + maint_su4["kelompok_unit"]
+        KELOMPOK_ABBR = {
+            "TANGKI SERIES 300": "TANGKI 300", "TANGKI SERIES 500": "TANGKI 500",
+            "TRUCK ARM ROLL 4x4": "ARM ROLL 4x4", "TRUCK ARM ROLL": "ARM ROLL",
+            "TRUCK - TUS": "TUS", "TRUCK - BAK": "BAK",
+            "DUMP TRUCK 4x4": "DT 4x4", "DUMP TRUCK HOWO": "DT HOWO", "DUMP TRUCK": "DT",
+            "EXCAVATOR MEDIUM": "EXC MEDIUM", "EXCAVATOR MINI": "EXC MINI",
+            "BULLDOZER MEDIUM": "BULLDOZER M", "BULLDOZER MINI": "BULLDOZER m",
+            "BACKHOE LOADER": "BACKHOE", "FARM TRACKTOR": "TRACTOR", "WHEEL LOADER": "WHL LOADER",
+            "TRUCK - BAK - PICK UP": "PICK UP",
+        }
+        maint_su4["kelompok_short"] = maint_su4["kelompok_unit"].map(KELOMPOK_ABBR).fillna(maint_su4["kelompok_unit"])
+        maint_su4["label"] = maint_su4["site_short"] + " \u2014 " + maint_su4["kelompok_short"]
         maint_su4["cap"] = maint_su4["maint_r"] / maint_su4["maint_b"] * 100
         maint_su4["gap_rp"] = maint_su4["maint_r"] - maint_su4["maint_b"]
         # Diurutkan berdasarkan KELOMPOK UNIT dulu, baru SITE -- spy site dgn kelompok unit yg sama berdampingan
@@ -2734,9 +2745,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_right4 = 6.2
             has_under4 = (maint_su4["gap_rp"] < 0).any()
             plot_top4b = chart_top_r4 + 1.05  # sisakan ruang di atas utk label nilai (over budget) yg diputar vertikal
-            # Kalau ada unit under-budget, sisakan ruang jauh lebih besar di bawah utk label nilai (rotasi vertikal
-            # butuh ~1.5" tinggi) + label kategori, supaya keduanya tidak tumpang tindih
-            bottom_margin4 = 1.25 if has_under4 else 0.55
+            # Margin bawah diperbesar signifikan supaya ada RUANG CUKUP di antara plot & kotak analisa di bawahnya
+            # utk menampung label nilai (rotasi vertikal ~1.1") + label kategori (rotasi diagonal) tanpa tumpang
+            # tindih dgn kotak analisa/insight.
+            bottom_margin4 = 2.3
             plot_bottom4b = chart_top_r4 + chart_h_r4 - bottom_margin4
             max_gap4 = maint_su4["gap_rp"].max()
             min_gap4 = maint_su4["gap_rp"].min()
@@ -2771,7 +2783,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # kolom makin sempit, jadi label perlu makin CURAM (mendekati vertikal) & box makin kecil supaya
             # jangkauan horizontalnya tdk tumpang tindih dgn label bar di sebelahnya.
             cat_w4 = 1.6 if n_maint4 <= 8 else (1.3 if n_maint4 <= 12 else (1.1 if n_maint4 <= 16 else 0.95))
-            cat_rotation4 = -45 if n_maint4 <= 6 else (-70 if n_maint4 <= 12 else -80)
+            cat_rotation4 = -45
 
             # Sumbu Y: gridlines horizontal + label di tiap kelipatan, dari negatif (under) sampai positif (over)
             for tk4 in range(-n_ticks_neg4, n_ticks_pos4 + 1):
@@ -2810,7 +2822,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 lbl_tb4.rotation = -90  # properti rotation shape standar PowerPoint -- konsisten di semua aplikasi
                 # Label kategori (dibuat MIRING/diagonal -45° biar tidak wrap ke banyak baris & lebih mudah dibaca)
                 # Jarak ekstra ke bawah kalau ada label under-budget (nilai Rupiah terotasi vertikal di bawah bar)
-                cat_top4 = plot_bottom4b + (1.3 if has_under4 else 0.1)
+                # Label kategori (dibuat MIRING/diagonal, sudut adaptif -- lihat cat_rotation4 di atas).
+                # cat_top4 dihitung PRESIS supaya mulai TEPAT SETELAH label nilai (yg terotasi vertikal, bisa
+                # menjorok sampai ~lbl_w4 di bawah bar under-budget TERPANJANG) selesai -- bukan angka tebakan.
+                # cat_top4 dihitung PRESISI: mulai TEPAT SETELAH label nilai (rotasi vertikal, menjorok sampai
+                # ~lbl_w4 di bawah bar under-budget) selesai -- supaya label kategori & label nilai tdk tumpang tindih.
+                cat_top4 = plot_bottom4b + (lbl_w4 + 0.15 if has_under4 else 0.1)
                 cat_tb4 = s.shapes.add_textbox(Inches(bar_x4 + bar_w4 / 2 - cat_w4 + 0.15), Inches(cat_top4), Inches(cat_w4), Inches(0.28))
                 ctf4 = cat_tb4.text_frame; ctf4.word_wrap = False; ctf4.margin_left = 0; ctf4.margin_right = 0; ctf4.margin_top = 0; ctf4.margin_bottom = 0
                 cp4 = ctf4.paragraphs[0]; cp4.alignment = PP_ALIGN.RIGHT
