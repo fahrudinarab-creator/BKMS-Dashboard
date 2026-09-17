@@ -824,9 +824,54 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             for c in range(1, 5):
                 ws.cell(row=main_row, column=c).border = BORDER
 
+        def write_grouped_kelompok_metric(nama_metrik, efektif_col, ideal_col, target_col, kelompok_list, fmt_real="0.00"):
+            """Metodologi Capaian Utilisasi/Availability/Downtime yg BARU & KONSISTEN dgn PPT (capaian_per_kelompok_unit):
+            kelompokkan per KELOMPOK UNIT (bukan per nilai target), Realisasi dihitung dari FORMULA data mentah
+            (Sum Efektif/Tersedia/Breakdown / Sum Ideal), exclude Tarif Tetap & Unit Sewa (sudah difilter di
+            kelompok_list). Target tiap kelompok = average target di dlm kelompok itu. Capaian tiap kelompok =
+            Realisasi/Target. Hasil akhir = average SEDERHANA dari nilai per-kelompok (bobot sama per kelompok)."""
+            main_row = r[0]
+            r[0] += 1  # baris utama ditulis di akhir, reserve dulu nomor barisnya
+            group_rows = []
+            EXCL = f'{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"'
+            for kel in kelompok_list:
+                kel_e = str(kel).replace('"', '""')
+                row = r[0]
+                ws.cell(row=row, column=1, value=f"   \u21B3 Kelompok Unit = {kel}").font = Font(name="Arial", size=9.5, italic=True, color="6B7480")
+                crit = f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!N:N,"{kel_e}",{EXCL}'
+                c_r = ws.cell(row=row, column=2, value=f'=IFERROR(SUMIFS({SHEET_SM}!{efektif_col}:{efektif_col},{crit})/SUMIFS({SHEET_SM}!{ideal_col}:{ideal_col},{crit})*100,0)')
+                c_t = ws.cell(row=row, column=3, value=f'=AVERAGEIFS({SHEET_SM}!{target_col}:{target_col},{crit})')
+                c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
+                c_r.number_format = fmt_real; c_t.number_format = fmt_real; c_h.number_format = '0.0"%"'
+                _small_font = Font(name="Consolas", size=9, color="6B7480")
+                c_r.font = _small_font; c_t.font = Font(name="Consolas", size=9, color="6B7480")
+                c_h.font = Font(name="Consolas", size=9, italic=True, color="6B7480")
+                for c in range(1, 5):
+                    ws.cell(row=row, column=c).border = BORDER
+                group_rows.append(row)
+                r[0] += 1
+            ws.cell(row=main_row, column=1, value=nama_metrik).font = NORMAL_FONT
+            if group_rows:
+                refs = ",".join(f"B{gr}" for gr in group_rows)
+                refs_t = ",".join(f"C{gr}" for gr in group_rows)
+                refs_h = ",".join(f"D{gr}" for gr in group_rows)
+                c_real = ws.cell(row=main_row, column=2, value=f'=AVERAGE({refs})')
+                c_budget = ws.cell(row=main_row, column=3, value=f'=AVERAGE({refs_t})')
+                c_hasil = ws.cell(row=main_row, column=4, value=f'=IFERROR(AVERAGE({refs_h}),"-")')
+            else:
+                c_real = ws.cell(row=main_row, column=2, value=0)
+                c_budget = ws.cell(row=main_row, column=3, value=0)
+                c_hasil = ws.cell(row=main_row, column=4, value="-")
+            c_real.font = NORMAL_FONT; c_budget.font = NORMAL_FONT; c_hasil.font = BOLD_FONT
+            c_real.number_format = fmt_real; c_budget.number_format = fmt_real; c_hasil.number_format = '0.0"%"'
+            for c in range(1, 5):
+                ws.cell(row=main_row, column=c).border = BORDER
+
         _sm_blok = sasaran_all[sasaran_all["_blok"] == blok_name] if not sasaran_all.empty else pd.DataFrame()
-        write_grouped_target_metric("Avg Utilisasi", "E", "F", _sm_blok["utilisasi_target"] if not _sm_blok.empty else None)
-        write_grouped_target_metric("Avg Availability", "G", "H", _sm_blok["availability_target"] if not _sm_blok.empty else None)
+        _kelompok_list_blok = sorted(uniq_lokasi_kelompok(_sm_blok.assign(_blok=blok_name) if not _sm_blok.empty else _sm_blok, blok_name)) if not _sm_blok.empty else []
+        _kelompok_names_blok = sorted(set(k for _, k in _kelompok_list_blok))
+        write_grouped_kelompok_metric("Avg Utilisasi", "P", "T", "F", _kelompok_names_blok)
+        write_grouped_kelompok_metric("Avg Availability", "S", "T", "H", _kelompok_names_blok)
         row_bl = r[0]
         metric_row("Biaya Langsung / Prestasi",
             f'=IFERROR(SUMIFS({SHEET_BIAYA}!O:O,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
@@ -982,7 +1027,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         # ============ SLIDE 4: Key Insights Downtime ============
         sect(f"\u23F1 {blok_name} \u2014 Key Insights Downtime (Slide 4)")
         header()
-        write_grouped_target_metric("% Capaian Realisasi Downtime", "I", "J", _sm_blok["downtime_target"] if not _sm_blok.empty else None)
+        write_grouped_kelompok_metric("% Capaian Realisasi Downtime", "R", "T", "J", _kelompok_names_blok)
         r[0] += 1
 
         subsect("\u25B8 MTTR (Mean Time To Repair) \u2014 format berbeda dari Capaian %")
