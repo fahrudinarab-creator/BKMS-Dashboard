@@ -3323,7 +3323,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         return nums
 
     def _render_divisi_block(data_divisi, sasaran_mutu_divisi, label_divisi):
-        """Render 4 slide utk satu divisi -- pisah AB/TR kalau keduanya ada datanya, kalau tidak 1 blok saja."""
+        """Render 4 slide utk satu divisi -- pisah AB/TR kalau keduanya ada datanya, kalau tidak 1 blok saja.
+        Penomoran slide (01-04) SELALU RESET ke awal utk tiap blok baru (Plantation-TR, Plantation-AB, Mining,
+        dst) -- bukan melanjutkan angka global, spy tiap blok terasa sbg laporan tersendiri yg konsisten."""
+        _slide_counter[0] = 1
         d_tr = data_divisi[data_divisi["kategori"] == "TR"]
         d_ab = data_divisi[data_divisi["kategori"] == "AB"]
         if {"AB", "TR"}.issubset(kat_set_render) and not d_tr.empty and not d_ab.empty:
@@ -3331,6 +3334,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             sm_ab_ = sasaran_mutu_divisi[sasaran_mutu_divisi["kategori"] == "AB"].copy() if (sasaran_mutu_divisi is not None and not sasaran_mutu_divisi.empty) else sasaran_mutu_divisi
             n1, n2, n3, n4 = _next_slide_nums(4)
             render_6_slides(d_tr.copy(), sm_tr_, n1, n2, n3, n4, f"{label_divisi} · TRANSPORTASI")
+            _slide_counter[0] = 1
             n1, n2, n3, n4 = _next_slide_nums(4)
             render_6_slides(d_ab.copy(), sm_ab_, n1, n2, n3, n4, f"{label_divisi} · ALAT BERAT")
         else:
@@ -3355,7 +3359,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             sm_tr = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "TR"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
             sm_ab = sasaran_mutu_data[sasaran_mutu_data["kategori"] == "AB"].copy() if (sasaran_mutu_data is not None and not sasaran_mutu_data.empty) else sasaran_mutu_data
             render_6_slides(data_tr, sm_tr, "01", "02", "03", "04", " · TRANSPORTASI")
-            render_6_slides(data_ab, sm_ab, "05", "06", "07", "08", " · ALAT BERAT")
+            render_6_slides(data_ab, sm_ab, "01", "02", "03", "04", " · ALAT BERAT")
         else:
             render_6_slides(data, sasaran_mutu_data, "01", "02", "03", "04", "")
 
