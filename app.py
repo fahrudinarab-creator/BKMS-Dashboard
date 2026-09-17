@@ -1176,6 +1176,7 @@ def build_sasaran_mutu_excel(sasaran_mutu_df) -> bytes:
     wb.save(buf)
     return buf.getvalue()
 
+@st.cache_data
 def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
     """Bangun 1 file Excel 'Database Laporan' -- isinya sama dgn export data_bkms (Semua Data + per-site),
     ditambah sheet Sasaran Mutu & MTTR. Dipakai utk tombol download di sidebar."""
@@ -3391,24 +3392,14 @@ def convert_pptx_to_pdf_bytes(pptx_bytes: bytes):
 colX, colY = st.columns([5, 1.4])
 with colY:
     if st.button("📽️ Buat Presentasi (PPTX)", use_container_width=True, type="primary"):
-        with st.spinner("Menyusun slide presentasi & database pendukung..."):
+        with st.spinner("Menyusun slide presentasi & perhitungan detail..."):
             maint_for_pptx = maint_df_site_bulan if not maint_raw.empty else pd.DataFrame()
             sparepart_for_pptx = sparepart_df_site_bulan if not sparepart_raw.empty else pd.DataFrame()
             pptx_bytes = build_pptx(df, maint_for_pptx, sparepart_for_pptx, sel_site, sel_month, sel_kat, sasaran_mutu_df, mttr_raw)
             st.session_state["pptx_bytes"] = pptx_bytes
-            st.session_state["database_laporan_bytes"] = build_database_laporan_excel(df_raw, sasaran_mutu_raw, mttr_raw)
             st.session_state["perhitungan_detail_bytes"] = build_perhitungan_detail_excel(
                 df_raw, sasaran_mutu_raw, mttr_raw, maint_raw, sel_site, sel_month, sel_kat
             )
-            st.session_state["sasaran_mutu_excel_bytes"] = build_sasaran_mutu_excel(sasaran_mutu_raw)
-        with st.spinner("Mengonversi presentasi ke PDF..."):
-            pdf_bytes, pdf_err = convert_pptx_to_pdf_bytes(st.session_state["pptx_bytes"])
-            if pdf_bytes is not None:
-                st.session_state["pptx_pdf_bytes"] = pdf_bytes
-                st.session_state.pop("pptx_pdf_error", None)
-            else:
-                st.session_state.pop("pptx_pdf_bytes", None)
-                st.session_state["pptx_pdf_error"] = pdf_err
     if "pptx_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh PPTX untuk RTM",
@@ -3417,6 +3408,31 @@ with colY:
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             use_container_width=True,
         )
+    if "perhitungan_detail_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Unduh Perhitungan Detail PPT (Excel)",
+            data=st.session_state["perhitungan_detail_bytes"],
+            file_name="Perhitungan_Detail_PPT_BKMS.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="Format laporan PPTX dalam bentuk Excel: menunjukkan angka REAL & sumber data di balik setiap metrik, sesuai struktur blok Divisi & filter Site/Bulan/Kategori saat tombol 'Buat Presentasi' diklik.",
+        )
+
+    st.markdown("---")
+
+    # --- 3 tombol independen (masing2 baru dibangun kalau diklik sendiri, spy "Buat Presentasi" tetap ringan) ---
+    if st.button("📄 Buat PDF untuk RTM", use_container_width=True):
+        if "pptx_bytes" not in st.session_state:
+            st.warning("Klik 'Buat Presentasi (PPTX)' dulu sebelum membuat PDF.")
+        else:
+            with st.spinner("Mengonversi presentasi ke PDF..."):
+                pdf_bytes, pdf_err = convert_pptx_to_pdf_bytes(st.session_state["pptx_bytes"])
+                if pdf_bytes is not None:
+                    st.session_state["pptx_pdf_bytes"] = pdf_bytes
+                    st.session_state.pop("pptx_pdf_error", None)
+                else:
+                    st.session_state.pop("pptx_pdf_bytes", None)
+                    st.session_state["pptx_pdf_error"] = pdf_err
     if "pptx_pdf_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh PDF untuk RTM",
@@ -3428,6 +3444,10 @@ with colY:
         )
     elif "pptx_pdf_error" in st.session_state:
         st.caption(f"⚠️ PDF tidak tersedia: {st.session_state['pptx_pdf_error']}")
+
+    if st.button("📊 Buat Database Laporan (Excel)", use_container_width=True):
+        with st.spinner("Menyusun Database Laporan..."):
+            st.session_state["database_laporan_bytes"] = build_database_laporan_excel(df_raw, sasaran_mutu_raw, mttr_raw)
     if "database_laporan_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh Database Laporan (Excel)",
@@ -3437,15 +3457,10 @@ with colY:
             use_container_width=True,
             help="Berisi seluruh data BKMS (Semua Data) + Sasaran Mutu + MTTR dalam 1 file Excel.",
         )
-    if "perhitungan_detail_bytes" in st.session_state:
-        st.download_button(
-            "⬇️ Unduh Perhitungan Detail PPT (Excel)",
-            data=st.session_state["perhitungan_detail_bytes"],
-            file_name="Perhitungan_Detail_PPT_BKMS.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            help="Format laporan PPTX dalam bentuk Excel: menunjukkan angka REAL & sumber data di balik setiap metrik, sesuai struktur blok Divisi & filter Site/Bulan/Kategori saat tombol 'Buat Presentasi' diklik.",
-        )
+
+    if st.button("📈 Buat Data Sasaran Mutu (Excel)", use_container_width=True):
+        with st.spinner("Menyusun Data Sasaran Mutu..."):
+            st.session_state["sasaran_mutu_excel_bytes"] = build_sasaran_mutu_excel(sasaran_mutu_raw)
     if "sasaran_mutu_excel_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh Data Sasaran Mutu (Excel)",
