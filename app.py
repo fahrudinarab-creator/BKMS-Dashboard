@@ -1077,25 +1077,54 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         r[0] += 2
 
         # --- Breakdown PER SITE (bukan per Site+Kelompok Unit) utk 3 metrik KPI Slide 4 -- persis spt subtitle
-        # kartu KPI di PPT (mis. "KUMAI 153% . S.DANAU 61%"), supaya angka subtitle itu bisa ditelusuri di Excel ---
+        # kartu KPI di PPT, supaya angka subtitle itu bisa ditelusuri di Excel ---
         _site_list_blok4 = sorted(set(lok for lok, _ in _kelompok_list_blok)) if _kelompok_list_blok else []
 
         subsect("\u25B8 % Capaian Realisasi Downtime \u2014 per Site")
         header(("Site", "Realisasi", "Target", "Cap. Downtime"))
+        # Metodologi BENAR (bukan average per unit/baris individual):
+        #   Target site = average dari TARGET tiap Kelompok Unit di site itu (mis. KUMAI py kelompok dgn target
+        #     0.5 & 2.5 -> diaverage jadi 1.5, BUKAN average tiap baris unit yg bisa bias krn jml unit tdk sama).
+        #   Realisasi site = average dari Capaian REALISASI tiap Kelompok Unit (Sum Breakdown kelompok / Sum
+        #     Ideal kelompok), dihitung PER KELOMPOK dulu baru diaverage -- bukan average langsung semua baris.
+        EXCL_DT4 = f'{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"'
         for lok in _site_list_blok4:
             lok_e = lok.replace('"', '""')
-            row = r[0]
-            ws.cell(row=row, column=1, value=lok).font = NORMAL_FONT
-            crit_dtsite = f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"'
-            c_r = ws.cell(row=row, column=2, value=f'=IFERROR(SUMIFS({SHEET_SM}!R:R,{crit_dtsite})/SUMIFS({SHEET_SM}!T:T,{crit_dtsite})*100,0)')
-            c_t = ws.cell(row=row, column=3, value=f'=IFERROR(AVERAGEIFS({SHEET_SM}!J:J,{crit_dtsite}),0)')
-            c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
-            c_r.number_format = "0.00"; c_t.number_format = "0.00"; c_h.number_format = '0.0"%"'
-            for c in [c_r, c_t]: c.font = NORMAL_FONT
-            c_h.font = BOLD_FONT
+            kelompok_di_site4 = sorted(set(kel for lk, kel in _kelompok_list_blok if lk == lok))
+            main_row_dt4 = r[0]
+            r[0] += 1  # reserve baris utama, isi belakangan setelah baris kelompok ditulis
+            group_rows_dt4 = []
+            for kel in kelompok_di_site4:
+                kel_e = str(kel).replace('"', '""')
+                row = r[0]
+                ws.cell(row=row, column=1, value=f"   \u21B3 {kel}").font = Font(name="Arial", size=9.5, italic=True, color="6B7480")
+                crit_kel4 = f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!N:N,"{kel_e}",{EXCL_DT4}'
+                c_r = ws.cell(row=row, column=2, value=f'=IFERROR(SUMIFS({SHEET_SM}!R:R,{crit_kel4})/SUMIFS({SHEET_SM}!T:T,{crit_kel4})*100,0)')
+                c_t = ws.cell(row=row, column=3, value=f'=AVERAGEIFS({SHEET_SM}!J:J,{crit_kel4})')
+                c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/C{row}*100,"-")')
+                c_r.number_format = "0.00"; c_t.number_format = "0.00"; c_h.number_format = '0.0"%"'
+                _sf4 = Font(name="Consolas", size=9, color="6B7480")
+                c_r.font = _sf4; c_t.font = Font(name="Consolas", size=9, color="6B7480")
+                c_h.font = Font(name="Consolas", size=9, italic=True, color="6B7480")
+                for c in range(1, 5):
+                    ws.cell(row=row, column=c).border = BORDER
+                group_rows_dt4.append(row)
+                r[0] += 1
+            ws.cell(row=main_row_dt4, column=1, value=lok).font = NORMAL_FONT
+            if group_rows_dt4:
+                refs_r4 = ",".join(f"B{gr}" for gr in group_rows_dt4)
+                refs_t4 = ",".join(f"C{gr}" for gr in group_rows_dt4)
+                c_real4 = ws.cell(row=main_row_dt4, column=2, value=f'=AVERAGE({refs_r4})')
+                c_budget4 = ws.cell(row=main_row_dt4, column=3, value=f'=AVERAGE({refs_t4})')
+                c_hasil4 = ws.cell(row=main_row_dt4, column=4, value=f'=IFERROR(B{main_row_dt4}/C{main_row_dt4}*100,"-")')
+            else:
+                c_real4 = ws.cell(row=main_row_dt4, column=2, value=0)
+                c_budget4 = ws.cell(row=main_row_dt4, column=3, value=0)
+                c_hasil4 = ws.cell(row=main_row_dt4, column=4, value="-")
+            c_real4.font = NORMAL_FONT; c_budget4.font = NORMAL_FONT; c_hasil4.font = BOLD_FONT
+            c_real4.number_format = "0.00"; c_budget4.number_format = "0.00"; c_hasil4.number_format = '0.0"%"'
             for c in range(1, 5):
-                ws.cell(row=row, column=c).border = BORDER
-            r[0] += 1
+                ws.cell(row=main_row_dt4, column=c).border = BORDER
         r[0] += 1
 
         subsect("\u25B8 MTTR (Mean Time To Repair) \u2014 per Site")
@@ -1116,7 +1145,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         r[0] += 1
 
         subsect("\u25B8 Maintenance Rutin vs Non-Rutin \u2014 per Site (%)")
-        header(("Site", "Biaya Rutin", "Biaya Non-Rutin", "% Rutin"))
+        header(("Site", "Biaya Rutin", "Biaya Non-Rutin", "% Rutin", "% Non-Rutin"))
         for lok in _site_list_blok4:
             lok_e = lok.replace('"', '""')
             row = r[0]
@@ -1124,10 +1153,12 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             c_rt = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!E:E,"RUTIN")')
             c_nr = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!E:E,"NON RUTIN")')
             c_pr = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/(B{row}+C{row})*100,"-")')
+            c_pnr = ws.cell(row=row, column=5, value=f'=IFERROR(C{row}/(B{row}+C{row})*100,"-")')
             c_rt.number_format = '"Rp"#,##0'; c_nr.number_format = '"Rp"#,##0'
             for c in [c_rt, c_nr]: c.font = NORMAL_FONT
             c_pr.number_format = '0.0"%"'; c_pr.font = BOLD_FONT
-            for c in range(1, 5):
+            c_pnr.number_format = '0.0"%"'; c_pnr.font = BOLD_FONT
+            for c in range(1, 6):
                 ws.cell(row=row, column=c).border = BORDER
             r[0] += 1
         r[0] += 1
@@ -3137,6 +3168,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         mttr_per_site5.append(f"{site_short5m} {mttr_site5:.1f}j")
 
         # --- Breakdown % Capaian Downtime per site ---
+        # Metodologi yg BENAR: (1) Target site = average dari NILAI TARGET UNIK dlm site itu (bukan average per
+        # unit/baris -- mis. KUMAI cuma py 2 target unik: 0.5 & 2.5, itu saja yg diaverage). (2) Realisasi site =
+        # average dari Capaian PER KELOMPOK UNIT dulu (Realisasi kelompok = Sum Breakdown kelompok / Sum Ideal
+        # kelompok), BUKAN average langsung semua baris/unit individual.
         cap_dt_per_site5 = []
         if not sasaran_mutu_data.empty and sasaran_mutu_data["lokasi"].nunique() > 1:
             _sm_dtsite5 = sasaran_mutu_data.copy()
@@ -3146,16 +3181,30 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 _sm_dtsite5 = _sm_dtsite5[_sm_dtsite5["unit_sewa"] != True]
             if "breakdown_hm_km_realisasi" in _sm_dtsite5.columns:
                 _sm_dtsite5["breakdown_hm_km_realisasi"] = _sm_dtsite5["breakdown_hm_km_realisasi"].fillna(0)
-            def _dtsite5_grp(g):
-                sum_ideal = g["hm_km_ideal_target"].sum() if "hm_km_ideal_target" in g.columns else None
-                dt_r_formula = (g["breakdown_hm_km_realisasi"].sum() / sum_ideal * 100) if (sum_ideal and "breakdown_hm_km_realisasi" in g.columns) else None
-                return pd.Series({"dt_r": dt_r_formula, "dt_t": g["downtime_target"].mean()})
-            site_dt_agg5 = _sm_dtsite5.groupby("lokasi").apply(_dtsite5_grp)
-            site_dt_agg5 = site_dt_agg5.sort_values("dt_r", ascending=False)
-            for site5d, row5d in site_dt_agg5.iterrows():
-                if not row5d["dt_t"]:
+            _sm_dtsite5 = _sm_dtsite5.dropna(subset=["kelompok_unit"]) if "kelompok_unit" in _sm_dtsite5.columns else _sm_dtsite5.iloc[0:0]
+            site_dt_result5 = []
+            if not _sm_dtsite5.empty:
+                for site5d, g_site5d in _sm_dtsite5.groupby("lokasi"):
+                    # Target site = average dari nilai target UNIK di site ini (bukan per unit/baris)
+                    target_unik5d = g_site5d["downtime_target"].dropna().unique()
+                    if len(target_unik5d) == 0:
+                        continue
+                    target_site5d = target_unik5d.mean()
+                    # Realisasi site = average dari Capaian PER KELOMPOK UNIT (Sum Breakdown/Sum Ideal per kelompok)
+                    kelompok_real5d = []
+                    for kel5d, g_kel5d in g_site5d.groupby("kelompok_unit"):
+                        sum_ideal_kel5d = g_kel5d["hm_km_ideal_target"].sum()
+                        if sum_ideal_kel5d:
+                            kelompok_real5d.append(g_kel5d["breakdown_hm_km_realisasi"].sum() / sum_ideal_kel5d * 100)
+                    if not kelompok_real5d:
+                        continue
+                    realisasi_site5d = sum(kelompok_real5d) / len(kelompok_real5d)
+                    site_dt_result5.append((site5d, realisasi_site5d, target_site5d))
+            site_dt_result5.sort(key=lambda x: x[1], reverse=True)
+            for site5d, dt_r5d, dt_t5d in site_dt_result5:
+                if not dt_t5d:
                     continue
-                cap_dt_site5 = row5d["dt_r"] / row5d["dt_t"] * 100
+                cap_dt_site5 = dt_r5d / dt_t5d * 100
                 site_short5d = SITE_ABBR.get(site5d, site5d)
                 cap_dt_per_site5.append(f"{site_short5d} {cap_dt_site5:.0f}%")
 
