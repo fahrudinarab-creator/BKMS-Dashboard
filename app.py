@@ -2744,11 +2744,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_left4 = 0.85
             plot_right4 = 6.2
             has_under4 = (maint_su4["gap_rp"] < 0).any()
-            plot_top4b = chart_top_r4 + 1.05  # sisakan ruang di atas utk label nilai (over budget) yg diputar vertikal
+            plot_top4b = chart_top_r4 + 0.85  # sisakan ruang di atas utk label nilai (over budget) yg diputar vertikal
             # Margin bawah diperbesar signifikan supaya ada RUANG CUKUP di antara plot & kotak analisa di bawahnya
             # utk menampung label nilai (rotasi vertikal ~1.1") + label kategori (rotasi diagonal) tanpa tumpang
             # tindih dgn kotak analisa/insight.
-            bottom_margin4 = 2.25
+            bottom_margin4 = 1.4
             plot_bottom4b = chart_top_r4 + chart_h_r4 - bottom_margin4
             max_gap4 = maint_su4["gap_rp"].max()
             min_gap4 = maint_su4["gap_rp"].min()
@@ -2794,7 +2794,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 grid4.fill.solid(); grid4.fill.fore_color.rgb = grid_color4
                 grid4.line.fill.background(); grid4.shadow.inherit = False
                 tick_label4 = fmt_rp(tick_val4) if tick_val4 >= 0 else f"-{fmt_rp(abs(tick_val4))}"
-                add_textbox(s, 0.1, tick_y4 - 0.09, plot_left4 - 0.15, 0.18, tick_label4, size=6.5, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
+                ytick_tb4 = s.shapes.add_textbox(Inches(0.42), Inches(tick_y4 - 0.09), Inches(plot_left4 - 0.47), Inches(0.18))
+                ytick_tf4 = ytick_tb4.text_frame; ytick_tf4.word_wrap = False
+                ytick_tf4.margin_left = 0; ytick_tf4.margin_right = 0; ytick_tf4.margin_top = 0; ytick_tf4.margin_bottom = 0
+                ytick_p4 = ytick_tf4.paragraphs[0]; ytick_p4.alignment = PP_ALIGN.RIGHT
+                ytick_r4 = ytick_p4.add_run(); ytick_r4.text = tick_label4
+                ytick_r4.font.size = Pt(6.5); ytick_r4.font.color.rgb = TEXT_MUTED; ytick_r4.font.name = "Calibri"
 
             for i4m, (_, r4m) in enumerate(maint_su4.iterrows()):
                 gap_val4 = r4m["gap_rp"]
