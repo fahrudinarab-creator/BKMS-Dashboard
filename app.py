@@ -3357,6 +3357,32 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     prs.save(buf)
     return buf.getvalue()
 
+def convert_pptx_to_pdf_bytes(pptx_bytes: bytes):
+    """Konversi PPTX ke PDF pakai LibreOffice (headless). Return (pdf_bytes, None) kalau berhasil,
+    atau (None, pesan_error) kalau LibreOffice tdk tersedia / gagal -- supaya app tetap jalan normal
+    (tombol PDF sekedar tdk muncul / kasih pesan) drpd crash total kalau server tdk py LibreOffice."""
+    import subprocess, tempfile, os as _os
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pptx_path = _os.path.join(tmpdir, "input.pptx")
+            with open(pptx_path, "wb") as f:
+                f.write(pptx_bytes)
+            result = subprocess.run(
+                ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", tmpdir, pptx_path],
+                capture_output=True, text=True, timeout=120,
+            )
+            pdf_path = _os.path.join(tmpdir, "input.pdf")
+            if result.returncode != 0 or not _os.path.exists(pdf_path):
+                return None, f"LibreOffice gagal konversi: {result.stderr or result.stdout or 'tidak diketahui'}"
+            with open(pdf_path, "rb") as f:
+                return f.read(), None
+    except FileNotFoundError:
+        return None, "LibreOffice tidak ditemukan di server ini. Tambahkan 'libreoffice' ke packages.txt (Streamlit Cloud) atau install LibreOffice di server."
+    except subprocess.TimeoutExpired:
+        return None, "Konversi PDF timeout (>120 detik)."
+    except Exception as e:
+        return None, f"Gagal konversi ke PDF: {e}"
+
 colX, colY = st.columns([5, 1.4])
 with colY:
     if st.button("📽️ Buat Presentasi (PPTX)", use_container_width=True, type="primary"):
@@ -3370,6 +3396,14 @@ with colY:
                 df_raw, sasaran_mutu_raw, mttr_raw, maint_raw, sel_site, sel_month, sel_kat
             )
             st.session_state["sasaran_mutu_excel_bytes"] = build_sasaran_mutu_excel(sasaran_mutu_raw)
+        with st.spinner("Mengonversi presentasi ke PDF..."):
+            pdf_bytes, pdf_err = convert_pptx_to_pdf_bytes(st.session_state["pptx_bytes"])
+            if pdf_bytes is not None:
+                st.session_state["pptx_pdf_bytes"] = pdf_bytes
+                st.session_state.pop("pptx_pdf_error", None)
+            else:
+                st.session_state.pop("pptx_pdf_bytes", None)
+                st.session_state["pptx_pdf_error"] = pdf_err
     if "pptx_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh PPTX untuk RTM",
@@ -3378,6 +3412,17 @@ with colY:
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             use_container_width=True,
         )
+    if "pptx_pdf_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Unduh PDF untuk RTM",
+            data=st.session_state["pptx_pdf_bytes"],
+            file_name="Laporan_Biaya_Pendapatan_BKMS.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            help="Tampilan sama persis dgn PPTX, dlm format PDF (lebih konsisten dibuka di semua perangkat).",
+        )
+    elif "pptx_pdf_error" in st.session_state:
+        st.caption(f"⚠️ PDF tidak tersedia: {st.session_state['pptx_pdf_error']}")
     if "database_laporan_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh Database Laporan (Excel)",
