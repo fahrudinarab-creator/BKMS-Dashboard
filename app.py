@@ -2853,8 +2853,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rutin_pivot4 = rutin_pivot4.sort_values(["kelompok_unit", "lokasi"])
 
                 # --- % Capaian Downtime per (lokasi, kelompok_unit), dari Sasaran Mutu (formula mentah) ---
+                # Exclude Tarif Tetap & unit_sewa spy KONSISTEN dgn metodologi kartu KPI Downtime & Excel.
                 if not sasaran_mutu_data.empty and "kelompok_unit" in sasaran_mutu_data.columns:
                     _sm_dt4b = sasaran_mutu_data.copy()
+                    if "jenis_unit" in _sm_dt4b.columns:
+                        _sm_dt4b = _sm_dt4b[_sm_dt4b["jenis_unit"] != "Tarif Tetap"]
+                    if "unit_sewa" in _sm_dt4b.columns:
+                        _sm_dt4b = _sm_dt4b[_sm_dt4b["unit_sewa"] != True]
                     if "breakdown_hm_km_realisasi" in _sm_dt4b.columns:
                         _sm_dt4b["breakdown_hm_km_realisasi"] = _sm_dt4b["breakdown_hm_km_realisasi"].fillna(0)
                     def _dt4b_grp(g):
