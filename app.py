@@ -3435,7 +3435,7 @@ def convert_pptx_to_pdf_bytes(pptx_bytes: bytes):
         return None, f"Gagal konversi ke PDF: {e}"
 
 st.markdown("##### 📤 Buat & Unduh Laporan")
-colDB, colSM, colPPT = st.columns(3)
+colDB, colPPT = st.columns(2)
 
 with colDB:
     if st.button("📊 Buat Database Laporan (Excel)", use_container_width=True, type="primary"):
@@ -3449,20 +3449,6 @@ with colDB:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             help="Berisi seluruh data BKMS (Semua Data) + Sasaran Mutu + MTTR dalam 1 file Excel.",
-        )
-
-with colSM:
-    if st.button("📈 Buat Data Sasaran Mutu (Excel)", use_container_width=True, type="primary"):
-        with st.spinner("Menyusun Data Sasaran Mutu..."):
-            st.session_state["sasaran_mutu_excel_bytes"] = build_sasaran_mutu_excel(sasaran_mutu_raw)
-    if "sasaran_mutu_excel_bytes" in st.session_state:
-        st.download_button(
-            "⬇️ Unduh Data Sasaran Mutu (Excel)",
-            data=st.session_state["sasaran_mutu_excel_bytes"],
-            file_name="Data_Sasaran_Mutu_BKMS.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            help="Seluruh data Sasaran Mutu (Utilisasi/Availability/Downtime) per site. Baris kuning = belum ada data detail (Efektif/Standby/Breakdown/Ideal).",
         )
 
 with colPPT:
