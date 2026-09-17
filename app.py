@@ -522,7 +522,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             mttr_all.loc[mttr_all["lokasi"].isin(MINING_SITES), "_blok"] = BLOK_MINING
             mttr_all.loc[mttr_all["lokasi"].isin(PLANTATION_SITES), "_blok"] = BLOK_TR
 
-    # Lookup jenis_unit & kategori via nama_unit utk maint_all (data_maintenance.csv tdk selalu py jenis_unit langsung)
+    # Lookup jenis_unit, kategori & kelompok_unit via nama_unit utk maint_all (data_maintenance.csv tdk selalu py kolom2 ini langsung)
     if not maint_all.empty:
         unit_lookup = (data_all.dropna(subset=["nama_unit", "jenis_unit"])
                         .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
@@ -530,6 +530,8 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         maint_all["_key"] = maint_all["nama_unit"].astype(str).str.strip().str.upper()
         maint_all["jenis_unit"] = maint_all["_key"].map(unit_lookup["jenis_unit"]) if "jenis_unit" not in maint_all.columns or maint_all["jenis_unit"].isna().all() else maint_all.get("jenis_unit")
         maint_all["_blok"] = maint_all["_key"].map(unit_lookup["_blok"]) if "_blok" in unit_lookup.columns else None
+        if "kelompok_unit" in unit_lookup.columns:
+            maint_all["kelompok_unit"] = maint_all["_key"].map(unit_lookup["kelompok_unit"])
         maint_all = maint_all.dropna(subset=["jenis_unit", "_blok"]) if "jenis_unit" in maint_all.columns else pd.DataFrame()
 
     blok_list = [b for b in [BLOK_TR, BLOK_AB, BLOK_MINING] if (data_all["_blok"] == b).any()]
@@ -543,14 +545,36 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         combos = sub.dropna(subset=["jenis_unit"])[["lokasi", "jenis_unit"]].drop_duplicates()
         return sorted(combos.itertuples(index=False, name=None))
 
+    def uniq_lokasi_kelompok(df_, blok, exclude_tarif_tetap=True, exclude_unit_sewa=True):
+        """Sama spt uniq_lokasi_jenis tapi berbasis KELOMPOK UNIT, & scr default MENGECUALIKAN unit berkriteria
+        'Tarif Tetap' (kolom kriteria_unit ATAU jenis_unit=='Tarif Tetap' di Sasaran Mutu) dan unit_sewa=True --
+        krn pendapatannya tdk terpengaruh Utilisasi/Availability/Downtime, jadi tdk relevan dibandingkan."""
+        if df_ is None or df_.empty or "_blok" not in df_.columns or "kelompok_unit" not in df_.columns:
+            return []
+        sub = df_[df_["_blok"] == blok]
+        if sub.empty:
+            return []
+        if exclude_tarif_tetap:
+            if "kriteria_unit" in sub.columns:
+                sub = sub[sub["kriteria_unit"] != "Tarif Tetap"]
+            elif "jenis_unit" in sub.columns:
+                sub = sub[sub["jenis_unit"] != "Tarif Tetap"]
+        if exclude_unit_sewa and "unit_sewa" in sub.columns:
+            sub = sub[sub["unit_sewa"] != True]
+        combos = sub.dropna(subset=["kelompok_unit"])[["lokasi", "kelompok_unit"]].drop_duplicates()
+        # Urutkan berdasarkan KELOMPOK UNIT dulu, baru LOKASI -- spy site dgn kelompok unit yg sama berdampingan
+        return sorted(combos.itertuples(index=False, name=None), key=lambda x: (x[1], x[0]))
+
     # =============== 2. SHEET DETAIL: Prestasi ===============
     ws_prestasi = wb.create_sheet("Detail - Prestasi")
     cols_prestasi = ["Blok", "Lokasi", "Kode Unit", "Nama Unit", "Jenis Unit", "Kriteria Unit", "Bulan",
-                      "Prestasi Realisasi", "Prestasi Budget"]
+                      "Prestasi Realisasi", "Prestasi Budget", "Kelompok Unit"]
     for c, h in enumerate(cols_prestasi, start=1):
         cell = ws_prestasi.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
-    prestasi_src = data_all[data_all["_blok"].notna()][["_blok", "lokasi", "kode_unit", "nama_unit", "jenis_unit", "kriteria_unit", "bulan", "prestasi_realisasi", "prestasi_budget"]]
+    _kelompok_col_bkms = "kelompok_unit" if "kelompok_unit" in data_all.columns else None
+    prestasi_src = data_all[data_all["_blok"].notna()][["_blok", "lokasi", "kode_unit", "nama_unit", "jenis_unit", "kriteria_unit", "bulan", "prestasi_realisasi", "prestasi_budget"]].copy()
+    prestasi_src["kelompok_unit"] = data_all.loc[data_all["_blok"].notna(), _kelompok_col_bkms] if _kelompok_col_bkms else None
     for ri, row in enumerate(prestasi_src.itertuples(index=False), start=2):
         for ci, val in enumerate(row, start=1):
             cell = ws_prestasi.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -561,19 +585,24 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     ws_sm = wb.create_sheet("Detail - Sasaran Mutu")
     cols_sm = ["Blok", "Lokasi", "Jenis Unit", "Bulan", "Utilisasi Realisasi", "Utilisasi Target",
                "Availability Realisasi", "Availability Target", "Downtime Realisasi", "Downtime Target",
-               "ID Unit", "Kode Unit", "Nama Unit"]
+               "ID Unit", "Kode Unit", "Nama Unit", "Kelompok Unit", "Unit Sewa",
+               "Efektif (HM/KM)", "Standby (HM/KM)", "Breakdown (HM/KM)", "Tersedia (HM/KM)", "Ideal (HM/KM)"]
     for c, h in enumerate(cols_sm, start=1):
         cell = ws_sm.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
     if not sasaran_all.empty:
         sm_src = sasaran_all[sasaran_all["_blok"].notna()].copy()
         sm_src["downtime_pct"] = sm_src["downtime_pct"].fillna(0)
-        for col in ["id_unit", "kode_unit", "nama_unit"]:
+        for col in ["id_unit", "kode_unit", "nama_unit", "kelompok_unit", "unit_sewa",
+                    "efektif_hm_km_realisasi", "standby_hm_km_realisasi", "breakdown_hm_km_realisasi",
+                    "tersedia_hm_km_realisasi", "hm_km_ideal_target"]:
             if col not in sm_src.columns:
                 sm_src[col] = None
         sm_src = sm_src[["_blok", "lokasi", "jenis_unit", "bulan", "utilisasi_pct", "utilisasi_target",
                           "availability_pct", "availability_target", "downtime_pct", "downtime_target",
-                          "id_unit", "kode_unit", "nama_unit"]]
+                          "id_unit", "kode_unit", "nama_unit", "kelompok_unit", "unit_sewa",
+                          "efektif_hm_km_realisasi", "standby_hm_km_realisasi", "breakdown_hm_km_realisasi",
+                          "tersedia_hm_km_realisasi", "hm_km_ideal_target"]]
         for ri, row in enumerate(sm_src.itertuples(index=False), start=2):
             for ci, val in enumerate(row, start=1):
                 cell = ws_sm.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -588,14 +617,15 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
                   "Upah Realisasi", "Upah Budget",
                   "Lainnya Realisasi", "Lainnya Budget",
                   "Biaya Langsung Realisasi", "Biaya Langsung Budget",
-                  "Biaya T.Langsung Realisasi", "Biaya T.Langsung Budget"]
+                  "Biaya T.Langsung Realisasi", "Biaya T.Langsung Budget", "Kelompok Unit"]
     for c, h in enumerate(cols_biaya, start=1):
         cell = ws_biaya.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
     biaya_src = data_all[data_all["_blok"].notna()][["_blok", "lokasi", "kode_unit", "nama_unit", "jenis_unit", "bulan",
         "total_biaya_realisasi", "total_biaya_budget", "maintenance_realisasi", "maintenance_budget",
         "upah_realisasi", "upah_budget", "lainnya_realisasi", "lainnya_budget",
-        "biaya_langsung_realisasi", "biaya_langsung_budget", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"]]
+        "biaya_langsung_realisasi", "biaya_langsung_budget", "biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"]].copy()
+    biaya_src["kelompok_unit"] = data_all.loc[data_all["_blok"].notna(), _kelompok_col_bkms] if _kelompok_col_bkms else None
     for ri, row in enumerate(biaya_src.itertuples(index=False), start=2):
         for ci, val in enumerate(row, start=1):
             cell = ws_biaya.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -626,7 +656,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     ws_bbm3 = wb.create_sheet("Detail - BBM Analisa Konsumsi")
     cols_bbm3 = ["Blok", "Lokasi", "Kategori", "Kode Unit", "Nama Unit", "Jenis Unit", "Bulan",
                  "Qty BBM Realisasi", "Qty BBM Budget", "Prestasi Realisasi", "Prestasi Budget",
-                 "Biaya BBM Realisasi", "Biaya BBM Budget"]
+                 "Biaya BBM Realisasi", "Biaya BBM Budget", "Kelompok Unit"]
     for c, h in enumerate(cols_bbm3, start=1):
         cell = ws_bbm3.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
@@ -639,7 +669,8 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     data_bbm3.loc[partial_b3, ["qty_bbm_budget", "prestasi_budget"]] = 0
     bbm3_src = data_bbm3[["_blok", "lokasi", "kategori", "kode_unit", "nama_unit", "jenis_unit", "bulan",
                            "qty_bbm_realisasi", "qty_bbm_budget", "prestasi_realisasi", "prestasi_budget",
-                           "biaya_bbm_realisasi", "biaya_bbm_budget"]]
+                           "biaya_bbm_realisasi", "biaya_bbm_budget"]].copy()
+    bbm3_src["kelompok_unit"] = data_bbm3[_kelompok_col_bkms] if _kelompok_col_bkms else None
     for ri, row in enumerate(bbm3_src.itertuples(index=False), start=2):
         for ci, val in enumerate(row, start=1):
             cell = ws_bbm3.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -666,14 +697,15 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
 
     # =============== 7. SHEET DETAIL: Maintenance Log (Rutin/NonRutin & Sparepart) ===============
     ws_ml = wb.create_sheet("Detail - Maintenance Log")
-    cols_ml = ["Blok", "Lokasi", "Jenis Unit", "Bulan", "Jenis Pemeliharaan", "Kategori Sparepart", "Biaya"]
+    cols_ml = ["Blok", "Lokasi", "Jenis Unit", "Bulan", "Jenis Pemeliharaan", "Kategori Sparepart", "Biaya", "Kelompok Unit"]
     for c, h in enumerate(cols_ml, start=1):
         cell = ws_ml.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
     if not maint_all.empty:
         ml_cols = ["_blok", "lokasi", "jenis_unit", "bulan", "jenis_pemeliharaan", "kategori_sparepart", "biaya"]
         ml_cols = [c for c in ml_cols if c in maint_all.columns]
-        ml_src = maint_all[ml_cols]
+        ml_src = maint_all[ml_cols].copy()
+        ml_src["kelompok_unit"] = maint_all["kelompok_unit"] if "kelompok_unit" in maint_all.columns else None
         for ri, row in enumerate(ml_src.itertuples(index=False), start=2):
             for ci, val in enumerate(row, start=1):
                 cell = ws_ml.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -807,21 +839,24 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             fmt_real="#,##0", hasil_formula=f'=IFERROR(B{row_btl}/C{row_btl}*100,"-")')
         r[0] += 1
 
-        # --- Breakdown per Site & Jenis Unit (Chart Slide 1) ---
-        subsect("\u25B8 Per Site & Jenis Unit (Floating Tarif) \u2014 Prestasi / Utilisasi / Availability")
-        header(("Site \u2014 Jenis Unit", "Cap. Prestasi", "Cap. Utilisasi", "Cap. Availability"))
-        prestasi_floating = data_all[(data_all["_blok"] == blok_name) & (data_all["kriteria_unit"] == "Floating Tarif")]
-        combos1 = uniq_lokasi_jenis(prestasi_floating, blok_name)
-        for lok, ju in combos1:
-            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+        # --- Breakdown per Site & KELOMPOK UNIT (Chart Slide 1) ---
+        # Realisasi Utilisasi/Availability dihitung dari FORMULA data mentah (Efektif atau Tersedia / Ideal),
+        # BUKAN average kolom persentase yg sudah jadi -- konsisten dgn metodologi kartu KPI & chart PPT.
+        # Unit berkriteria "Tarif Tetap" & unit_sewa=TRUE dikecualikan (pendapatannya tdk terpengaruh metrik ini).
+        subsect("\u25B8 Per Site & Kelompok Unit (exclude Tarif Tetap & Unit Sewa) \u2014 Prestasi / Utilisasi / Availability")
+        header(("Site \u2014 Kelompok Unit", "Cap. Prestasi", "Cap. Utilisasi", "Cap. Availability"))
+        prestasi_floating = data_all[(data_all["_blok"] == blok_name) & (data_all["kriteria_unit"] != "Tarif Tetap")]
+        combos1 = uniq_lokasi_kelompok(prestasi_floating, blok_name)
+        for lok, kel in combos1:
+            lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
             row = r[0]
-            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
-            f_prest = (f'=IFERROR(SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!E:E,"{ju_e}",{SHEET_PRESTASI}!F:F,"Floating Tarif")'
-                       f'/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!E:E,"{ju_e}",{SHEET_PRESTASI}!F:F,"Floating Tarif")*100,"-")')
-            f_util = (f'=IFERROR(AVERAGEIFS({SHEET_SM}!E:E,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")'
-                      f'/AVERAGEIFS({SHEET_SM}!F:F,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")*100,"-")')
-            f_avail = (f'=IFERROR(AVERAGEIFS({SHEET_SM}!G:G,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")'
-                       f'/AVERAGEIFS({SHEET_SM}!H:H,{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!C:C,"{ju_e}")*100,"-")')
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {kel}").font = NORMAL_FONT
+            f_prest = (f'=IFERROR(SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!J:J,"{kel_e}",{SHEET_PRESTASI}!F:F,"<>Tarif Tetap")'
+                       f'/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!J:J,"{kel_e}",{SHEET_PRESTASI}!F:F,"<>Tarif Tetap")*100,"-")')
+            sm_crit = (f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!N:N,"{kel_e}",'
+                       f'{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"')
+            f_util = f'=IFERROR(SUMIFS({SHEET_SM}!P:P,{sm_crit})/SUMIFS({SHEET_SM}!T:T,{sm_crit})*100,"-")'
+            f_avail = f'=IFERROR(SUMIFS({SHEET_SM}!S:S,{sm_crit})/SUMIFS({SHEET_SM}!T:T,{sm_crit})*100,"-")'
             for ci, f in enumerate([f_prest, f_util, f_avail], start=2):
                 cell = ws.cell(row=row, column=ci, value=f); cell.font = NORMAL_FONT; cell.number_format = '0.0"%"'
             for c in range(1, 5):
@@ -871,17 +906,17 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             r[0] += 1
         r[0] += 1
 
-        subsect("\u25B8 Analisa Kenaikan Biaya BBM per Site & Jenis Unit")
-        header(("Site \u2014 Jenis Unit", "Qty Realisasi", "Qty Budget", "Cap. Konsumsi", "Harga Realisasi (Rp/Ltr)", "Harga Budget (Rp/Ltr)", "Cap. Harga BBM"))
+        subsect("\u25B8 Analisa Kenaikan Biaya BBM per Site & Kelompok Unit")
+        header(("Site \u2014 Kelompok Unit", "Qty Realisasi", "Qty Budget", "Cap. Konsumsi", "Harga Realisasi (Rp/Ltr)", "Harga Budget (Rp/Ltr)", "Cap. Harga BBM"))
         data_bbm3_blok = data_bbm3[(data_bbm3["_blok"] == blok_name) & ((data_bbm3["qty_bbm_realisasi"] > 0) | (data_bbm3["qty_bbm_budget"] > 0))]
-        combos_bbm = uniq_lokasi_jenis(data_bbm3_blok.rename(columns={"_blok": "_blok"}), blok_name) if not data_bbm3_blok.empty else []
-        kategori_lookup_bbm3 = data_bbm3_blok.drop_duplicates(subset=["lokasi", "jenis_unit"]).set_index(["lokasi", "jenis_unit"])["kategori"].to_dict()
-        for lok, ju in combos_bbm:
-            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
-            kat_unit = kategori_lookup_bbm3.get((lok, ju), "TR")
+        combos_bbm = uniq_lokasi_kelompok(data_bbm3_blok, blok_name, exclude_tarif_tetap=False, exclude_unit_sewa=False) if not data_bbm3_blok.empty else []
+        kategori_lookup_bbm3 = data_bbm3_blok.drop_duplicates(subset=["lokasi", "kelompok_unit"]).set_index(["lokasi", "kelompok_unit"])["kategori"].to_dict()
+        for lok, kel in combos_bbm:
+            lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
+            kat_unit = kategori_lookup_bbm3.get((lok, kel), "TR")
             row = r[0]
-            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
-            crit = f'{SHEET_BBM3}!A:A,"{B}",{SHEET_BBM3}!B:B,"{lok_e}",{SHEET_BBM3}!F:F,"{ju_e}"'
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {kel}").font = NORMAL_FONT
+            crit = f'{SHEET_BBM3}!A:A,"{B}",{SHEET_BBM3}!B:B,"{lok_e}",{SHEET_BBM3}!N:N,"{kel_e}"'
             c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BBM3}!H:H,{crit})')
             c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BBM3}!I:I,{crit})')
             # Cap. Konsumsi = rasio EFISIENSI (bukan sekedar Qty R/B) -- persis rumus di PPT:
@@ -909,15 +944,15 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
 
         # ============ SLIDE 3: Analisis Biaya Maintenance ============
         sect(f"\U0001F527 {blok_name} \u2014 Analisis Biaya Maintenance (Slide 3)")
-        subsect("\u25B8 Gap Biaya Maintenance (Realisasi \u2212 Budget) per Site & Jenis Unit")
-        header(("Site \u2014 Jenis Unit", "Realisasi", "Budget", "Gap (Rp)"))
-        combos_maint = uniq_lokasi_jenis(data_all[data_all["_blok"] == blok_name], blok_name)
-        for lok, ju in combos_maint:
-            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+        subsect("\u25B8 Gap Biaya Maintenance (Realisasi \u2212 Budget) per Site & Kelompok Unit")
+        header(("Site \u2014 Kelompok Unit", "Realisasi", "Budget", "Gap (Rp)"))
+        combos_maint = uniq_lokasi_kelompok(data_all[data_all["_blok"] == blok_name], blok_name, exclude_tarif_tetap=False, exclude_unit_sewa=False)
+        for lok, kel in combos_maint:
+            lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
             row = r[0]
-            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
-            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BIAYA}!I:I,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}",{SHEET_BIAYA}!E:E,"{ju_e}")')
-            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BIAYA}!J:J,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}",{SHEET_BIAYA}!E:E,"{ju_e}")')
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {kel}").font = NORMAL_FONT
+            c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BIAYA}!I:I,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}",{SHEET_BIAYA}!S:S,"{kel_e}")')
+            c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BIAYA}!J:J,{SHEET_BIAYA}!A:A,"{B}",{SHEET_BIAYA}!B:B,"{lok_e}",{SHEET_BIAYA}!S:S,"{kel_e}")')
             c_g = ws.cell(row=row, column=4, value=f'=B{row}-C{row}')
             for c in [c_r, c_b, c_g]:
                 c.number_format = '"Rp"#,##0'; c.font = NORMAL_FONT
@@ -926,15 +961,15 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             r[0] += 1
         r[0] += 1
 
-        subsect("\u25B8 Maintenance Rutin vs Non-Rutin per Site & Jenis Unit")
-        header(("Site \u2014 Jenis Unit", "Biaya Rutin", "Biaya Non-Rutin", "% Rutin"))
-        combos_ml = uniq_lokasi_jenis(maint_all, blok_name) if not maint_all.empty else []
-        for lok, ju in combos_ml:
-            lok_e = lok.replace('"', '""'); ju_e = str(ju).replace('"', '""')
+        subsect("\u25B8 Maintenance Rutin vs Non-Rutin per Site & Kelompok Unit")
+        header(("Site \u2014 Kelompok Unit", "Biaya Rutin", "Biaya Non-Rutin", "% Rutin"))
+        combos_ml = uniq_lokasi_kelompok(maint_all, blok_name, exclude_tarif_tetap=False, exclude_unit_sewa=False) if not maint_all.empty else []
+        for lok, kel in combos_ml:
+            lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
             row = r[0]
-            ws.cell(row=row, column=1, value=f"{lok} \u2014 {ju}").font = NORMAL_FONT
-            c_rt = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!C:C,"{ju_e}",{SHEET_ML}!E:E,"RUTIN")')
-            c_nr = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!C:C,"{ju_e}",{SHEET_ML}!E:E,"NON RUTIN")')
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {kel}").font = NORMAL_FONT
+            c_rt = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!H:H,"{kel_e}",{SHEET_ML}!E:E,"RUTIN")')
+            c_nr = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_ML}!G:G,{SHEET_ML}!A:A,"{B}",{SHEET_ML}!B:B,"{lok_e}",{SHEET_ML}!H:H,"{kel_e}",{SHEET_ML}!E:E,"NON RUTIN")')
             c_h = ws.cell(row=row, column=4, value=f'=IFERROR(B{row}/(B{row}+C{row})*100,"-")')
             c_rt.number_format = '"Rp"#,##0'; c_nr.number_format = '"Rp"#,##0'; c_h.number_format = '0.0"%"'
             for c in [c_rt, c_nr]: c.font = NORMAL_FONT
@@ -2099,38 +2134,55 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
         s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", f"Ringkasan Kinerja · {snum1}{divisi_label}{kat_suffix}")
 
-        # --- Siapkan data chart: % Capaian Utilisasi & % Capaian Prestasi per Site & Jenis Unit ---
-        # Dipisah jadi 2 CHART TERPISAH: Floating Tarif & Tarif Tetap (berdasarkan kolom kriteria_unit)
+        # --- Siapkan data chart: % Capaian Utilisasi & % Capaian Prestasi per Site & KELOMPOK UNIT ---
+        # (bukan lagi per Jenis Unit -- supaya unit sejenis dari BEBERAPA SITE bisa dibandingkan berdampingan,
+        # mis. "KUMAI -- Dump Truck" bersebelahan dgn "S.DANAU -- Dump Truck". Metodologi Capaian Utilisasi &
+        # Availability SAMA PERSIS dgn kartu KPI (formula mentah Efektif/Tersedia / Ideal, exclude Tarif Tetap
+        # & unit_sewa), tapi dipecah per Site+Kelompok Unit (bukan digabung semua site jadi 1 angka).
         au_rows = []
-
-        kriteria_unit_lookup_grp = data.dropna(subset=["kriteria_unit"]).groupby(
-            ["lokasi", "kategori", "jenis_unit"])["kriteria_unit"].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else None).to_dict()
 
         data_k = data.copy()
 
-        if not sasaran_mutu_data.empty:
+        if not sasaran_mutu_data.empty and "kelompok_unit" in sasaran_mutu_data.columns:
             sm_kpi = sasaran_mutu_data.copy()
-            sm_kpi = sm_kpi.dropna(subset=["jenis_unit"])
+            sm_kpi = sm_kpi[(sm_kpi["jenis_unit"] != "Tarif Tetap")]
+            if "unit_sewa" in sm_kpi.columns:
+                sm_kpi = sm_kpi[sm_kpi["unit_sewa"] != True]
+            sm_kpi = sm_kpi.dropna(subset=["kelompok_unit"])
+            if "efektif_hm_km_realisasi" in sm_kpi.columns:
+                sm_kpi["efektif_hm_km_realisasi"] = sm_kpi["efektif_hm_km_realisasi"].fillna(0)
+            if "breakdown_hm_km_realisasi" in sm_kpi.columns:
+                sm_kpi["breakdown_hm_km_realisasi"] = sm_kpi["breakdown_hm_km_realisasi"].fillna(0)
 
-            au_tbl = sm_kpi.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-                avail_r=("availability_pct", "mean"), avail_t=("availability_target", "mean"),
-                util_r=("utilisasi_pct", "mean"), util_t=("utilisasi_target", "mean"),
-            )
+            def _au_grp(g):
+                sum_ideal = g["hm_km_ideal_target"].sum() if "hm_km_ideal_target" in g.columns else None
+                util_r_formula = (g["efektif_hm_km_realisasi"].sum() / sum_ideal * 100) if (sum_ideal and "efektif_hm_km_realisasi" in g.columns) else None
+                avail_r_formula = (g["tersedia_hm_km_realisasi"].sum() / sum_ideal * 100) if (sum_ideal and "tersedia_hm_km_realisasi" in g.columns) else None
+                return pd.Series({
+                    "util_r": util_r_formula, "util_t": g["utilisasi_target"].mean(),
+                    "avail_r": avail_r_formula, "avail_t": g["availability_target"].mean(),
+                })
+
+            au_tbl = sm_kpi.groupby(["lokasi", "kategori", "kelompok_unit"]).apply(_au_grp).reset_index()
             au_tbl["site_short"] = au_tbl["lokasi"].map(SITE_ABBR).fillna(au_tbl["lokasi"])
-            au_tbl = au_tbl.sort_values(["lokasi", "kategori", "jenis_unit"])
+            # Urutkan berdasarkan KELOMPOK UNIT dulu, baru SITE -- spy site yg sama kelompoknya berdampingan
+            au_tbl = au_tbl.sort_values(["kelompok_unit", "lokasi"])
 
-            prestasi_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-                prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
+            prestasi_unit = data_k[(data_k["kriteria_unit"] != "Tarif Tetap")].groupby(["lokasi", "kategori", "kelompok_unit"], as_index=False).agg(
+                prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum")) if "kelompok_unit" in data_k.columns else pd.DataFrame()
             def _safe_cap(r, col_r="prestasi_r", col_b="prestasi_b"):
                 real_v = r[col_r]; budget_v = r[col_b]
                 if pd.isna(real_v) or pd.isna(budget_v) or budget_v == 0:
                     return None
                 result = real_v / budget_v * 100
                 return result if pd.notna(result) and not (result == float("inf") or result == float("-inf")) else None
-            prestasi_unit["cap"] = prestasi_unit.apply(_safe_cap, axis=1)
-            prestasi_lookup_unit = {(r["lokasi"], r["kategori"], r["jenis_unit"]): r["cap"] for _, r in prestasi_unit.iterrows()}
+            if not prestasi_unit.empty:
+                prestasi_unit["cap"] = prestasi_unit.apply(_safe_cap, axis=1)
+                prestasi_lookup_unit = {(r["lokasi"], r["kategori"], r["kelompok_unit"]): r["cap"] for _, r in prestasi_unit.iterrows()}
+            else:
+                prestasi_lookup_unit = {}
 
-            # Fallback ke level site+kategori kalau kombinasi jenis_unit spesifik tidak ada datanya
+            # Fallback ke level site+kategori kalau kombinasi kelompok_unit spesifik tidak ada datanya
             prestasi_sk1 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
                 prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
             prestasi_sk1["cap"] = prestasi_sk1.apply(_safe_cap, axis=1)
@@ -2139,26 +2191,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             for _, r in au_tbl.iterrows():
                 util_cap = _safe_cap(r, "util_r", "util_t")
                 avail_cap = _safe_cap(r, "avail_r", "avail_t")
-                prestasi_cap = prestasi_lookup_unit.get((r["lokasi"], r["kategori"], r["jenis_unit"]))
+                prestasi_cap = prestasi_lookup_unit.get((r["lokasi"], r["kategori"], r["kelompok_unit"]))
                 if prestasi_cap is None:
                     prestasi_cap = prestasi_lookup.get((r["lokasi"], r["kategori"]))
-                kriteria = kriteria_unit_lookup_grp.get((r["lokasi"], r["kategori"], r["jenis_unit"]))
-                au_rows.append({"label": f"{r['site_short']} — {r['jenis_unit']}", "util_cap": util_cap, "avail_cap": avail_cap,
-                                 "prestasi_cap": prestasi_cap, "kriteria_unit": kriteria})
+                au_rows.append({"label": f"{r['site_short']} — {r['kelompok_unit']}", "util_cap": util_cap, "avail_cap": avail_cap,
+                                 "prestasi_cap": prestasi_cap, "kriteria_unit": "Floating Tarif", "kelompok_unit": r["kelompok_unit"]})
 
-        au_rows_floating = [r for r in au_rows if r["kriteria_unit"] == "Floating Tarif"]
-        au_rows_tetap = [r for r in au_rows if r["kriteria_unit"] == "Tarif Tetap"]
-        au_rows_other = [r for r in au_rows if r["kriteria_unit"] not in ("Floating Tarif", "Tarif Tetap")]
-        au_rows_floating = au_rows_floating + au_rows_other  # unit tanpa info kriteria digabung ke Floating (default)
-        # Urutkan berdasarkan Gap Pendapatan (Realisasi - Budget) PALING MINUS dulu -- metrik PERSIS SAMA dgn yg
-        # dipakai kotak analisa di bawah chart, supaya urutan chart selalu beririsan dgn unit yg disorot di analisa
-        gap_pend_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-            pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"))
-        gap_pend_unit["site_short_g"] = gap_pend_unit["lokasi"].map(SITE_ABBR).fillna(gap_pend_unit["lokasi"])
-        gap_pend_unit["label_g"] = gap_pend_unit["site_short_g"] + " \u2014 " + gap_pend_unit["jenis_unit"]
-        gap_pend_unit["gap_g"] = gap_pend_unit["pend_r"] - gap_pend_unit["pend_b"]
-        gap_pend_lookup = dict(zip(gap_pend_unit["label_g"], gap_pend_unit["gap_g"]))
-        au_rows_floating = sorted(au_rows_floating, key=lambda r: gap_pend_lookup.get(r["label"], 0))
+        au_rows_floating = au_rows  # sudah dikecualikan Tarif Tetap & unit_sewa sejak awal (lihat filter di atas)
+        # Urutan SUDAH per Kelompok Unit dari au_tbl.sort_values di atas -- TIDAK diurutkan ulang berdasarkan Gap
+        # Pendapatan lagi (beda dgn versi lama), supaya site2 dgn kelompok unit yg sama tetap berdampingan.
 
         # --- Kartu ringkasan mini (ringkasan cepat keseluruhan, lengkap dgn Budget & Capaian) ---
         mini_w, mini_h, mini_gap, mini_y = 2.32, 1.95, 0.19, 1.05
@@ -2254,19 +2295,27 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         h_floating = total_h * 0.8
         h_finding = total_h - h_floating - 0.15
 
-        _draw_util_chart(s, au_rows_floating, panel_top, h_floating, "🟢 Capaian Prestasi, Utilisasi & Availability — per Site & Jenis Unit")
+        _draw_util_chart(s, au_rows_floating, panel_top, h_floating, "🟢 Capaian Prestasi, Utilisasi & Availability — per Site & Kelompok Unit")
 
         # --- Analisa: unit dgn gap pendapatan (realisasi - budget) paling minus, dikaitkan dgn capaian utilisasinya ---
+        # (Kotak ini TETAP per Jenis Unit spesifik -- beda dgn chart di atas yg per Kelompok Unit -- krn tujuannya
+        # menyorot 1 unit paling bermasalah scr spesifik, bukan perbandingan Kelompok Unit antar site.)
         note_top_au = panel_top + h_floating + 0.1
         note_h_au = panel_bottom - note_top_au
         gap_unit = data_k.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
-            pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"))
+            pend_r=("pendapatan_realisasi", "sum"), pend_b=("pendapatan_budget", "sum"),
+            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
         gap_unit = gap_unit[(gap_unit["pend_r"] > 0) | (gap_unit["pend_b"] > 0)].copy()
         gap_unit["gap"] = gap_unit["pend_r"] - gap_unit["pend_b"]
         gap_unit["site_short"] = gap_unit["lokasi"].map(SITE_ABBR).fillna(gap_unit["lokasi"])
         gap_unit["label"] = gap_unit["site_short"] + " — " + gap_unit["jenis_unit"]
-        util_cap_lookup = {r["label"]: r["prestasi_cap"] for r in au_rows}
-        gap_unit["prestasi_cap"] = gap_unit["label"].map(util_cap_lookup)
+        def _safe_cap_gap(r):
+            real_v = r["prestasi_r"]; budget_v = r["prestasi_b"]
+            if pd.isna(real_v) or pd.isna(budget_v) or budget_v == 0:
+                return None
+            result = real_v / budget_v * 100
+            return result if pd.notna(result) and not (result == float("inf") or result == float("-inf")) else None
+        gap_unit["prestasi_cap"] = gap_unit.apply(_safe_cap_gap, axis=1)
         gap_unit_neg = gap_unit[gap_unit["gap"] < 0].sort_values("gap")
         # Cari unit dgn gap pendapatan paling minus secara keseluruhan (tanpa filter prioritas prestasi)
         target_row = gap_unit_neg.iloc[0] if not gap_unit_neg.empty else None
@@ -2381,8 +2430,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         cap_fisik_maint3 = None
         if not sasaran_mutu_data.empty:
             _sm_dt3 = sasaran_mutu_data.copy()
-            _sm_dt3["downtime_pct"] = _sm_dt3["downtime_pct"].fillna(0)
-            _, _, cap_fisik_maint3 = capaian_per_target_group(_sm_dt3, "downtime_pct", "downtime_target")
+            if "breakdown_hm_km_realisasi" in _sm_dt3.columns:
+                _sm_dt3["breakdown_hm_km_realisasi"] = _sm_dt3["breakdown_hm_km_realisasi"].fillna(0)
+            _, _, cap_fisik_maint3 = capaian_per_kelompok_unit(_sm_dt3, "breakdown_hm_km_realisasi", "hm_km_ideal_target", "downtime_target")
 
         # Cap. Fisik utk Biaya BBM = % Capaian Qty BBM (Realisasi Qty vs Budget Qty, murni volume)
         cap_fisik_bbm_qty3 = (bbm_qty_r3 / bbm_qty_b3 * 100) if bbm_qty_b3 else None
@@ -2498,26 +2548,26 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         partial_b3 = (~valid_b3) & ((data_bbm_ok3["qty_bbm_budget"].fillna(0) > 0) | (data_bbm_ok3["prestasi_budget"].fillna(0) > 0))
         data_bbm_ok3.loc[partial_b3, ["qty_bbm_budget", "prestasi_budget"]] = 0
 
-        maint_su3 = data_bbm_ok3.groupby(["lokasi", "kategori", "jenis_unit"], as_index=False).agg(
+        maint_su3 = data_bbm_ok3.groupby(["lokasi", "kategori", "kelompok_unit"], as_index=False).agg(
             qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum"),
-            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
+            prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum")) if "kelompok_unit" in data_bbm_ok3.columns else pd.DataFrame(columns=["lokasi","kategori","kelompok_unit","qty_r","qty_b","prestasi_r","prestasi_b"])
         maint_su3 = maint_su3[(maint_su3["qty_r"] > 0) | (maint_su3["qty_b"] > 0)].copy()
         maint_su3["site_short"] = maint_su3["lokasi"].map(SITE_ABBR).fillna(maint_su3["lokasi"])
-        maint_su3["label"] = maint_su3["site_short"] + " \u2014 " + maint_su3["jenis_unit"]
+        maint_su3["label"] = maint_su3["site_short"] + " \u2014 " + maint_su3["kelompok_unit"]
 
-        # Biaya BBM (Rp) per site & jenis unit -> dipakai utk urutan (Rupiah over tertinggi ditampilkan pertama)
-        biaya_bbm_su3 = data.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
-            biaya_r=("biaya_bbm_realisasi", "sum"), biaya_b=("biaya_bbm_budget", "sum"))
+        # Biaya BBM (Rp) per site & Kelompok Unit -> dipakai utk urutan (Rupiah over tertinggi ditampilkan pertama)
+        biaya_bbm_su3 = data.groupby(["lokasi", "kelompok_unit"], as_index=False).agg(
+            biaya_r=("biaya_bbm_realisasi", "sum"), biaya_b=("biaya_bbm_budget", "sum")) if "kelompok_unit" in data.columns else pd.DataFrame(columns=["lokasi","kelompok_unit","biaya_r","biaya_b"])
         biaya_bbm_su3["gap_rp"] = biaya_bbm_su3["biaya_r"] - biaya_bbm_su3["biaya_b"]
-        gap_rp_lookup3 = {(r["lokasi"], r["jenis_unit"]): r["gap_rp"] for _, r in biaya_bbm_su3.iterrows()}
-        maint_su3["gap"] = maint_su3.apply(lambda r: gap_rp_lookup3.get((r["lokasi"], r["jenis_unit"]), 0), axis=1)
+        gap_rp_lookup3 = {(r["lokasi"], r["kelompok_unit"]): r["gap_rp"] for _, r in biaya_bbm_su3.iterrows()}
+        maint_su3["gap"] = maint_su3.apply(lambda r: gap_rp_lookup3.get((r["lokasi"], r["kelompok_unit"]), 0), axis=1)
 
-        # Harga BBM aktual (Rp/Ltr) per site & jenis unit -> ditampilkan di label chart (bukan lagi gap Rupiah)
-        harga_bbm_su3 = data_bbm_ok.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
-            biaya_r=("biaya_bbm_realisasi", "sum"), qty_r=("qty_bbm_realisasi", "sum"))
+        # Harga BBM aktual (Rp/Ltr) per site & Kelompok Unit -> ditampilkan di label chart (bukan lagi gap Rupiah)
+        harga_bbm_su3 = data_bbm_ok.groupby(["lokasi", "kelompok_unit"], as_index=False).agg(
+            biaya_r=("biaya_bbm_realisasi", "sum"), qty_r=("qty_bbm_realisasi", "sum")) if "kelompok_unit" in data_bbm_ok.columns else pd.DataFrame(columns=["lokasi","kelompok_unit","biaya_r","qty_r"])
         harga_bbm_su3["harga_r"] = harga_bbm_su3.apply(lambda r: (r["biaya_r"] / r["qty_r"]) if r["qty_r"] else None, axis=1)
-        harga_bbm_lookup3 = {(r["lokasi"], r["jenis_unit"]): r["harga_r"] for _, r in harga_bbm_su3.iterrows()}
-        maint_su3["harga_r"] = maint_su3.apply(lambda r: harga_bbm_lookup3.get((r["lokasi"], r["jenis_unit"])), axis=1)
+        harga_bbm_lookup3 = {(r["lokasi"], r["kelompok_unit"]): r["harga_r"] for _, r in harga_bbm_su3.iterrows()}
+        maint_su3["harga_r"] = maint_su3.apply(lambda r: harga_bbm_lookup3.get((r["lokasi"], r["kelompok_unit"])), axis=1)
 
         def _bbm_cap3(row):
             if row["kategori"] == "AB":
@@ -2538,14 +2588,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # --- Hitung Cap. Prestasi & Cap. Harga BBM, utk dekomposisi 3 faktor penyebab kenaikan biaya BBM ---
         maint_su3["cap_prestasi"] = maint_su3.apply(
             lambda r: (r["prestasi_r"] / r["prestasi_b"] * 100) if r["prestasi_b"] else None, axis=1)
-        harga_bbm_full3 = data_bbm_ok.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
+        harga_bbm_full3 = data_bbm_ok.groupby(["lokasi", "kelompok_unit"], as_index=False).agg(
             biaya_r=("biaya_bbm_realisasi", "sum"), biaya_b=("biaya_bbm_budget", "sum"),
-            qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum"))
+            qty_r=("qty_bbm_realisasi", "sum"), qty_b=("qty_bbm_budget", "sum")) if "kelompok_unit" in data_bbm_ok.columns else pd.DataFrame(columns=["lokasi","kelompok_unit","biaya_r","biaya_b","qty_r","qty_b"])
         harga_bbm_full3["harga_r"] = harga_bbm_full3.apply(lambda r: (r["biaya_r"] / r["qty_r"]) if r["qty_r"] else None, axis=1)
         harga_bbm_full3["harga_b"] = harga_bbm_full3.apply(lambda r: (r["biaya_b"] / r["qty_b"]) if r["qty_b"] else None, axis=1)
-        harga_full_lookup3 = {(r["lokasi"], r["jenis_unit"]): (r["harga_r"], r["harga_b"]) for _, r in harga_bbm_full3.iterrows()}
-        maint_su3["harga_r"] = maint_su3.apply(lambda r: harga_full_lookup3.get((r["lokasi"], r["jenis_unit"]), (None, None))[0], axis=1)
-        maint_su3["harga_b"] = maint_su3.apply(lambda r: harga_full_lookup3.get((r["lokasi"], r["jenis_unit"]), (None, None))[1], axis=1)
+        harga_full_lookup3 = {(r["lokasi"], r["kelompok_unit"]): (r["harga_r"], r["harga_b"]) for _, r in harga_bbm_full3.iterrows()}
+        maint_su3["harga_r"] = maint_su3.apply(lambda r: harga_full_lookup3.get((r["lokasi"], r["kelompok_unit"]), (None, None))[0], axis=1)
+        maint_su3["harga_b"] = maint_su3.apply(lambda r: harga_full_lookup3.get((r["lokasi"], r["kelompok_unit"]), (None, None))[1], axis=1)
         maint_su3["cap_harga"] = maint_su3.apply(
             lambda r: (r["harga_r"] / r["harga_b"] * 100) if (r["harga_r"] is not None and r["harga_b"]) else None, axis=1)
 
@@ -2563,23 +2613,24 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             return f"{nama} {arah}"
 
         maint_su3["penyebab"] = maint_su3.apply(_penyebab_dominan3, axis=1)
-        # "Boros" = realisasi rate (KM/Ltr atau Ltr/HM) OVER dibanding budget rate -> Capaian > 100%.
-        # Diurutkan dari Capaian paling tinggi (paling over) dulu, utk kedua kategori (TR & AB) secara seragam.
-        maint_su3 = maint_su3.sort_values("cap", ascending=False)
+        # Diurutkan berdasarkan KELOMPOK UNIT dulu, baru SITE -- spy site dgn kelompok unit yg sama berdampingan
+        # (beda dgn versi lama yg diurutkan by Capaian tertinggi/gap Rupiah)
+        maint_su3 = maint_su3.sort_values(["kelompok_unit", "lokasi"])
         n_maint3 = max(len(maint_su3), 1)
 
         maint_panel_top3 = max(left_col_bottom3, right_col_bottom3) + 0.15
         maint_panel_h3 = 7.3 - maint_panel_top3
         add_card_panel(s, 0.4, maint_panel_top3, 12.5, maint_panel_h3)
         add_panel_header(s, 0.4, maint_panel_top3, 12.5,
-                          "\U0001F50D Analisa Penyebab Kenaikan Biaya BBM \u2014 per Site & Jenis Unit", height=0.36)
+                          "\U0001F50D Analisa Penyebab Kenaikan Biaya BBM \u2014 per Site & Kelompok Unit", height=0.36)
         chart_top_m3b = maint_panel_top3 + 0.42
         avail_h_m3b = maint_panel_h3 - 0.42 - 0.15
         if not maint_su3.empty:
             unit_label3 = "KM/Ltr" if set(maint_su3["kategori"].unique()) == {"TR"} else ("Ltr/HM" if set(maint_su3["kategori"].unique()) == {"AB"} else "Rate")
-            # Pilih Top N unit dgn dampak Rupiah biaya BBM OVER BUDGET terbesar (paling relevan utk disorot di chart)
-            top_n3 = 7
-            chart_src3 = maint_su3.sort_values("gap", ascending=False).head(top_n3)
+            # Tampilkan SEMUA kombinasi Site+Kelompok Unit (bukan top-N lagi) -- spy perbandingan antar site tetap
+            # utuh & tidak ada kelompok yg "terpotong" di salah satu site tapi tidak di site lain.
+            top_n3 = 12
+            chart_src3 = maint_su3.head(top_n3) if len(maint_su3) > top_n3 else maint_su3
 
             note_h3b = 0.85
             chart_h_m3b = avail_h_m3b - note_h3b - 0.12
@@ -2632,22 +2683,22 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         panel_bottom4 = 7.3
         panel_h4 = panel_bottom4 - panel_top4
 
-        # ================= PANEL KIRI: % Capaian Biaya Maintenance per Site & Jenis Unit =================
-        maint_su4 = data.groupby(["lokasi", "jenis_unit"], as_index=False).agg(
-            maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum"))
+        # ================= PANEL KIRI: % Capaian Biaya Maintenance per Site & Kelompok Unit =================
+        maint_su4 = data.groupby(["lokasi", "kelompok_unit"], as_index=False).agg(
+            maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum")) if "kelompok_unit" in data.columns else pd.DataFrame(columns=["lokasi","kelompok_unit","maint_r","maint_b"])
         maint_su4 = maint_su4[maint_su4["maint_b"] > 0].copy()
         maint_su4["site_short"] = maint_su4["lokasi"].map(SITE_ABBR).fillna(maint_su4["lokasi"])
-        maint_su4["label"] = maint_su4["site_short"] + " \u2014 " + maint_su4["jenis_unit"]
+        maint_su4["label"] = maint_su4["site_short"] + " \u2014 " + maint_su4["kelompok_unit"]
         maint_su4["cap"] = maint_su4["maint_r"] / maint_su4["maint_b"] * 100
         maint_su4["gap_rp"] = maint_su4["maint_r"] - maint_su4["maint_b"]
-        # Diurutkan dari gap Rupiah (over) paling tinggi dulu
-        maint_su4 = maint_su4.sort_values("gap_rp", ascending=False)
+        # Diurutkan berdasarkan KELOMPOK UNIT dulu, baru SITE -- spy site dgn kelompok unit yg sama berdampingan
+        maint_su4 = maint_su4.sort_values(["kelompok_unit", "lokasi"])
         maint_su4_full = maint_su4.copy()  # simpan versi LENGKAP (semua unit) utk analisa insight di bawah
         n_maint4_total = len(maint_su4)
         n_maint4 = max(len(maint_su4), 1)
 
         add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Gap Biaya Maintenance (Realisasi vs Budget) \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Gap Biaya Maintenance (Realisasi vs Budget) \u2014 per Site & Kelompok Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
         note_h4 = 0.95
         chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
@@ -2737,9 +2788,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         else:
             add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
-        # ================= PANEL KANAN: Rekap Maintenance Rutin vs Non-Rutin per Site & Jenis Unit =================
+        # ================= PANEL KANAN: Rekap Maintenance Rutin vs Non-Rutin per Site & Kelompok Unit =================
         add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 6.85, panel_top4, 6.05, "\U0001F527 Rekap Maintenance Rutin vs Non-Rutin \u2014 per Site & Jenis Unit", height=0.4)
+        add_panel_header(s, 6.85, panel_top4, 6.05, "\U0001F527 Rekap Maintenance Rutin vs Non-Rutin \u2014 per Site & Kelompok Unit", height=0.4)
         chart_top_m4 = panel_top4 + 0.45
         chart_h_m4 = panel_h4 - 0.45 - note_h4 - 0.25
         rutin_pivot4 = pd.DataFrame()
@@ -2755,15 +2806,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             elif "nama_unit" in m4.columns:
                 valid_units4 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
                 m4 = m4[m4["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units4)]
-            # Lookup jenis_unit via nama_unit (maint_data tdk punya kolom jenis_unit langsung)
-            unit_lookup4 = (data.dropna(subset=["nama_unit", "jenis_unit"])
+            # Lookup KELOMPOK UNIT via nama_unit (maint_data tdk punya kolom kelompok_unit langsung)
+            unit_lookup4 = (data.dropna(subset=["nama_unit", "kelompok_unit"])
                              .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
-                             .drop_duplicates("_key").set_index("_key")["jenis_unit"])
-            m4["jenis_unit"] = m4["nama_unit"].astype(str).str.strip().str.upper().map(unit_lookup4)
-            m4 = m4.dropna(subset=["jenis_unit"])
+                             .drop_duplicates("_key").set_index("_key")["kelompok_unit"]) if "kelompok_unit" in data.columns else pd.Series(dtype=object)
+            m4["kelompok_unit"] = m4["nama_unit"].astype(str).str.strip().str.upper().map(unit_lookup4)
+            m4 = m4.dropna(subset=["kelompok_unit"])
             if not m4.empty:
-                rutin_su4 = m4.groupby(["lokasi", "jenis_unit", "jenis_pemeliharaan"], as_index=False).agg(biaya=("biaya", "sum"))
-                rutin_pivot4 = rutin_su4.pivot_table(index=["lokasi", "jenis_unit"], columns="jenis_pemeliharaan", values="biaya", fill_value=0).reset_index()
+                rutin_su4 = m4.groupby(["lokasi", "kelompok_unit", "jenis_pemeliharaan"], as_index=False).agg(biaya=("biaya", "sum"))
+                rutin_pivot4 = rutin_su4.pivot_table(index=["lokasi", "kelompok_unit"], columns="jenis_pemeliharaan", values="biaya", fill_value=0).reset_index()
                 if "RUTIN" not in rutin_pivot4.columns:
                     rutin_pivot4["RUTIN"] = 0
                 if "NON RUTIN" not in rutin_pivot4.columns:
@@ -2773,16 +2824,23 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rutin_pivot4["pct_rutin"] = rutin_pivot4["RUTIN"] / rutin_pivot4["total"] * 100
                 rutin_pivot4["pct_nonrutin"] = rutin_pivot4["NON RUTIN"] / rutin_pivot4["total"] * 100
                 rutin_pivot4["site_short"] = rutin_pivot4["lokasi"].map(SITE_ABBR).fillna(rutin_pivot4["lokasi"])
-                rutin_pivot4["label"] = rutin_pivot4["site_short"] + " \u2014 " + rutin_pivot4["jenis_unit"]
-                rutin_pivot4 = rutin_pivot4.sort_values("total", ascending=False)
+                rutin_pivot4["label"] = rutin_pivot4["site_short"] + " \u2014 " + rutin_pivot4["kelompok_unit"]
+                # Diurutkan berdasarkan KELOMPOK UNIT dulu, baru SITE -- spy site dgn kelompok unit yg sama berdampingan
+                rutin_pivot4 = rutin_pivot4.sort_values(["kelompok_unit", "lokasi"])
 
-                # --- % Capaian Downtime per (lokasi, jenis_unit), dari Sasaran Mutu ---
-                if not sasaran_mutu_data.empty:
-                    dt_su4b = sasaran_mutu_data.dropna(subset=["jenis_unit"]).groupby(["lokasi", "jenis_unit"], as_index=False).agg(
-                        dt_r=("downtime_pct", "mean"), dt_t=("downtime_target", "mean"))
+                # --- % Capaian Downtime per (lokasi, kelompok_unit), dari Sasaran Mutu (formula mentah) ---
+                if not sasaran_mutu_data.empty and "kelompok_unit" in sasaran_mutu_data.columns:
+                    _sm_dt4b = sasaran_mutu_data.copy()
+                    if "breakdown_hm_km_realisasi" in _sm_dt4b.columns:
+                        _sm_dt4b["breakdown_hm_km_realisasi"] = _sm_dt4b["breakdown_hm_km_realisasi"].fillna(0)
+                    def _dt4b_grp(g):
+                        sum_ideal = g["hm_km_ideal_target"].sum() if "hm_km_ideal_target" in g.columns else None
+                        dt_r_formula = (g["breakdown_hm_km_realisasi"].sum() / sum_ideal * 100) if (sum_ideal and "breakdown_hm_km_realisasi" in g.columns) else None
+                        return pd.Series({"dt_r": dt_r_formula, "dt_t": g["downtime_target"].mean()})
+                    dt_su4b = _sm_dt4b.dropna(subset=["kelompok_unit"]).groupby(["lokasi", "kelompok_unit"]).apply(_dt4b_grp).reset_index()
                     dt_su4b["cap_dt"] = dt_su4b.apply(lambda r: (r["dt_r"] / r["dt_t"] * 100) if r["dt_t"] else None, axis=1)
-                    dt_lookup4b = {(r["lokasi"], r["jenis_unit"]): r["cap_dt"] for _, r in dt_su4b.iterrows()}
-                    rutin_pivot4["cap_downtime"] = rutin_pivot4.apply(lambda r: dt_lookup4b.get((r["lokasi"], r["jenis_unit"])), axis=1)
+                    dt_lookup4b = {(r["lokasi"], r["kelompok_unit"]): r["cap_dt"] for _, r in dt_su4b.iterrows()}
+                    rutin_pivot4["cap_downtime"] = rutin_pivot4.apply(lambda r: dt_lookup4b.get((r["lokasi"], r["kelompok_unit"])), axis=1)
                 else:
                     rutin_pivot4["cap_downtime"] = None
 
@@ -2868,7 +2926,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # ================= INSIGHT: hubungkan Capaian Biaya Maintenance dgn porsi Non-Rutin =================
         insight_top4 = panel_top4 + panel_h4 - note_h4
         if not maint_su4_full.empty and not rutin_pivot4.empty:
-            merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "jenis_unit", "pct_nonrutin"]], on=["lokasi", "jenis_unit"], how="inner")
+            merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "kelompok_unit", "pct_nonrutin"]], on=["lokasi", "kelompok_unit"], how="inner")
             over_budget4 = merge4[merge4["cap"] > 100]
             if not over_budget4.empty:
                 worst4 = over_budget4.sort_values("gap_rp", ascending=False).iloc[0]
@@ -2898,9 +2956,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum4}{divisi_label}{kat_suffix}")
 
         _sm_dt5 = sasaran_mutu_data.copy()
-        if not _sm_dt5.empty:
-            _sm_dt5["downtime_pct"] = _sm_dt5["downtime_pct"].fillna(0)
-        dt_avg_r5, dt_avg_t5, cap_dt5 = capaian_per_target_group(_sm_dt5, "downtime_pct", "downtime_target")
+        if not _sm_dt5.empty and "breakdown_hm_km_realisasi" in _sm_dt5.columns:
+            _sm_dt5["breakdown_hm_km_realisasi"] = _sm_dt5["breakdown_hm_km_realisasi"].fillna(0)
+        dt_avg_r5, dt_avg_t5, cap_dt5 = capaian_per_kelompok_unit(_sm_dt5, "breakdown_hm_km_realisasi", "hm_km_ideal_target", "downtime_target")
         varian_dt5 = (dt_avg_r5 - dt_avg_t5) if (dt_avg_r5 is not None and dt_avg_t5 is not None) else None
         good_dt5 = varian_dt5 is not None and varian_dt5 <= 0
         avail_target5 = (100 - dt_avg_t5) if dt_avg_t5 is not None else None
