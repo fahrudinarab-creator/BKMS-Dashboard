@@ -2403,6 +2403,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             add_panel_header(slide, 0.45, top, 12.35, title, height=0.34)
             chart_top_x = top + 0.4
             chart_h_x = height - 0.45
+            # --- Panel dibagi 2: bar chart Capaian (kiri, ~72%) + pie chart Populasi Unit (kanan, ~28%) ---
+            bar_w_x = 8.85
+            pie_x_left = 0.45 + bar_w_x + 0.15
+            pie_w_x = 12.35 - bar_w_x - 0.15
             if rows:
                 n_x = len(rows)
                 # Label satuan Utilisasi menyesuaikan kategori: Transportasi -> Hari, Alat Berat -> HM.
@@ -2419,7 +2423,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 cd_x.add_series("% Capaian Prestasi", tuple(_safe_chart_val(r["prestasi_cap"]) for r in rows))
                 cd_x.add_series(util_label_x, tuple(_safe_chart_val(r["util_cap"]) for r in rows))
                 cd_x.add_series("% Capaian Availability", tuple(_safe_chart_val(r["avail_cap"]) for r in rows))
-                gframe_x = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_x), Inches(12.2), Inches(chart_h_x), cd_x)
+                gframe_x = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.6), Inches(chart_top_x), Inches(bar_w_x - 0.15), Inches(chart_h_x), cd_x)
                 chart_x = gframe_x.chart
                 PRESTASI_COLOR = RGBColor(0x2E, 0x6D, 0xB4)  # disamakan dgn warna ikon kartu KPI "Capaian Prestasi"
                 chart_x.series[0].format.fill.solid(); chart_x.series[0].format.fill.fore_color.rgb = PRESTASI_COLOR
@@ -2456,6 +2460,96 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 chart_x.value_axis.tick_labels.number_format_is_linked = False
             else:
                 add_textbox(slide, 0.6, chart_top_x + 0.1, 12.0, 0.4, "Tidak ada data untuk kategori ini.", size=10, italic=True, color=TEXT_MUTED)
+
+            # --- Pie chart: Populasi Unit per Site & Kelompok Unit (bulan terakhir yg dipilih, unit yg ADA
+            # realisasinya saja -- bukan seluruh unit yg dibudget) ---
+            _pie_context_label = f"{divisi_label}{kat_suffix}".strip(" \u00b7").strip()
+            add_textbox(slide, pie_x_left, chart_top_x - 0.02, pie_w_x, 0.24, "Populasi Unit", size=8.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            last_month_pop = None
+            for _m in reversed(MONTH_ORDER):
+                if _m in month_list:
+                    last_month_pop = _m
+                    break
+            pop_rows = []
+            if last_month_pop and "kelompok_unit" in data.columns:
+                data_pop = data[data["bulan"] == last_month_pop].copy()
+                has_real_pop = (data_pop["prestasi_realisasi"].fillna(0) > 0) | (data_pop["pendapatan_realisasi"].fillna(0) > 0) | (data_pop["total_biaya_realisasi"].fillna(0) > 0)
+                data_pop = data_pop[has_real_pop].dropna(subset=["kelompok_unit"])
+                if not data_pop.empty:
+                    pop_agg = data_pop.groupby(["lokasi", "kelompok_unit"])["nama_unit"].nunique().reset_index(name="n_unit")
+                    pop_agg["site_short_pop"] = pop_agg["lokasi"].map(SITE_ABBR).fillna(pop_agg["lokasi"])
+                    pop_agg["label_pop"] = pop_agg["site_short_pop"] + " \u2014 " + pop_agg["kelompok_unit"]
+                    pop_agg = pop_agg.sort_values("n_unit", ascending=False)
+                    pop_rows = list(zip(pop_agg["label_pop"], pop_agg["n_unit"]))
+            if pop_rows:
+                # Gabungkan kelompok dgn populasi kecil jadi "Lainnya" spy donut & legend tdk terlalu ramai
+                # (16 kategori bikin legend bertumpuk tdk terbaca) -- max 8 slice utama + 1 "Lainnya".
+                MAX_SLICES = 8
+                pop_rows_sorted = sorted(pop_rows, key=lambda x: x[1], reverse=True)
+                if len(pop_rows_sorted) > MAX_SLICES:
+                    main_slices = pop_rows_sorted[:MAX_SLICES - 1]
+                    other_slices = pop_rows_sorted[MAX_SLICES - 1:]
+                    other_total = sum(n for _, n in other_slices)
+                    pop_rows_final = main_slices + [(f"Lainnya ({len(other_slices)} kelompok)", other_total)]
+                else:
+                    pop_rows_final = pop_rows_sorted
+                total_unit_pop = sum(n for _, n in pop_rows_final)
+                cd_pie = CategoryChartData()
+                cd_pie.categories = [lbl for lbl, _ in pop_rows_final]
+                cd_pie.add_series("Populasi Unit", tuple(n for _, n in pop_rows_final))
+                pie_h_avail = chart_h_x - 0.26
+                pie_size = min(pie_w_x, pie_h_avail) - 0.05  # tanpa legend terpisah, donut isi penuh area persegi yg tersedia
+                pie_left_centered = pie_x_left + (pie_w_x - pie_size) / 2
+                gframe_pie = slide.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(pie_left_centered), Inches(chart_top_x + 0.24), Inches(pie_size), Inches(pie_size), cd_pie)
+                chart_pie = gframe_pie.chart
+                chart_pie.has_title = False
+                # Perkecil lubang tengah donut (default 50%, dikecilkan jadi 25% spy lebih "solid"/tebal)
+                try:
+                    from pptx.oxml.ns import qn as _qn_pie
+                    _doughnut_elem = chart_pie._chartSpace.find('.//' + _qn_pie('c:doughnutChart'))
+                    if _doughnut_elem is not None:
+                        _hole_elem = _doughnut_elem.find(_qn_pie('c:holeSize'))
+                        if _hole_elem is None:
+                            _hole_elem = _doughnut_elem.makeelement(_qn_pie('c:holeSize'), {})
+                            _doughnut_elem.append(_hole_elem)
+                        _hole_elem.set('val', '10')
+                except Exception:
+                    pass
+                # Palet warna lebih variatif & vibrant (kombinasi warna tema + tambahan spy tiap slice beda jelas)
+                PIE_PALETTE = [
+                    RGBColor(0x2E, 0x6D, 0xB4), RGBColor(0xE8, 0xA0, 0x0B), RGBColor(0x1A, 0xBC, 0x9C),
+                    RGBColor(0xE7, 0x4C, 0x3C), RGBColor(0x9B, 0x59, 0xB6), RGBColor(0x2E, 0xCC, 0x71),
+                    RGBColor(0xE6, 0x7E, 0x22), RGBColor(0x9C, 0xA3, 0xAF),
+                ]
+                plot_pie = chart_pie.plots[0]
+                try:
+                    plot_pie.vary_by_categories = True
+                except Exception:
+                    pass
+                for i_pie, pt_pie in enumerate(plot_pie.series[0].points):
+                    pt_pie.format.fill.solid()
+                    pt_pie.format.fill.fore_color.rgb = PIE_PALETTE[i_pie % len(PIE_PALETTE)]
+                    pt_pie.format.line.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                    pt_pie.format.line.width = Pt(1.5)
+                plot_pie.has_data_labels = True
+                dls_pie = plot_pie.data_labels
+                dls_pie.number_format = "0"; dls_pie.number_format_is_linked = False
+                dls_pie.show_value = True; dls_pie.show_category_name = True; dls_pie.show_percentage = False
+                dls_pie.font.size = Pt(6.5); dls_pie.font.bold = True; dls_pie.font.color.rgb = TEXT_DARK; dls_pie.font.name = "Calibri"
+                try:
+                    dls_pie.position = XL_LABEL_POSITION.BEST_FIT  # PowerPoint otomatis atur posisi (dalam/luar slice + garis penunjuk) spy tdk tumpang tindih
+                except Exception:
+                    pass
+                try:
+                    dls_pie.separator = "\n"
+                except Exception:
+                    pass
+                chart_pie.has_legend = False
+                # Lubang tengah sudah sangat kecil (10%) -- teks total dipindah ke keterangan BAWAH chart
+                # (bukan lagi di tengah donut) spy tdk terpotong/tumpang tindih dgn slice.
+                add_textbox(slide, pie_x_left, chart_top_x + chart_h_x - 0.02, pie_w_x, 0.2, f"Total {total_unit_pop} unit \u2014 Data bulan {last_month_pop}", size=7.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            else:
+                add_textbox(slide, pie_x_left, chart_top_x + 0.3, pie_w_x, 0.4, "Data populasi tidak tersedia.", size=8, italic=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
 
         # --- Chart Floating Tarif saja (Tarif Tetap dihilangkan krn tidak ada tracking Utilisasi/Availability yg berarti) ---
         panel_top = mini_y + mini_h + 0.15
@@ -3073,14 +3167,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 seg_rutin4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4), Inches(bar_y4), Inches(max(w_rutin4, 0.01)), Inches(bar_h4))
                 seg_rutin4.fill.solid(); seg_rutin4.fill.fore_color.rgb = TEAL
                 seg_rutin4.line.fill.background(); seg_rutin4.shadow.inherit = False
-                nonrutin_color4 = RED if r4["pct_nonrutin"] > 40 else GOLD
                 seg_nr4 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(bar_x4 + w_rutin4), Inches(bar_y4), Inches(max(w_nonrutin4, 0.01)), Inches(bar_h4))
-                seg_nr4.fill.solid(); seg_nr4.fill.fore_color.rgb = nonrutin_color4
+                seg_nr4.fill.solid(); seg_nr4.fill.fore_color.rgb = GOLD  # warna bar SELALU netral (GOLD), bukan merah -- spy tdk rancu dgn "alert". Yg berubah warna cuma ANGKA persentasenya (di bawah).
                 seg_nr4.line.fill.background(); seg_nr4.shadow.inherit = False
                 if w_rutin4 > 0.35:
                     add_textbox(s, bar_x4, bar_y4, w_rutin4, bar_h4, f"{r4['pct_rutin']:.0f}%", size=pct_font_m4, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
                 if w_nonrutin4 > 0.35:
-                    add_textbox(s, bar_x4 + w_rutin4, bar_y4, w_nonrutin4, bar_h4, f"{r4['pct_nonrutin']:.0f}%", size=pct_font_m4, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+                    nonrutin_txt_color4 = RED if r4["pct_nonrutin"] > 40 else WHITE  # HANYA teks angka yg jadi merah kalau porsi Non-Rutin tinggi
+                    add_textbox(s, bar_x4 + w_rutin4, bar_y4, w_nonrutin4, bar_h4, f"{r4['pct_nonrutin']:.0f}%", size=pct_font_m4, bold=True, color=nonrutin_txt_color4, align=PP_ALIGN.CENTER)
                 cap_dt_val = r4["cap_downtime"]
                 has_dt4 = cap_dt_val is not None and not pd.isna(cap_dt_val)
                 dt_color4 = (RED if cap_dt_val > 100 else GREEN) if has_dt4 else TEXT_MUTED
