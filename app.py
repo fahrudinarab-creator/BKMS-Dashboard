@@ -981,7 +981,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         r[0] += 1
 
         subsect("\u25B8 Analisa Kenaikan Biaya BBM per Site & Kelompok Unit")
-        header(("Site \u2014 Kelompok Unit", "Qty Realisasi", "Qty Budget", "Cap. Konsumsi", "Harga Realisasi (Rp/Ltr)", "Harga Budget (Rp/Ltr)", "Cap. Harga BBM"))
+        header(("Site \u2014 Kelompok Unit", "Qty Realisasi", "Qty Budget", "Rate Realisasi", "Rate Budget", "Cap. Konsumsi", "Harga Realisasi (Rp/Ltr)", "Harga Budget (Rp/Ltr)", "Cap. Harga BBM"))
         data_bbm3_blok = data_bbm3[(data_bbm3["_blok"] == blok_name) & ((data_bbm3["qty_bbm_realisasi"] > 0) | (data_bbm3["qty_bbm_budget"] > 0))]
         combos_bbm = uniq_lokasi_kelompok(data_bbm3_blok, blok_name, exclude_tarif_tetap=False, exclude_unit_sewa=False) if not data_bbm3_blok.empty else []
         kategori_lookup_bbm3 = data_bbm3_blok.drop_duplicates(subset=["lokasi", "kelompok_unit"]).set_index(["lokasi", "kelompok_unit"])["kategori"].to_dict()
@@ -989,29 +989,34 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
             kat_unit = kategori_lookup_bbm3.get((lok, kel), "TR")
             row = r[0]
-            ws.cell(row=row, column=1, value=f"{lok} \u2014 {kel}").font = NORMAL_FONT
+            ws.cell(row=row, column=1, value=f"{lok} \u2014 {kel}" + (" (Ltr/HM)" if kat_unit == "AB" else " (KM/Ltr)")).font = NORMAL_FONT
             crit = f'{SHEET_BBM3}!A:A,"{B}",{SHEET_BBM3}!B:B,"{lok_e}",{SHEET_BBM3}!N:N,"{kel_e}"'
             c_r = ws.cell(row=row, column=2, value=f'=SUMIFS({SHEET_BBM3}!H:H,{crit})')
             c_b = ws.cell(row=row, column=3, value=f'=SUMIFS({SHEET_BBM3}!I:I,{crit})')
-            # Cap. Konsumsi = rasio EFISIENSI (bukan sekedar Qty R/B) -- persis rumus di PPT:
-            # TR = (Prestasi/Qty) KM per Liter; AB = (Qty/Prestasi) Liter per HM
+            # Rate & Cap. Konsumsi = rasio EFISIENSI (bukan sekedar Qty R/B) -- persis rumus di PPT:
+            # TR = (Prestasi/Qty) KM per Liter; AB = (Qty/Prestasi) Liter per HM. Rate ditampilkan EKSPLISIT
+            # (kolom D & E) spy Capaian bisa langsung ditelusuri dari angka Realisasi/Budget di baris yg sama.
             sum_prestasi_r = f'SUMIFS({SHEET_BBM3}!J:J,{crit})'
             sum_prestasi_b = f'SUMIFS({SHEET_BBM3}!K:K,{crit})'
             if kat_unit == "AB":
-                rate_r_expr = f'(B{row}/{sum_prestasi_r})'
-                rate_b_expr = f'(C{row}/{sum_prestasi_b})'
+                rate_r_expr = f'IFERROR(B{row}/{sum_prestasi_r},0)'
+                rate_b_expr = f'IFERROR(C{row}/{sum_prestasi_b},0)'
             else:
-                rate_r_expr = f'({sum_prestasi_r}/B{row})'
-                rate_b_expr = f'({sum_prestasi_b}/C{row})'
-            c_h = ws.cell(row=row, column=4, value=f'=IFERROR({rate_r_expr}/{rate_b_expr}*100,"-")')
-            c_hr = ws.cell(row=row, column=5, value=f'=IFERROR(SUMIFS({SHEET_BBM3}!L:L,{crit})/B{row},0)')
-            c_hb = ws.cell(row=row, column=6, value=f'=IFERROR(SUMIFS({SHEET_BBM3}!M:M,{crit})/C{row},0)')
-            c_ch = ws.cell(row=row, column=7, value=f'=IFERROR(E{row}/F{row}*100,"-")')
-            c_r.number_format = "#,##0"; c_b.number_format = "#,##0"; c_h.number_format = '0.0"%"'
+                rate_r_expr = f'IFERROR({sum_prestasi_r}/B{row},0)'
+                rate_b_expr = f'IFERROR({sum_prestasi_b}/C{row},0)'
+            c_rate_r = ws.cell(row=row, column=4, value=f'={rate_r_expr}')
+            c_rate_b = ws.cell(row=row, column=5, value=f'={rate_b_expr}')
+            c_h = ws.cell(row=row, column=6, value=f'=IFERROR(D{row}/E{row}*100,"-")')
+            c_hr = ws.cell(row=row, column=7, value=f'=IFERROR(SUMIFS({SHEET_BBM3}!L:L,{crit})/B{row},0)')
+            c_hb = ws.cell(row=row, column=8, value=f'=IFERROR(SUMIFS({SHEET_BBM3}!M:M,{crit})/C{row},0)')
+            c_ch = ws.cell(row=row, column=9, value=f'=IFERROR(G{row}/H{row}*100,"-")')
+            c_r.number_format = "#,##0"; c_b.number_format = "#,##0"
+            c_rate_r.number_format = "0.00"; c_rate_b.number_format = "0.00"
+            c_h.number_format = '0.0"%"'
             c_hr.number_format = '"Rp"#,##0'; c_hb.number_format = '"Rp"#,##0'; c_ch.number_format = '0.0"%"'
-            for c in [c_r, c_b, c_hr, c_hb]: c.font = NORMAL_FONT
+            for c in [c_r, c_b, c_rate_r, c_rate_b, c_hr, c_hb]: c.font = NORMAL_FONT
             c_h.font = BOLD_FONT; c_ch.font = BOLD_FONT
-            for c in range(1, 8):
+            for c in range(1, 10):
                 ws.cell(row=row, column=c).border = BORDER
             r[0] += 1
         r[0] += 1
