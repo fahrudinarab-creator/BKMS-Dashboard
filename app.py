@@ -2399,14 +2399,22 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                      ach_btl is not None and ach_btl <= 100)
 
         def _draw_util_chart(slide, rows, top, height, title):
-            add_card_panel(slide, 0.45, top, 12.35, height)
-            add_panel_header(slide, 0.45, top, 12.35, title, height=0.34)
+            # --- Dipisah jadi 2 PANEL TERPISAH (masing2 card & header sendiri): panel kiri utk chart Capaian
+            # Prestasi/Utilisasi/Availability, panel kanan (terpisah) khusus utk pie chart Populasi Unit --
+            # panel kanan DIPERLEBAR (lebih besar dr panel kiri secara proporsi) & TINGGINYA diperpanjang
+            # sampai ke panel_bottom (turun sampai sejajar bawah kotak analisa), krn kotak analisa "Gap
+            # Pendapatan" di bawah sekarang dipersempit hanya selebar panel kiri saja.
+            bar_panel_w = 8.0
+            gap_panel = 0.25
+            pie_panel_x = 0.45 + bar_panel_w + gap_panel
+            pie_panel_w = 12.35 - bar_panel_w - gap_panel
+            pie_panel_h = panel_bottom - top  # turun sampai ke batas bawah slide (sejajar bawah kotak analisa)
+
+            add_card_panel(slide, 0.45, top, bar_panel_w, height)
+            add_panel_header(slide, 0.45, top, bar_panel_w, title, height=0.34)
             chart_top_x = top + 0.4
             chart_h_x = height - 0.45
-            # --- Panel dibagi 2: bar chart Capaian (kiri, ~72%) + pie chart Populasi Unit (kanan, ~28%) ---
-            bar_w_x = 8.85
-            pie_x_left = 0.45 + bar_w_x + 0.15
-            pie_w_x = 12.35 - bar_w_x - 0.15
+            bar_w_x = bar_panel_w
             if rows:
                 n_x = len(rows)
                 # Label satuan Utilisasi menyesuaikan kategori: Transportasi -> Hari, Alat Berat -> HM.
@@ -2462,9 +2470,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 add_textbox(slide, 0.6, chart_top_x + 0.1, 12.0, 0.4, "Tidak ada data untuk kategori ini.", size=10, italic=True, color=TEXT_MUTED)
 
             # --- Pie chart: Populasi Unit per Site & Kelompok Unit (bulan terakhir yg dipilih, unit yg ADA
-            # realisasinya saja -- bukan seluruh unit yg dibudget) ---
-            _pie_context_label = f"{divisi_label}{kat_suffix}".strip(" \u00b7").strip()
-            add_textbox(slide, pie_x_left, chart_top_x - 0.02, pie_w_x, 0.24, "Populasi Unit", size=8.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            # realisasinya saja) -- diperbesar, tanpa judul, label nama+angka LANGSUNG di slice (BEST_FIT:
+            # otomatis di DALAM slice kalau muat, otomatis pindah ke LUAR slice + garis penunjuk kalau tdk muat).
+            # --- Panel TERPISAH khusus Pie Chart Populasi Unit (card & header sendiri, bukan menyatu dgn
+            # panel chart Capaian Prestasi/Utilisasi/Availability di kiri) -- tingginya DIPERPANJANG turun
+            # sampai panel_bottom (bkn cuma setinggi `height` bar chart), krn kotak analisa di bawah kiri
+            # sudah dipersempit shg tdk lagi menghalangi ruang di kanan bawah ini. ---
+            add_card_panel(slide, pie_panel_x, top, pie_panel_w, pie_panel_h)
+            add_panel_header(slide, pie_panel_x, top, pie_panel_w, "\U0001F4CA Populasi Unit", height=0.34)
+            pie_x_left = pie_panel_x + 0.12
+            pie_w_x = pie_panel_w - 0.24
             last_month_pop = None
             for _m in reversed(MONTH_ORDER):
                 if _m in month_list:
@@ -2482,44 +2497,33 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     pop_agg = pop_agg.sort_values("n_unit", ascending=False)
                     pop_rows = list(zip(pop_agg["label_pop"], pop_agg["n_unit"]))
             if pop_rows:
-                # Gabungkan kelompok dgn populasi kecil jadi "Lainnya" spy donut & legend tdk terlalu ramai
-                # (16 kategori bikin legend bertumpuk tdk terbaca) -- max 8 slice utama + 1 "Lainnya".
-                MAX_SLICES = 8
-                pop_rows_sorted = sorted(pop_rows, key=lambda x: x[1], reverse=True)
-                if len(pop_rows_sorted) > MAX_SLICES:
-                    main_slices = pop_rows_sorted[:MAX_SLICES - 1]
-                    other_slices = pop_rows_sorted[MAX_SLICES - 1:]
-                    other_total = sum(n for _, n in other_slices)
-                    pop_rows_final = main_slices + [(f"Lainnya ({len(other_slices)} kelompok)", other_total)]
-                else:
-                    pop_rows_final = pop_rows_sorted
+                pop_rows_final = pop_rows  # semua kelompok ditampilkan, tdk digabung "Lainnya"
                 total_unit_pop = sum(n for _, n in pop_rows_final)
                 cd_pie = CategoryChartData()
                 cd_pie.categories = [lbl for lbl, _ in pop_rows_final]
                 cd_pie.add_series("Populasi Unit", tuple(n for _, n in pop_rows_final))
-                pie_h_avail = chart_h_x - 0.26
-                pie_size = min(pie_w_x, pie_h_avail) - 0.05  # tanpa legend terpisah, donut isi penuh area persegi yg tersedia
-                pie_left_centered = pie_x_left + (pie_w_x - pie_size) / 2
-                gframe_pie = slide.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(pie_left_centered), Inches(chart_top_x + 0.24), Inches(pie_size), Inches(pie_size), cd_pie)
+                # Volume/ukuran chart DIPERBESAR -- isi penuh seluruh area kanan yg tersedia.
+                pie_h_avail = pie_panel_h - 0.45  # pakai tinggi panel PIE sendiri (yg sudah diperpanjang), bkn tinggi panel bar chart
+                # Pakai DOUGHNUT (bukan Pie polos) -- lubang kecil di tengah dipakai utk menulis Total Unit.
+                # Frame chart diberi INSET (tidak memakai 100% area tersedia) -- menyisakan ruang kosong di
+                # sekeliling pie itu sendiri, supaya label yg posisinya "outEnd" (di luar) py tempat cukup
+                # utk benar2 renders di LUAR lingkaran, tdk menempel/terlihat spt di dalam slice.
+                _inset_pie = 0.97
+                _pie_frame_w = pie_w_x * _inset_pie
+                _pie_frame_h = pie_h_avail * _inset_pie
+                _pie_frame_x = pie_x_left + (pie_w_x - _pie_frame_w) / 2
+                _pie_frame_y = chart_top_x + (pie_h_avail - _pie_frame_h) / 2
+                gframe_pie = slide.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(_pie_frame_x), Inches(_pie_frame_y), Inches(_pie_frame_w), Inches(_pie_frame_h), cd_pie)
                 chart_pie = gframe_pie.chart
                 chart_pie.has_title = False
-                # Perkecil lubang tengah donut (default 50%, dikecilkan jadi 25% spy lebih "solid"/tebal)
-                try:
-                    from pptx.oxml.ns import qn as _qn_pie
-                    _doughnut_elem = chart_pie._chartSpace.find('.//' + _qn_pie('c:doughnutChart'))
-                    if _doughnut_elem is not None:
-                        _hole_elem = _doughnut_elem.find(_qn_pie('c:holeSize'))
-                        if _hole_elem is None:
-                            _hole_elem = _doughnut_elem.makeelement(_qn_pie('c:holeSize'), {})
-                            _doughnut_elem.append(_hole_elem)
-                        _hole_elem.set('val', '10')
-                except Exception:
-                    pass
-                # Palet warna lebih variatif & vibrant (kombinasi warna tema + tambahan spy tiap slice beda jelas)
                 PIE_PALETTE = [
                     RGBColor(0x2E, 0x6D, 0xB4), RGBColor(0xE8, 0xA0, 0x0B), RGBColor(0x1A, 0xBC, 0x9C),
                     RGBColor(0xE7, 0x4C, 0x3C), RGBColor(0x9B, 0x59, 0xB6), RGBColor(0x2E, 0xCC, 0x71),
-                    RGBColor(0xE6, 0x7E, 0x22), RGBColor(0x9C, 0xA3, 0xAF),
+                    RGBColor(0xE6, 0x7E, 0x22), RGBColor(0x9C, 0xA3, 0xAF), RGBColor(0x34, 0x98, 0xDB),
+                    RGBColor(0xF1, 0xC4, 0x0F), RGBColor(0x16, 0xA0, 0x85), RGBColor(0xC0, 0x39, 0x2B),
+                    RGBColor(0x8E, 0x44, 0xAD), RGBColor(0x27, 0xAE, 0x60), RGBColor(0xD3, 0x54, 0x00),
+                    RGBColor(0x5D, 0x6D, 0x7E), RGBColor(0x00, 0xA8, 0xCC), RGBColor(0xF3, 0x9C, 0x12),
+                    RGBColor(0x7D, 0x35, 0x91), RGBColor(0xB0, 0x3A, 0x2E),
                 ]
                 plot_pie = chart_pie.plots[0]
                 try:
@@ -2530,24 +2534,45 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     pt_pie.format.fill.solid()
                     pt_pie.format.fill.fore_color.rgb = PIE_PALETTE[i_pie % len(PIE_PALETTE)]
                     pt_pie.format.line.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-                    pt_pie.format.line.width = Pt(1.5)
+                    pt_pie.format.line.width = Pt(1.25)
                 plot_pie.has_data_labels = True
                 dls_pie = plot_pie.data_labels
                 dls_pie.number_format = "0"; dls_pie.number_format_is_linked = False
                 dls_pie.show_value = True; dls_pie.show_category_name = True; dls_pie.show_percentage = False
                 dls_pie.font.size = Pt(6.5); dls_pie.font.bold = True; dls_pie.font.color.rgb = TEXT_DARK; dls_pie.font.name = "Calibri"
                 try:
-                    dls_pie.position = XL_LABEL_POSITION.BEST_FIT  # PowerPoint otomatis atur posisi (dalam/luar slice + garis penunjuk) spy tdk tumpang tindih
-                except Exception:
-                    pass
-                try:
                     dls_pie.separator = "\n"
                 except Exception:
                     pass
-                chart_pie.has_legend = False
-                # Lubang tengah sudah sangat kecil (10%) -- teks total dipindah ke keterangan BAWAH chart
-                # (bukan lagi di tengah donut) spy tdk terpotong/tumpang tindih dgn slice.
-                add_textbox(slide, pie_x_left, chart_top_x + chart_h_x - 0.02, pie_w_x, 0.2, f"Total {total_unit_pop} unit \u2014 Data bulan {last_month_pop}", size=7.5, bold=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+                try:
+                    dls_pie.position = XL_LABEL_POSITION.OUTSIDE_END  # SEMUA label dipaksa di LUAR slice (tdk ada yg di dalam, beda dgn BEST_FIT yg bisa taruh sebagian di dalam)
+                except Exception:
+                    pass
+                chart_pie.has_legend = False  # tdk pakai legend terpisah -- nama sdh ada langsung di label tiap slice (semua di luar)
+                # holeSize DISISIPKAN PALING TERAKHIR (setelah dLbls/data label selesai dikonfigurasi) --
+                # urutan elemen di skema OOXML utk doughnutChart: varyColors, ser, dLbls, firstSliceAng,
+                # holeSize, extLst. Kalau holeSize disisipkan SEBELUM dLbls dibuat, urutannya jadi salah &
+                # sejumlah renderer (mis. LibreOffice) akan MENGABAIKAN nilai holeSize meski tetap tersimpan valid di XML.
+                try:
+                    from pptx.oxml.ns import qn as _qn_pie
+                    _doughnut_elem = chart_pie._chartSpace.find('.//' + _qn_pie('c:doughnutChart'))
+                    if _doughnut_elem is not None:
+                        _hole_elem = _doughnut_elem.find(_qn_pie('c:holeSize'))
+                        if _hole_elem is None:
+                            _hole_elem = _doughnut_elem.makeelement(_qn_pie('c:holeSize'), {})
+                            _doughnut_elem.append(_hole_elem)
+                        else:
+                            _doughnut_elem.remove(_hole_elem)
+                            _doughnut_elem.append(_hole_elem)  # pindahkan ke posisi PALING AKHIR
+                        _hole_elem.set('val', '5')
+                except Exception:
+                    pass
+                # Tulisan "Total Unit" + angkanya diletakkan di TENGAH lubang donut.
+                pie_center_x = pie_x_left + pie_w_x / 2
+                pie_center_y = chart_top_x + pie_h_avail / 2
+                hole_txt_w = pie_w_x * 0.05  # disesuaikan dgn lubang (holeSize 5%)
+                add_textbox(slide, pie_center_x - hole_txt_w / 2, pie_center_y - 0.08, hole_txt_w, 0.12, f"{total_unit_pop}", size=7, bold=True, color=TEXT_DARK, align=PP_ALIGN.CENTER)
+                add_textbox(slide, pie_center_x - hole_txt_w / 2, pie_center_y + 0.03, hole_txt_w, 0.08, "Unit", size=3.5, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
             else:
                 add_textbox(slide, pie_x_left, chart_top_x + 0.3, pie_w_x, 0.4, "Data populasi tidak tersedia.", size=8, italic=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
 
@@ -2591,13 +2616,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 penyebab_txt = "Meski capaian prestasi sudah tercapai, gap pendapatan tetap terjadi — kemungkinan disebabkan faktor lain (tarif/rate, harga jual, atau komposisi pekerjaan)."
             else:
                 penyebab_txt = "Data capaian prestasi unit ini belum tersedia untuk analisis lebih lanjut."
-            add_finding_box(s, 0.6, note_top_au, 12.2, note_h_au, "⚠",
+            add_finding_box(s, 0.6, note_top_au, 7.85, note_h_au, "⚠",
                              f"{wg['label']} adalah unit dengan GAP PENDAPATAN MINUS PALING TINGGI ({fmt_rp(wg['gap'])}) — "
                              f"Realisasi {fmt_rp(wg['pend_r'])} vs Budget {fmt_rp(wg['pend_b'])}, dengan Capaian Prestasi {prestasi_txt}. "
                              f"{penyebab_txt}",
                              RED_BG, RED, RED)
         else:
-            add_finding_box(s, 0.6, note_top_au, 12.2, note_h_au, "✅",
+            add_finding_box(s, 0.6, note_top_au, 7.85, note_h_au, "✅",
                              "Tidak ada unit dengan gap pendapatan minus — seluruh unit mencapai/melebihi target pendapatan.",
                              GREEN_BG, GREEN, GREEN)
 
