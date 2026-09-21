@@ -2404,7 +2404,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # panel kanan DIPERLEBAR (lebih besar dr panel kiri secara proporsi) & TINGGINYA diperpanjang
             # sampai ke panel_bottom (turun sampai sejajar bawah kotak analisa), krn kotak analisa "Gap
             # Pendapatan" di bawah sekarang dipersempit hanya selebar panel kiri saja.
-            bar_panel_w = 9.3  # diperbesar (dari 8.0) -- chart Capaian Prestasi jd lbh lega, panel Populasi Unit dikecilkan (bar chart ttp terbaca meski sempit)
+            bar_panel_w = 9.3  # dikembalikan ke ukuran semula (sblm eksperimen pie chart)
             gap_panel = 0.25
             pie_panel_x = 0.45 + bar_panel_w + gap_panel
             pie_panel_w = 12.35 - bar_panel_w - gap_panel
@@ -2517,7 +2517,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     row_y_bl = chart_top_x + i_bl * row_h_bullet
                     bar_h_bl = row_h_bullet * 0.42  # bar bullet TIPIS (khas bullet chart), bukan setebal bar biasa
                     bar_y_bl = row_y_bl + (row_h_bullet - bar_h_bl) / 2
-                    # Label kategori (kiri)
+                    # Label kategori (kiri, rata kiri)
                     _tb_lbl_bl = slide.shapes.add_textbox(Inches(pie_x_left), Inches(row_y_bl), Inches(label_w_bullet - 0.05), Inches(row_h_bullet))
                     _tf_lbl_bl = _tb_lbl_bl.text_frame; _tf_lbl_bl.word_wrap = False; _tf_lbl_bl.vertical_anchor = MSO_ANCHOR.MIDDLE
                     _tf_lbl_bl.margin_left = 0; _tf_lbl_bl.margin_right = 0; _tf_lbl_bl.margin_top = 0; _tf_lbl_bl.margin_bottom = 0
@@ -2841,7 +2841,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             if not devs:
                 return "-"
             nama, cap_val, _ = max(devs, key=lambda x: x[2])
-            arah = "Naik" if cap_val > 100 else "Turun"
+            # "Naik/Turun" di sini artinya arah DAMPAK KE BIAYA (naik = biaya makin mahal), BUKAN sekadar
+            # apakah rasionya >100% atau <100% -- utk "Konsumsi BBM" pd kategori TR (rasio KM/Ltr, makin
+            # BESAR = makin IRIT/efisien = biaya justru TURUN), arahnya harus DIBALIK dibanding AB (rasio
+            # Ltr/HM, makin besar = makin BOROS = biaya NAIK). Tanpa pembalikan ini, TR yg justru irit BBM
+            # (cap>100%) akan salah dilabeli "Konsumsi BBM Naik" seolah jadi penyebab kenaikan biaya.
+            if nama == "Konsumsi BBM" and row["kategori"] == "TR":
+                arah = "Turun" if cap_val > 100 else "Naik"
+            else:
+                arah = "Naik" if cap_val > 100 else "Turun"
             return f"{nama} {arah}"
 
         maint_su3["penyebab"] = maint_su3.apply(_penyebab_dominan3, axis=1)
