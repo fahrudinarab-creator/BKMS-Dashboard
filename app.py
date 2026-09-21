@@ -2482,6 +2482,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             pop_rows = []
             if last_month_pop and "kelompok_unit" in data.columns:
                 data_pop = data[data["bulan"] == last_month_pop].copy()
+                # Hanya unit berkriteria "Floating Tarif" yg dihitung (Tarif Tetap dikecualikan) -- konsisten
+                # dgn metodologi metrik lain (Utilisasi/Availability/Downtime) di dashboard ini yg jg
+                # mengecualikan Tarif Tetap.
+                if "kriteria_unit" in data_pop.columns:
+                    data_pop = data_pop[data_pop["kriteria_unit"] == "Floating Tarif"]
                 has_real_pop = (data_pop["prestasi_realisasi"].fillna(0) > 0) | (data_pop["pendapatan_realisasi"].fillna(0) > 0) | (data_pop["total_biaya_realisasi"].fillna(0) > 0)
                 data_pop = data_pop[has_real_pop].dropna(subset=["kelompok_unit"])
                 if not data_pop.empty:
@@ -2502,44 +2507,82 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             _header_bar_pop = add_panel_header(slide, pie_panel_x, top, pie_panel_w, f"\U0001F4CA Populasi Unit \u00b7 {_total_pop_header}", height=0.34)
             _header_bar_pop.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
             if pop_rows:
-                pop_rows_final = sorted(pop_rows, key=lambda x: x[1], reverse=True)  # descending (bullet chart: terbesar di ATAS)
+                pop_rows_final = sorted(pop_rows, key=lambda x: x[1], reverse=True)
                 total_unit_pop = sum(n for _, n in pop_rows_final)
-                bar_h_avail = pie_panel_h - 0.5
-                n_bullet = len(pop_rows_final)
-                row_h_bullet = bar_h_avail / n_bullet
-                max_val_bullet = max(n for _, n in pop_rows_final) if pop_rows_final else 1
-                label_w_bullet = pie_w_x * 0.42   # lebar kolom label kategori (kiri)
-                track_x_bullet = pie_x_left + label_w_bullet
-                track_w_bullet = pie_w_x - label_w_bullet - 0.35  # sisakan ruang kanan utk angka
-                BULLET_COLOR = RGBColor(0x0D, 0x94, 0x88)
-                BULLET_TRACK_BG = RGBColor(0xE9, 0xEC, 0xEF)
-                for i_bl, (lbl_bl, val_bl) in enumerate(pop_rows_final):
-                    row_y_bl = chart_top_x + i_bl * row_h_bullet
-                    bar_h_bl = row_h_bullet * 0.42  # bar bullet TIPIS (khas bullet chart), bukan setebal bar biasa
-                    bar_y_bl = row_y_bl + (row_h_bullet - bar_h_bl) / 2
-                    # Label kategori (kiri, rata kiri)
-                    _tb_lbl_bl = slide.shapes.add_textbox(Inches(pie_x_left), Inches(row_y_bl), Inches(label_w_bullet - 0.05), Inches(row_h_bullet))
-                    _tf_lbl_bl = _tb_lbl_bl.text_frame; _tf_lbl_bl.word_wrap = False; _tf_lbl_bl.vertical_anchor = MSO_ANCHOR.MIDDLE
-                    _tf_lbl_bl.margin_left = 0; _tf_lbl_bl.margin_right = 0; _tf_lbl_bl.margin_top = 0; _tf_lbl_bl.margin_bottom = 0
-                    _p_lbl_bl = _tf_lbl_bl.paragraphs[0]; _p_lbl_bl.alignment = PP_ALIGN.LEFT
-                    _r_lbl_bl = _p_lbl_bl.add_run(); _r_lbl_bl.text = lbl_bl
-                    _r_lbl_bl.font.size = Pt(6); _r_lbl_bl.font.bold = False; _r_lbl_bl.font.color.rgb = TEXT_DARK; _r_lbl_bl.font.name = "Calibri"
-                    # Track/skala latar belakang (abu muda, mewakili "rentang penuh" khas bullet chart)
-                    _track_bl = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(track_x_bullet), Inches(bar_y_bl), Inches(track_w_bullet), Inches(bar_h_bl))
-                    _track_bl.fill.solid(); _track_bl.fill.fore_color.rgb = BULLET_TRACK_BG
-                    _track_bl.line.fill.background(); _track_bl.shadow.inherit = False
-                    # Bar bullet (nilai aktual, proporsional thd nilai terbesar)
-                    bar_w_bl = track_w_bullet * (val_bl / max_val_bullet) if max_val_bullet else 0
-                    _bar_bl = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(track_x_bullet), Inches(bar_y_bl), Inches(max(bar_w_bl, 0.02)), Inches(bar_h_bl))
-                    _bar_bl.fill.solid(); _bar_bl.fill.fore_color.rgb = BULLET_COLOR
-                    _bar_bl.line.fill.background(); _bar_bl.shadow.inherit = False
-                    # Angka nilai (kanan, setelah track)
-                    _tb_val_bl = slide.shapes.add_textbox(Inches(track_x_bullet + track_w_bullet + 0.04), Inches(row_y_bl), Inches(0.3), Inches(row_h_bullet))
-                    _tf_val_bl = _tb_val_bl.text_frame; _tf_val_bl.word_wrap = False; _tf_val_bl.vertical_anchor = MSO_ANCHOR.MIDDLE
-                    _tf_val_bl.margin_left = 0; _tf_val_bl.margin_right = 0; _tf_val_bl.margin_top = 0; _tf_val_bl.margin_bottom = 0
-                    _p_val_bl = _tf_val_bl.paragraphs[0]; _p_val_bl.alignment = PP_ALIGN.LEFT
-                    _r_val_bl = _p_val_bl.add_run(); _r_val_bl.text = str(val_bl)
-                    _r_val_bl.font.size = Pt(6.5); _r_val_bl.font.bold = True; _r_val_bl.font.color.rgb = BULLET_COLOR; _r_val_bl.font.name = "Calibri"
+                cd_pie = CategoryChartData()
+                cd_pie.categories = [lbl for lbl, _ in pop_rows_final]
+                cd_pie.add_series("Populasi Unit", tuple(n for _, n in pop_rows_final))
+                pie_h_avail = pie_panel_h - 0.5
+                # Tanpa legend -- pie memakai SELURUH tinggi & lebar yg tersedia (dibatasi sisi terpendek
+                # spy tetap berbentuk lingkaran proporsional, bukan oval).
+                _inset_pie2 = 0.99
+                _pf_w2 = min(pie_w_x, pie_h_avail) * _inset_pie2
+                _pf_h2 = _pf_w2
+                _pf_x2 = pie_x_left + (pie_w_x - _pf_w2) / 2
+                _pf_y2 = chart_top_x + (pie_h_avail - _pf_h2) / 2
+                gframe_pie = slide.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(_pf_x2), Inches(_pf_y2), Inches(_pf_w2), Inches(_pf_h2), cd_pie)
+                chart_pie = gframe_pie.chart
+                chart_pie.has_title = False
+                PIE_PALETTE = [
+                    RGBColor(0x2E, 0x6D, 0xB4), RGBColor(0xE8, 0xA0, 0x0B), RGBColor(0x1A, 0xBC, 0x9C),
+                    RGBColor(0xE7, 0x4C, 0x3C), RGBColor(0x9B, 0x59, 0xB6), RGBColor(0x2E, 0xCC, 0x71),
+                    RGBColor(0xE6, 0x7E, 0x22), RGBColor(0x9C, 0xA3, 0xAF), RGBColor(0x34, 0x98, 0xDB),
+                    RGBColor(0xF1, 0xC4, 0x0F), RGBColor(0x16, 0xA0, 0x85), RGBColor(0xC0, 0x39, 0x2B),
+                    RGBColor(0x8E, 0x44, 0xAD), RGBColor(0x27, 0xAE, 0x60), RGBColor(0xD3, 0x54, 0x00),
+                    RGBColor(0x5D, 0x6D, 0x7E), RGBColor(0x00, 0xA8, 0xCC), RGBColor(0xF3, 0x9C, 0x12),
+                    RGBColor(0x7D, 0x35, 0x91), RGBColor(0xB0, 0x3A, 0x2E),
+                ]
+                plot_pie = chart_pie.plots[0]
+                try:
+                    plot_pie.vary_by_categories = True
+                except Exception:
+                    pass
+                for i_pie, pt_pie in enumerate(plot_pie.series[0].points):
+                    pt_pie.format.fill.solid()
+                    pt_pie.format.fill.fore_color.rgb = PIE_PALETTE[i_pie % len(PIE_PALETTE)]
+                    pt_pie.format.line.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                    pt_pie.format.line.width = Pt(1.25)
+                plot_pie.has_data_labels = False
+                chart_pie.has_legend = False
+
+                # --- Label kustom HYBRID: slice BESAR label di DALAM (tengah), slice KECIL di DALAM dekat
+                # tepi & dirotasi radial mengikuti sudutnya. ---
+                import math as _math_pie
+                _pie_cx = _pf_x2 + _pf_w2 / 2
+                _pie_cy = _pf_y2 + _pf_h2 / 2
+                _pie_r = min(_pf_w2, _pf_h2) / 2
+                _label_r_in = _pie_r * 0.62
+                _AMBANG_DALAM = 0.08
+                _cum_val = 0
+                for _lbl_r, _val_r in pop_rows_final:
+                    _frac_r = _val_r / total_unit_pop
+                    _mid_frac = (_cum_val + _val_r / 2) / total_unit_pop
+                    _cum_val += _val_r
+                    _angle_deg = _mid_frac * 360 - 90
+                    _angle_rad = _math_pie.radians(_angle_deg)
+                    if _frac_r >= _AMBANG_DALAM:
+                        _lx = _pie_cx + _label_r_in * _math_pie.cos(_angle_rad)
+                        _ly = _pie_cy + _label_r_in * _math_pie.sin(_angle_rad)
+                        _lbl_w_r = 1.1; _lbl_h_r = 0.28
+                        _tb_r = slide.shapes.add_textbox(Inches(_lx - _lbl_w_r / 2), Inches(_ly - _lbl_h_r / 2), Inches(_lbl_w_r), Inches(_lbl_h_r))
+                        _tf_r = _tb_r.text_frame; _tf_r.word_wrap = True
+                        _tf_r.margin_left = 0; _tf_r.margin_right = 0; _tf_r.margin_top = 0; _tf_r.margin_bottom = 0
+                        _p_r = _tf_r.paragraphs[0]; _p_r.alignment = PP_ALIGN.CENTER
+                        _r_r = _p_r.add_run(); _r_r.text = f"{_lbl_r}\n{_val_r}"
+                        _r_r.font.size = Pt(6.5); _r_r.font.bold = True; _r_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF); _r_r.font.name = "Calibri"
+                    else:
+                        _label_r_edge = _pie_r * 0.85
+                        _lx = _pie_cx + _label_r_edge * _math_pie.cos(_angle_rad)
+                        _ly = _pie_cy + _label_r_edge * _math_pie.sin(_angle_rad)
+                        _lbl_w_r = 0.55; _lbl_h_r = 0.14
+                        _tb_r = slide.shapes.add_textbox(Inches(_lx - _lbl_w_r / 2), Inches(_ly - _lbl_h_r / 2), Inches(_lbl_w_r), Inches(_lbl_h_r))
+                        _tf_r = _tb_r.text_frame; _tf_r.word_wrap = False
+                        _tf_r.margin_left = 0; _tf_r.margin_right = 0; _tf_r.margin_top = 0; _tf_r.margin_bottom = 0
+                        _p_r = _tf_r.paragraphs[0]; _p_r.alignment = PP_ALIGN.CENTER
+                        _r_r = _p_r.add_run(); _r_r.text = str(_val_r)
+                        _r_r.font.size = Pt(6); _r_r.font.bold = True; _r_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF); _r_r.font.name = "Calibri"
+                        _rot = _angle_deg if -90 <= _angle_deg <= 90 else _angle_deg + 180
+                        _tb_r.rotation = _rot
             else:
                 add_textbox(slide, pie_x_left, chart_top_x + 0.3, pie_w_x, 0.4, "Data populasi tidak tersedia.", size=8, italic=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
 
