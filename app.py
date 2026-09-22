@@ -2900,16 +2900,22 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         def _bbm_cap3(row):
             if row["kategori"] == "AB":
-                # Alat Berat: konsumsi Ltr/HM
+                # Alat Berat: konsumsi Ltr/HM -- makin besar realisasi (makin boros) -> makin besar % (>100=boros, konsisten)
                 rate_r = (row["qty_r"] / row["prestasi_r"]) if row["prestasi_r"] else None
                 rate_b = (row["qty_b"] / row["prestasi_b"]) if row["prestasi_b"] else None
+                if rate_r is None or not rate_b:
+                    return None
+                return rate_r / rate_b * 100
             else:
-                # Transportasi: konsumsi KM/Ltr
+                # Transportasi: konsumsi KM/Ltr -- rumus DIBALIK (target/realisasi, bukan realisasi/target) spy
+                # makin IRIT (KM/Ltr realisasi lbh tinggi dr target) justru menghasilkan persentase LEBIH KECIL
+                # (<100%), konsisten dgn konvensi "di bawah 100% = bagus/hemat" yg dipakai metrik biaya lainnya
+                # di dashboard ini -- supaya tdk terbaca seolah "over" padahal sebenarnya lebih hemat.
                 rate_r = (row["prestasi_r"] / row["qty_r"]) if row["qty_r"] else None
                 rate_b = (row["prestasi_b"] / row["qty_b"]) if row["qty_b"] else None
-            if rate_r is None or not rate_b:
-                return None
-            return rate_r / rate_b * 100
+                if not rate_r or rate_b is None:
+                    return None
+                return rate_b / rate_r * 100
 
         maint_su3["cap"] = maint_su3.apply(_bbm_cap3, axis=1)
         maint_su3 = maint_su3.dropna(subset=["cap"])
@@ -2938,15 +2944,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             if not devs:
                 return "-"
             nama, cap_val, _ = max(devs, key=lambda x: x[2])
-            # "Naik/Turun" di sini artinya arah DAMPAK KE BIAYA (naik = biaya makin mahal), BUKAN sekadar
-            # apakah rasionya >100% atau <100% -- utk "Konsumsi BBM" pd kategori TR (rasio KM/Ltr, makin
-            # BESAR = makin IRIT/efisien = biaya justru TURUN), arahnya harus DIBALIK dibanding AB (rasio
-            # Ltr/HM, makin besar = makin BOROS = biaya NAIK). Tanpa pembalikan ini, TR yg justru irit BBM
-            # (cap>100%) akan salah dilabeli "Konsumsi BBM Naik" seolah jadi penyebab kenaikan biaya.
-            if nama == "Konsumsi BBM" and row["kategori"] == "TR":
-                arah = "Turun" if cap_val > 100 else "Naik"
-            else:
-                arah = "Naik" if cap_val > 100 else "Turun"
+            # Rumus "cap" utk Konsumsi BBM (fungsi _bbm_cap3) SUDAH disesuaikan per kategori (TR dibalik jadi
+            # target/realisasi, AB tetap realisasi/target) shg >100% SELALU berarti "memperberat/menaikkan
+            # biaya" utk KETIGA metrik (Prestasi, Konsumsi, Harga) -- tdk perlu lagi pengecualian arah khusus
+            # kategori di sini spt sebelumnya.
+            arah = "Naik" if cap_val > 100 else "Turun"
             return f"{nama} {arah}"
 
         maint_su3["penyebab"] = maint_su3.apply(_penyebab_dominan3, axis=1)
