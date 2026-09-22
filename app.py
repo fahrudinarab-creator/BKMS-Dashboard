@@ -2555,6 +2555,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 add_textbox(slide, pie_x_left, chart_top_x + 0.3, pie_w_x, 0.4, "Data populasi tidak tersedia.", size=8, italic=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
 
 
+
         # --- Chart Floating Tarif saja (Tarif Tetap dihilangkan krn tidak ada tracking Utilisasi/Availability yg berarti) ---
         panel_top = mini_y + mini_h + 0.15
         panel_bottom = 7.3
