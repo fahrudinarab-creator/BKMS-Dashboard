@@ -3045,8 +3045,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         n_maint4_total = len(maint_su4)
         n_maint4 = max(len(maint_su4), 1)
 
-        add_card_panel(s, 0.4, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 0.4, panel_top4, 6.05, "\U0001F527 Gap Biaya Maintenance \u2014 per Site & Kelompok Unit", height=0.4)
+        add_card_panel(s, 0.4, panel_top4, 7.5, panel_h4)  # diperlebar dari 6.05 -- chart Gap Biaya Maintenance lbh lega
+        add_panel_header(s, 0.4, panel_top4, 7.5, "\U0001F527 Gap Biaya Maintenance \u2014 per Site & Kelompok Unit", height=0.4)
         chart_top_r4 = panel_top4 + 0.45
         note_h4 = 0.95
         chart_h_r4 = panel_h4 - 0.45 - note_h4 - 0.25
@@ -3054,7 +3054,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # --- Bar digambar manual (bukan native chart) -- rotasi label data-label native chart
             # terbukti tidak konsisten di PowerPoint, sedangkan rotasi shape textbox biasa jauh lebih reliable ---
             plot_left4 = 0.85
-            plot_right4 = 6.2
+            plot_right4 = 7.6  # diperlebar mengikuti panel kiri yg skrg 7.5" (dari 6.2)
             has_under4 = (maint_su4["gap_rp"] < 0).any()
             plot_top4b = chart_top_r4 + 0.85  # sisakan ruang di atas utk label nilai (over budget) yg diputar vertikal
             # Margin bawah diperbesar signifikan supaya ada RUANG CUKUP di antara plot & kotak analisa di bawahnya
@@ -3155,8 +3155,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
         # ================= PANEL KANAN: Rekap Maintenance Rutin vs Non-Rutin per Site & Kelompok Unit =================
-        add_card_panel(s, 6.85, panel_top4, 6.05, panel_h4)
-        add_panel_header(s, 6.85, panel_top4, 6.05, "\U0001F527 Rekap Maintenance Rutin vs Non-Rutin \u2014 per Site & Kelompok Unit", height=0.4)
+        add_card_panel(s, 8.3, panel_top4, 4.6, panel_h4)  # dipindah & dipersempit (dari x=6.85 lebar 6.05) -- ruang dialihkan ke panel Gap Biaya Maintenance
+        add_panel_header(s, 8.3, panel_top4, 4.6, "\U0001F527 Rutin vs Non-Rutin \u2014 per Site & Kelompok Unit", height=0.4)
         chart_top_m4 = panel_top4 + 0.45
         chart_h_m4 = panel_h4 - 0.45 - note_h4 - 0.25
         rutin_pivot4 = pd.DataFrame()
@@ -3221,12 +3221,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             n_rows4 = len(rutin_shown4)
             # --- Bar digambar manual (bukan native chart PowerPoint) -- supaya posisi badge Cap. Downtime
             # bisa dihitung PERSIS sejajar dgn tiap baris, tidak bergantung pd estimasi tinggi legend/plot area chart ---
-            label_x4 = 6.85 + 0.15
-            label_w4 = 1.55
-            bar_x4 = label_x4 + label_w4 + 0.08
-            bar_max_w4 = 2.55
-            dt_x4 = bar_x4 + bar_max_w4 + 0.15
-            dt_w4 = (6.85 + 6.05 - 0.15) - dt_x4
+            label_x4 = 8.3 + 0.15
+            label_w4 = 1.15  # dipersempit (dari 1.55) mengikuti panel yg skrg lbh sempit
+            bar_x4 = label_x4 + label_w4 + 0.06
+            bar_max_w4 = 1.55  # dipersempit (dari 2.55)
+            dt_x4 = bar_x4 + bar_max_w4 + 0.1
+            dt_w4 = (8.3 + 4.6 - 0.15) - dt_x4
 
             legend_h_m4 = 0.28
             leg_y4 = chart_top_m4
