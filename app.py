@@ -3025,7 +3025,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # ================= PANEL KIRI: % Capaian Biaya Maintenance per Site & Kelompok Unit =================
         maint_su4 = data.groupby(["lokasi", "kelompok_unit"], as_index=False).agg(
             maint_r=("maintenance_realisasi", "sum"), maint_b=("maintenance_budget", "sum")) if "kelompok_unit" in data.columns else pd.DataFrame(columns=["lokasi","kelompok_unit","maint_r","maint_b"])
-        maint_su4 = maint_su4[maint_su4["maint_b"] > 0].copy()
+        # Filter diperluas: unit dgn REALISASI maintenance (biaya sungguhan keluar) TETAP ditampilkan meski
+        # budget-nya 0 -- sebelumnya filter cuma "maint_b > 0" bikin unit yg ada pengeluaran nyata tp tanpa
+        # alokasi budget (mis. S.DANAU -- Pick Up Double Cabin) HILANG dari chart ini, padahal muncul di
+        # chart "Rutin vs Non-Rutin" sebelahnya (yg berbasis catatan transaksi, bkn budget) -- inkonsisten.
+        maint_su4 = maint_su4[(maint_su4["maint_b"] > 0) | (maint_su4["maint_r"] > 0)].copy()
         maint_su4["site_short"] = maint_su4["lokasi"].map(SITE_ABBR).fillna(maint_su4["lokasi"])
         KELOMPOK_ABBR = {
             "TANGKI SERIES 300": "TANGKI 300", "TANGKI SERIES 500": "TANGKI 500",
@@ -3039,7 +3043,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         }
         maint_su4["kelompok_short"] = maint_su4["kelompok_unit"].map(KELOMPOK_ABBR).fillna(maint_su4["kelompok_unit"])
         maint_su4["label"] = maint_su4["site_short"] + " \u2014 " + maint_su4["kelompok_short"]
-        maint_su4["cap"] = maint_su4["maint_r"] / maint_su4["maint_b"] * 100
+        # "cap" (persentase capaian) tdk terdefinisi kalau budget=0 (pembagian dgn nol) -- diberi None,
+        # bukan crash/infinity; unit spt ini tetap tampil di chart (via gap_rp), cuma teks %-nya "N/A".
+        maint_su4["cap"] = maint_su4.apply(lambda r: (r["maint_r"] / r["maint_b"] * 100) if r["maint_b"] else None, axis=1)
         maint_su4["gap_rp"] = maint_su4["maint_r"] - maint_su4["maint_b"]
         # Diurutkan berdasarkan KELOMPOK UNIT dulu, baru SITE -- spy site dgn kelompok unit yg sama berdampingan
         maint_su4 = maint_su4.sort_values(["kelompok_unit", "lokasi"])
@@ -3127,7 +3133,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 bar4.line.fill.background(); bar4.shadow.inherit = False
                 # Label nilai (SELALU diputar vertikal via shape.rotation -- properti standar PowerPoint, reliable di semua aplikasi)
                 gap_sign4 = "+" if is_over4 else "-"
-                lbl_txt4 = f"{gap_sign4}{fmt_rp(abs(gap_val4))} ({v4:.0f}%)"
+                lbl_txt4 = f"{gap_sign4}{fmt_rp(abs(gap_val4))} ({v4:.0f}%)" if pd.notna(v4) else f"{gap_sign4}{fmt_rp(abs(gap_val4))}"
                 lbl_w4 = 1.1
                 lbl_h4 = 0.2
                 # Posisi label: di ATAS bar kalau over budget, di BAWAH bar kalau under budget
@@ -3299,11 +3305,11 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         insight_top4 = panel_top4 + panel_h4 - note_h4
         if not maint_su4_full.empty and not rutin_pivot4.empty:
             merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "kelompok_unit", "pct_nonrutin"]], on=["lokasi", "kelompok_unit"], how="inner")
-            over_budget4 = merge4[merge4["cap"] > 100]
+            over_budget4 = merge4[merge4["cap"].notna() & (merge4["cap"] > 100)]  # exclude cap=None (unit tanpa budget) dari analisa over-budget ini
             if not over_budget4.empty:
                 worst4 = over_budget4.sort_values("gap_rp", ascending=False).iloc[0]
                 avg_nonrutin_over4 = over_budget4["pct_nonrutin"].mean()
-                under_budget4 = merge4[merge4["cap"] <= 100]
+                under_budget4 = merge4[merge4["cap"].notna() & (merge4["cap"] <= 100)]
                 avg_nonrutin_under4 = under_budget4["pct_nonrutin"].mean() if not under_budget4.empty else None
                 if avg_nonrutin_under4 is not None and avg_nonrutin_over4 > avg_nonrutin_under4:
                     banding_txt4 = (f"Rata-rata porsi Non-Rutin pada unit yang OVER BUDGET ({avg_nonrutin_over4:.0f}%) lebih tinggi dibanding "
