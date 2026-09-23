@@ -1500,9 +1500,11 @@ with st.sidebar:
     if uploaded_realisasi is not None:
         try:
             df_raw, n_upd, n_unmatch = load_from_upload_realisasi(uploaded_realisasi, df_raw)
-            st.success(f"Realisasi ter-update untuk {n_upd:,} baris (id_unit + bulan cocok).")
+            st.success(f"Realisasi ter-update untuk {n_upd:,} baris (id_unit + bulan cocok dgn data existing).")
             if n_unmatch:
-                st.warning(f"{n_unmatch:,} baris di file upload tidak ditemukan pasangannya (id_unit/bulan) di data existing, dilewati.")
+                st.warning(f"⚠️ {n_unmatch:,} baris berisi UNIT BARU (id_unit/bulan belum ada di data existing) — "
+                           f"unit ini TETAP DITAMBAHKAN sbg baris baru (Realisasi tersimpan, Budget diisi 0 sbg placeholder "
+                           f"krn belum ada rencana budget-nya). Silakan cek & lengkapi Budget-nya kalau perlu.")
         except Exception as e:
             st.error(f"Gagal membaca file Realisasi: {e}")
 
