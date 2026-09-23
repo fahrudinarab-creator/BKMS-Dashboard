@@ -1580,9 +1580,6 @@ with st.sidebar:
     if not df_raw.empty or not maint_raw.empty or not sparepart_raw.empty or not mttr_raw.empty:
         st.markdown("---")
         st.markdown("**💾 Simpan Perubahan Secara Permanen**")
-        st.caption("Data yang diupload di atas HANYA tersimpan sementara di sesi ini — akan HILANG saat aplikasi "
-                   "di-reboot. Download file yang relevan di bawah ini, lalu REPLACE file lama yang senama di "
-                   "GitHub dengan file ini (commit), supaya perubahannya permanen.")
         if not df_raw.empty:
             st.download_button(
                 "⬇️ Download data_bkms.csv (Realisasi & Budget terbaru)",
