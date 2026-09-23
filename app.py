@@ -1520,10 +1520,6 @@ with st.sidebar:
         if total_upd or total_unmatch:
             st.success(f"Realisasi ter-update untuk {total_upd:,} baris dari {len(uploaded_realisasi_list) - len(gagal)} file "
                        f"(id_unit + bulan cocok dgn data existing).")
-        if total_unmatch:
-            st.warning(f"⚠️ {total_unmatch:,} baris berisi UNIT BARU (id_unit/bulan belum ada di data existing) — "
-                       f"unit ini TETAP DITAMBAHKAN sbg baris baru (Realisasi tersimpan, Budget diisi 0 sbg placeholder "
-                       f"krn belum ada rencana budget-nya). Silakan cek & lengkapi Budget-nya kalau perlu.")
         if gagal:
             st.error("Gagal membaca sebagian file Realisasi:\n" + "\n".join(f"- {g}" for g in gagal))
 
@@ -1544,7 +1540,7 @@ with st.sidebar:
             st.error(f"Gagal membaca file sparepart: {e}")
 
     uploaded_workshop = st.file_uploader(
-        "Upload Data MTTR (jurnal harian Workshop) \u2014 bisa pilih beberapa file sekaligus",
+        "Upload Data MTTR",
         type=["xls", "xlsx"], accept_multiple_files=True)
     if uploaded_workshop:
         try:
@@ -1577,6 +1573,40 @@ with st.sidebar:
             if _n_filtered > 0:
                 df_raw = df_raw[~_is_empty_unit].copy()
                 st.caption(f"ℹ️ {_n_filtered} baris disaring otomatis (Realisasi & Budget sama-sama kosong).")
+
+    # --- Tombol simpan PERMANEN: download versi TERBARU dari SEMUA data (data_bkms, maintenance, sparepart,
+    # MTTR) yg sudah menggabung upload sesi ini -- supaya perubahan upload TIDAK HILANG saat reboot. User
+    # tinggal replace file lama yg sesuai di GitHub dgn file hasil download ini, lalu commit -- jd permanen. ---
+    if not df_raw.empty or not maint_raw.empty or not sparepart_raw.empty or not mttr_raw.empty:
+        st.markdown("---")
+        st.markdown("**💾 Simpan Perubahan Secara Permanen**")
+        st.caption("Data yang diupload di atas HANYA tersimpan sementara di sesi ini — akan HILANG saat aplikasi "
+                   "di-reboot. Download file yang relevan di bawah ini, lalu REPLACE file lama yang senama di "
+                   "GitHub dengan file ini (commit), supaya perubahannya permanen.")
+        if not df_raw.empty:
+            st.download_button(
+                "⬇️ Download data_bkms.csv (Realisasi & Budget terbaru)",
+                df_raw.to_csv(index=False).encode("utf-8"), file_name="data_bkms.csv", mime="text/csv",
+                use_container_width=True,
+            )
+        if not maint_raw.empty:
+            st.download_button(
+                "⬇️ Download data_maintenance.csv (Biaya Maintenance terbaru)",
+                maint_raw.to_csv(index=False).encode("utf-8"), file_name="data_maintenance.csv", mime="text/csv",
+                use_container_width=True,
+            )
+        if not sparepart_raw.empty:
+            st.download_button(
+                "⬇️ Download data_sparepart.csv (Pemakaian Sparepart terbaru)",
+                sparepart_raw.to_csv(index=False).encode("utf-8"), file_name="data_sparepart.csv", mime="text/csv",
+                use_container_width=True,
+            )
+        if not mttr_raw.empty:
+            st.download_button(
+                "⬇️ Download data_mttr.csv (MTTR terbaru)",
+                mttr_raw.to_csv(index=False).encode("utf-8"), file_name="data_mttr.csv", mime="text/csv",
+                use_container_width=True,
+            )
 
     # Tambahkan kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' ke data maintenance & sparepart, dicocokkan lewat
     # nama_unit terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori/jenis unit. Hasilnya disimpan
