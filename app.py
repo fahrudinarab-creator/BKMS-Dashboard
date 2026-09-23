@@ -1419,6 +1419,26 @@ def load_workshop_mttr_files(uploaded_files, unit_lookup_df=None) -> pd.DataFram
     REPAIR_KEGIATAN = {"WS-PERBAIKAN UNIT", "WS-PERBAIKAN DAN MAINTENANCE UNIT"}
     MONTH_MAP_ID = {"Jan": "Jan", "Feb": "Feb", "Mar": "Mar", "Apr": "Apr", "May": "May", "Jun": "Jun",
                      "Jul": "Jul", "Aug": "Aug", "Sep": "Sep", "Oct": "Oct", "Nov": "Nov", "Dec": "Dec"}
+    # Fallback deteksi bulan dari NAMA FILE (dipakai kalau nama sheet TIDAK diawali nama bulan, mis. sheet
+    # bernama "Running Account Daily Journal" spt pd file export terbaru -- bulannya ada di nama file, bukan sheet).
+    # Dicek berdasarkan kata bhs Indonesia (Juli, Agustus, dst) MAUPUN singkatan bhs Inggris (Jul, Aug, dst).
+    MONTH_FILENAME_MAP = [
+        ("JANUARI", "Jan"), ("FEBRUARI", "Feb"), ("MARET", "Mar"), ("APRIL", "Apr"), ("MEI", "May"),
+        ("JUNI", "Jun"), ("JULI", "Jul"), ("AGUSTUS", "Aug"), ("AGT", "Aug"), ("SEPTEMBER", "Sep"),
+        ("OKTOBER", "Oct"), ("NOVEMBER", "Nov"), ("DESEMBER", "Dec"),
+        ("JAN", "Jan"), ("FEB", "Feb"), ("MAR", "Mar"), ("APR", "Apr"), ("JUN", "Jun"), ("JUL", "Jul"),
+        ("AUG", "Aug"), ("SEP", "Sep"), ("OCT", "Oct"), ("NOV", "Nov"), ("DEC", "Dec"),
+    ]
+
+    def _guess_bulan_from_filename(filename: str):
+        name_up = filename.upper()
+        # Batasi pencocokan HANYA pd kata yg benar2 berdiri sendiri (diapit non-huruf: _, spasi, angka, awal/akhir
+        # teks) -- spy tdk salah tangkap substring kebetulan spt "JUN" yg ada di dalam "TANJUNG".
+        for kata, bulan_kode in MONTH_FILENAME_MAP:
+            if _re.search(r'(?<![A-Z])' + kata + r'(?![A-Z])', name_up):
+                return bulan_kode
+        return None
+
     KODE_PATTERN = _re.compile(r'^(\d{2,3}-\d{2,3})')
 
     kode_lookup = None
@@ -1431,11 +1451,12 @@ def load_workshop_mttr_files(uploaded_files, unit_lookup_df=None) -> pd.DataFram
         site = _guess_site_from_filename(uf.name)
         if not site:
             continue
+        bulan_fallback = _guess_bulan_from_filename(uf.name)  # dipakai kalau nama sheet tdk mengandung nama bulan
         uf.seek(0)  # reset cursor -- Streamlit menjalankan ulang skrip tiap ada interaksi (mis. klik tombol),
                     # dan file yg sudah pernah dibaca sebelumnya cursor-nya bisa tertinggal di akhir file
         wb = _oxl.load_workbook(uf, read_only=True, data_only=True)
         for sheet_name in wb.sheetnames:
-            bulan = MONTH_MAP_ID.get(sheet_name.strip()[:3].title())
+            bulan = MONTH_MAP_ID.get(sheet_name.strip()[:3].title()) or bulan_fallback
             if not bulan:
                 continue
             ws = wb[sheet_name]
