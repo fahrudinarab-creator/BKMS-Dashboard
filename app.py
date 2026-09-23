@@ -397,6 +397,7 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
     # supaya realisasinya tetap tercatat (Budget & kolom lain yg blm diketahui diisi 0/NaN sbg placeholder) ---
     unmatched_keys = upload_idx.index.difference(result.index)
     n_unmatched = len(unmatched_keys)
+    new_rows_detail = pd.DataFrame()  # dikembalikan jg ke pemanggil, spy bisa DITAMPILKAN di layar (bukan cuma dihitung)
     if n_unmatched:
         budget_cols = ["prestasi_budget", "pendapatan_budget", "upah_budget", "qty_bbm_budget", "harga_bbm_budget",
                        "biaya_bbm_budget", "maintenance_budget", "penyusutan_budget", "lainnya_budget",
@@ -406,12 +407,13 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
             new_rows[col] = 0
         for col in ["nilai_asset", "kriteria_unit", "jenis_unit"]:  # kolom yg tdk ada di file upload realisasi
             new_rows[col] = None
+        new_rows_detail = new_rows[["id_unit", "nama_unit", "lokasi", "bulan", "kategori", "pendapatan_realisasi", "total_biaya_realisasi"]].copy()
         result = result.reset_index()
         result = pd.concat([result, new_rows], ignore_index=True, sort=False)
         result = result.set_index(["id_unit", "lokasi", "bulan_no"])
 
     result = result.reset_index()
-    return result, n_updated, n_unmatched
+    return result, n_updated, n_unmatched, new_rows_detail
 
 
 def load_from_upload_maintenance(uploaded_file) -> pd.DataFrame:
@@ -1503,11 +1505,14 @@ with st.sidebar:
     if uploaded_realisasi_list:
         total_upd, total_unmatch = 0, 0
         gagal = []
+        all_new_rows = []
         for uf_real in uploaded_realisasi_list:
             try:
-                df_raw, n_upd, n_unmatch = load_from_upload_realisasi(uf_real, df_raw)
+                df_raw, n_upd, n_unmatch, new_rows_detail = load_from_upload_realisasi(uf_real, df_raw)
                 total_upd += n_upd
                 total_unmatch += n_unmatch
+                if not new_rows_detail.empty:
+                    all_new_rows.append(new_rows_detail)
             except Exception as e:
                 gagal.append(f"{uf_real.name}: {e}")
         if total_upd or total_unmatch:
@@ -1517,6 +1522,13 @@ with st.sidebar:
             st.warning(f"⚠️ {total_unmatch:,} baris berisi UNIT BARU (id_unit/bulan belum ada di data existing) — "
                        f"unit ini TETAP DITAMBAHKAN sbg baris baru (Realisasi tersimpan, Budget diisi 0 sbg placeholder "
                        f"krn belum ada rencana budget-nya). Silakan cek & lengkapi Budget-nya kalau perlu.")
+            # Tampilkan LANGSUNG daftar unit barunya di layar (bukan cuma jumlahnya) -- spy bisa dicek scr
+            # visual tanpa harus buka Database Laporan terpisah.
+            with st.expander(f"📋 Lihat detail {total_unmatch:,} baris unit baru yang ditambahkan"):
+                df_new_rows = pd.concat(all_new_rows, ignore_index=True)
+                st.dataframe(df_new_rows, use_container_width=True, hide_index=True)
+                csv_new = df_new_rows.to_csv(index=False).encode("utf-8")
+                st.download_button("⬇️ Unduh daftar unit baru (CSV)", csv_new, file_name="unit_baru_realisasi.csv", mime="text/csv")
         if gagal:
             st.error("Gagal membaca sebagian file Realisasi:\n" + "\n".join(f"- {g}" for g in gagal))
 
