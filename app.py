@@ -1496,7 +1496,7 @@ with st.sidebar:
 
     # --- Upload Data Realisasi: MENGGABUNG (update) ke data yg sudah ada (id_unit + bulan) ---
     # supaya Budget yg sudah ada (sampai Des) tetap utuh, cuma kolom Realisasi yg diperbarui.
-    uploaded_realisasi = st.file_uploader("Upload Data Realisasi (format sama dgn template Budget)", type=["xlsx"])
+    uploaded_realisasi = st.file_uploader("Upload Data Realisasi (format sama dgn template Budget)", type=["xls", "xlsx"])
     if uploaded_realisasi is not None:
         try:
             df_raw, n_upd, n_unmatch = load_from_upload_realisasi(uploaded_realisasi, df_raw)
