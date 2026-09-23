@@ -355,6 +355,11 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
         if kode_unit.endswith(".0"):  # kalau ID Unit terbaca sbg angka float oleh pandas
             kode_unit = kode_unit[:-2]
         id_unit = kode_unit.replace("-", "")
+        # Normalisasi format kode_unit: SELALU pakai tanda "-" (3 digit pertama - 3 digit sisanya), tdk peduli
+        # apakah di file Excel aslinya sdh pakai strip atau tidak (mis. "331004" ditulis polos tanpa strip di
+        # source file) -- spy konsisten dgn format kode_unit yg sudah ada di data lain ("331-004").
+        if "-" not in kode_unit and kode_unit.isdigit() and len(kode_unit) >= 4:
+            kode_unit = kode_unit[:3] + "-" + kode_unit[3:]
         lokasi_cell = raw.iat[r, 14]
         lokasi_final = LOKASI_OVERRIDE.get(id_unit, str(lokasi_cell).strip().upper() if not pd.isna(lokasi_cell) else None)
         def _cell(col):
