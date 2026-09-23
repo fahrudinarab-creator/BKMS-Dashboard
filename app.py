@@ -414,6 +414,7 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
     return result, n_updated, n_unmatched
 
 
+def load_from_upload_maintenance(uploaded_file) -> pd.DataFrame:
     """Parse an uploaded maintenance detail file (e.g. 'Pemeliharaan_sd_Bulan.xls').
     DESCRIPTION format: 'PEMELIHARAAN (RUTIN|NON RUTIN) (kategori) (tipe biaya) (PLANTATION|MINING) (site) - (unit)'
     """
@@ -3140,8 +3141,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     rutin_pivot4["cap_downtime"] = None
 
         if not rutin_pivot4.empty:
-            max_rows4 = 14
-            rutin_shown4 = rutin_pivot4.head(max_rows4).sort_values("total", ascending=True)  # ascending: biar batang terbesar di ATAS pada bar chart horizontal
+            # Batasan max_rows4=14 (versi lama) DIHAPUS -- sebelumnya ini diam2 memotong kombinasi Site+
+            # Kelompok Unit yg jumlahnya lbh dari 14 (terutama utk kategori AB yg py byk jenis kelompok unit
+            # spt Backhoe/Bulldozer/Compactor/Crawler/Excavator/dll, bisa 20+ kombinasi), menyebabkan jumlah
+            # baris di chart ini TIDAK SAMA dgn chart "Gap Biaya Maintenance" di sebelahnya yg TIDAK py
+            # batasan serupa. Skrg SEMUA kombinasi ditampilkan, mengandalkan tinggi-baris & font yg SUDAH
+            # otomatis menyesuaikan (row_h_m4b, label_font_m4, pct_font_m4 di bawah) spy tetap muat.
+            rutin_shown4 = rutin_pivot4.sort_values("total", ascending=True)  # ascending: biar batang terbesar di ATAS pada bar chart horizontal
             n_rows4 = len(rutin_shown4)
             # --- Bar digambar manual (bukan native chart PowerPoint) -- supaya posisi badge Cap. Downtime
             # bisa dihitung PERSIS sejajar dgn tiap baris, tidak bergantung pd estimasi tinggi legend/plot area chart ---
@@ -3167,10 +3173,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             plot_top4 = chart_top_m4 + legend_h_m4 + 0.06
             plot_h4 = chart_h_m4 - legend_h_m4 - 0.1
-            row_gap_m4 = 0.05
-            row_h_m4b = min(0.5, (plot_h4 - (n_rows4 - 1) * row_gap_m4) / n_rows4)
-            label_font_m4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else 7)
-            pct_font_m4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else 7)
+            row_gap_m4 = 0.02 if n_rows4 > 16 else 0.05
+            row_h_m4b = max(0.13, min(0.5, (plot_h4 - (n_rows4 - 1) * row_gap_m4) / n_rows4))
+            label_font_m4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else (7 if n_rows4 <= 16 else (6 if n_rows4 <= 22 else 5)))
+            pct_font_m4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else (7 if n_rows4 <= 16 else (6 if n_rows4 <= 22 else 5)))
 
             rutin_desc4 = rutin_shown4.iloc[::-1].reset_index(drop=True)
             for i4, r4 in rutin_desc4.iterrows():
