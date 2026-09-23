@@ -1496,17 +1496,29 @@ with st.sidebar:
 
     # --- Upload Data Realisasi: MENGGABUNG (update) ke data yg sudah ada (id_unit + bulan) ---
     # supaya Budget yg sudah ada (sampai Des) tetap utuh, cuma kolom Realisasi yg diperbarui.
-    uploaded_realisasi = st.file_uploader("Upload Data Realisasi (format sama dgn template Budget)", type=["xls", "xlsx"])
-    if uploaded_realisasi is not None:
-        try:
-            df_raw, n_upd, n_unmatch = load_from_upload_realisasi(uploaded_realisasi, df_raw)
-            st.success(f"Realisasi ter-update untuk {n_upd:,} baris (id_unit + bulan cocok dgn data existing).")
-            if n_unmatch:
-                st.warning(f"⚠️ {n_unmatch:,} baris berisi UNIT BARU (id_unit/bulan belum ada di data existing) — "
-                           f"unit ini TETAP DITAMBAHKAN sbg baris baru (Realisasi tersimpan, Budget diisi 0 sbg placeholder "
-                           f"krn belum ada rencana budget-nya). Silakan cek & lengkapi Budget-nya kalau perlu.")
-        except Exception as e:
-            st.error(f"Gagal membaca file Realisasi: {e}")
+    # accept_multiple_files=True -- spy bisa upload BEBERAPA file site sekaligus (mis. AB_Kumai_Jul,
+    # TR_Tanjung_Jul, dst) dalam satu kali pilih, diproses satu-per-satu scr berurutan.
+    uploaded_realisasi_list = st.file_uploader("Upload Data Realisasi (format sama dgn template Budget)",
+                                                 type=["xls", "xlsx"], accept_multiple_files=True)
+    if uploaded_realisasi_list:
+        total_upd, total_unmatch = 0, 0
+        gagal = []
+        for uf_real in uploaded_realisasi_list:
+            try:
+                df_raw, n_upd, n_unmatch = load_from_upload_realisasi(uf_real, df_raw)
+                total_upd += n_upd
+                total_unmatch += n_unmatch
+            except Exception as e:
+                gagal.append(f"{uf_real.name}: {e}")
+        if total_upd or total_unmatch:
+            st.success(f"Realisasi ter-update untuk {total_upd:,} baris dari {len(uploaded_realisasi_list) - len(gagal)} file "
+                       f"(id_unit + bulan cocok dgn data existing).")
+        if total_unmatch:
+            st.warning(f"⚠️ {total_unmatch:,} baris berisi UNIT BARU (id_unit/bulan belum ada di data existing) — "
+                       f"unit ini TETAP DITAMBAHKAN sbg baris baru (Realisasi tersimpan, Budget diisi 0 sbg placeholder "
+                       f"krn belum ada rencana budget-nya). Silakan cek & lengkapi Budget-nya kalau perlu.")
+        if gagal:
+            st.error("Gagal membaca sebagian file Realisasi:\n" + "\n".join(f"- {g}" for g in gagal))
 
     uploaded_maint = st.file_uploader("Upload Data Maintenance (Pemeliharaan)", type=["xls", "xlsx"])
     if uploaded_maint is not None:
