@@ -1567,8 +1567,18 @@ with st.sidebar:
         try:
             mttr_raw_new = load_workshop_mttr_files(uploaded_workshop, df_raw)
             if not mttr_raw_new.empty:
-                mttr_raw = mttr_raw_new
-                st.success(f"Berhasil memuat data MTTR dari {len(uploaded_workshop)} file workshop ({mttr_raw['lokasi'].nunique()} site).")
+                # --- GABUNG (bukan timpa total!) dgn data MTTR yg sudah ada -- utk kombinasi (lokasi, bulan)
+                # yg SAMA dgn upload baru, baris lama dibuang dulu (spy tdk dobel kalau ini revisi), lalu
+                # baris baru ditambahkan. Kombinasi (lokasi, bulan) LAIN yg tdk ada di upload ini TETAP UTUH. ---
+                _kombinasi_baru = set(zip(mttr_raw_new["lokasi"], mttr_raw_new["bulan"]))
+                if not mttr_raw.empty:
+                    _mask_lama_yg_ditimpa = mttr_raw.apply(lambda r: (r["lokasi"], r["bulan"]) in _kombinasi_baru, axis=1)
+                    mttr_raw = pd.concat([mttr_raw[~_mask_lama_yg_ditimpa], mttr_raw_new], ignore_index=True)
+                else:
+                    mttr_raw = mttr_raw_new
+                st.success(f"Berhasil memuat data MTTR dari {len(uploaded_workshop)} file workshop "
+                           f"({mttr_raw_new['lokasi'].nunique()} site, bulan: {', '.join(sorted(mttr_raw_new['bulan'].unique()))}) "
+                           f"-- digabung dgn data bulan lain yg sudah ada sebelumnya.")
                 _mttr_diupload = True
             else:
                 st.warning("File workshop terbaca, tapi tidak ada baris perbaikan yang valid ditemukan.")
