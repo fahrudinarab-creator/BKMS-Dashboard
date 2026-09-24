@@ -1505,6 +1505,11 @@ with st.sidebar:
     # supaya Budget yg sudah ada (sampai Des) tetap utuh, cuma kolom Realisasi yg diperbarui.
     # accept_multiple_files=True -- spy bisa upload BEBERAPA file site sekaligus (mis. AB_Kumai_Jul,
     # TR_Tanjung_Jul, dst) dalam satu kali pilih, diproses satu-per-satu scr berurutan.
+    _realisasi_diupload = False
+    _maint_diupload = False
+    _sparepart_diupload = False
+    _mttr_diupload = False
+
     uploaded_realisasi_list = st.file_uploader("Upload Data Realisasi (format sama dgn template Budget)",
                                                  type=["xls", "xlsx"], accept_multiple_files=True)
     if uploaded_realisasi_list:
@@ -1515,6 +1520,7 @@ with st.sidebar:
                 df_raw, n_upd, n_unmatch, new_rows_detail = load_from_upload_realisasi(uf_real, df_raw)
                 total_upd += n_upd
                 total_unmatch += n_unmatch
+                _realisasi_diupload = True
             except Exception as e:
                 gagal.append(f"{uf_real.name}: {e}")
         if total_upd or total_unmatch:
@@ -1528,6 +1534,7 @@ with st.sidebar:
         try:
             maint_raw = load_from_upload_maintenance(uploaded_maint)
             st.success(f"Berhasil memuat {len(maint_raw):,} baris data maintenance dari file upload.")
+            _maint_diupload = True
         except Exception as e:
             st.error(f"Gagal membaca file maintenance: {e}")
 
@@ -1536,6 +1543,7 @@ with st.sidebar:
         try:
             sparepart_raw = load_from_upload_sparepart(uploaded_sparepart)
             st.success(f"Berhasil memuat {len(sparepart_raw):,} baris data pemakaian sparepart dari file upload.")
+            _sparepart_diupload = True
         except Exception as e:
             st.error(f"Gagal membaca file sparepart: {e}")
 
@@ -1548,10 +1556,12 @@ with st.sidebar:
             if not mttr_raw_new.empty:
                 mttr_raw = mttr_raw_new
                 st.success(f"Berhasil memuat data MTTR dari {len(uploaded_workshop)} file workshop ({mttr_raw['lokasi'].nunique()} site).")
+                _mttr_diupload = True
             else:
                 st.warning("File workshop terbaca, tapi tidak ada baris perbaikan yang valid ditemukan.")
         except Exception as e:
             st.error(f"Gagal membaca file workshop: {e}")
+
 
     # --- Saring otomatis: baris dgn Realisasi DAN Budget SAMA-SAMA kosong (semua kolom = 0) dianggap
     # unit yg tidak berlaku (mis. belum ada rencana sama sekali) -- dikecualikan dari SELURUH downstream
@@ -1574,34 +1584,53 @@ with st.sidebar:
                 df_raw = df_raw[~_is_empty_unit].copy()
                 st.caption(f"ℹ️ {_n_filtered} baris disaring otomatis (Realisasi & Budget sama-sama kosong).")
 
-    # --- Tombol simpan PERMANEN: download versi TERBARU dari SEMUA data (data_bkms, maintenance, sparepart,
-    # MTTR) yg sudah menggabung upload sesi ini -- supaya perubahan upload TIDAK HILANG saat reboot. User
-    # tinggal replace file lama yg sesuai di GitHub dgn file hasil download ini, lalu commit -- jd permanen. ---
-    if not df_raw.empty or not maint_raw.empty or not sparepart_raw.empty or not mttr_raw.empty:
+    # --- Tombol simpan PERMANEN: SATU tombol yg otomatis menyesuaikan isinya sesuai data APA SAJA yg
+    # benar2 diupload sesi ini (pakai flag _xxx_diupload, BUKAN sekadar "tidak kosong" -- krn df_raw/
+    # maint_raw/sparepart_raw/mttr_raw SELALU terisi dari file CSV dasar sejak awal meski tdk diupload apa2).
+    # Kalau CUMA 1 jenis data yg diupload -> download CSV-nya LANGSUNG (bukan dibungkus ZIP, spy user tdk
+    # perlu extract lagi utk kasus paling umum/sederhana). Kalau LEBIH dari 1 jenis -> baru dibungkus 1 file ZIP. ---
+    _jumlah_tipe_diupload = sum([_realisasi_diupload, _maint_diupload, _sparepart_diupload, _mttr_diupload])
+    if _jumlah_tipe_diupload > 0:
         st.markdown("---")
         st.markdown("**💾 Simpan Perubahan Secara Permanen**")
-        if not df_raw.empty:
+        if _jumlah_tipe_diupload == 1:
+            # --- Hanya 1 jenis data yg diupload -> download CSV tunggal langsung ---
+            if _realisasi_diupload:
+                _nama_file, _isi_file = "data_bkms.csv", df_raw.to_csv(index=False).encode("utf-8")
+            elif _maint_diupload:
+                _nama_file, _isi_file = "data_maintenance.csv", maint_raw.to_csv(index=False).encode("utf-8")
+            elif _sparepart_diupload:
+                _nama_file, _isi_file = "data_sparepart.csv", sparepart_raw.to_csv(index=False).encode("utf-8")
+            else:
+                _nama_file, _isi_file = "data_mttr.csv", mttr_raw.to_csv(index=False).encode("utf-8")
             st.download_button(
-                "⬇️ Download data_bkms.csv (Realisasi & Budget terbaru)",
-                df_raw.to_csv(index=False).encode("utf-8"), file_name="data_bkms.csv", mime="text/csv",
+                f"⬇️ Simpan Perubahan Secara Permanen ({_nama_file})",
+                _isi_file, file_name=_nama_file, mime="text/csv",
                 use_container_width=True,
             )
-        if not maint_raw.empty:
+        else:
+            # --- Lebih dari 1 jenis data diupload -> bungkus jadi 1 file ZIP ---
+            import io as _io_zip
+            import zipfile as _zipfile
+            _zip_buf = _io_zip.BytesIO()
+            _daftar_file = []
+            with _zipfile.ZipFile(_zip_buf, "w", _zipfile.ZIP_DEFLATED) as _zf:
+                if _realisasi_diupload:
+                    _zf.writestr("data_bkms.csv", df_raw.to_csv(index=False))
+                    _daftar_file.append("data_bkms.csv")
+                if _maint_diupload:
+                    _zf.writestr("data_maintenance.csv", maint_raw.to_csv(index=False))
+                    _daftar_file.append("data_maintenance.csv")
+                if _sparepart_diupload:
+                    _zf.writestr("data_sparepart.csv", sparepart_raw.to_csv(index=False))
+                    _daftar_file.append("data_sparepart.csv")
+                if _mttr_diupload:
+                    _zf.writestr("data_mttr.csv", mttr_raw.to_csv(index=False))
+                    _daftar_file.append("data_mttr.csv")
+            st.caption(f"File yg akan disimpan: {', '.join(_daftar_file)}")
             st.download_button(
-                "⬇️ Download data_maintenance.csv (Biaya Maintenance terbaru)",
-                maint_raw.to_csv(index=False).encode("utf-8"), file_name="data_maintenance.csv", mime="text/csv",
-                use_container_width=True,
-            )
-        if not sparepart_raw.empty:
-            st.download_button(
-                "⬇️ Download data_sparepart.csv (Pemakaian Sparepart terbaru)",
-                sparepart_raw.to_csv(index=False).encode("utf-8"), file_name="data_sparepart.csv", mime="text/csv",
-                use_container_width=True,
-            )
-        if not mttr_raw.empty:
-            st.download_button(
-                "⬇️ Download data_mttr.csv (MTTR terbaru)",
-                mttr_raw.to_csv(index=False).encode("utf-8"), file_name="data_mttr.csv", mime="text/csv",
+                "⬇️ Simpan Perubahan Secara Permanen (ZIP)",
+                _zip_buf.getvalue(), file_name="update_data_bkms.zip", mime="application/zip",
                 use_container_width=True,
             )
 
