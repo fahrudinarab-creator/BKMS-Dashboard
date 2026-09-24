@@ -1587,52 +1587,85 @@ with st.sidebar:
     # --- Tombol simpan PERMANEN: SATU tombol yg otomatis menyesuaikan isinya sesuai data APA SAJA yg
     # benar2 diupload sesi ini (pakai flag _xxx_diupload, BUKAN sekadar "tidak kosong" -- krn df_raw/
     # maint_raw/sparepart_raw/mttr_raw SELALU terisi dari file CSV dasar sejak awal meski tdk diupload apa2).
-    # Kalau CUMA 1 jenis data yg diupload -> download CSV-nya LANGSUNG (bukan dibungkus ZIP, spy user tdk
-    # perlu extract lagi utk kasus paling umum/sederhana). Kalau LEBIH dari 1 jenis -> baru dibungkus 1 file ZIP. ---
+    # Kalau secrets GitHub (GITHUB_TOKEN, GITHUB_REPO) sdh dikonfigurasi -> commit LANGSUNG ke GitHub via API
+    # (user tdk perlu download+upload manual). Kalau BELUM dikonfigurasi -> fallback ke tombol download biasa
+    # (spy fitur lama tetap jalan utk user yg blm setup token). ---
     _jumlah_tipe_diupload = sum([_realisasi_diupload, _maint_diupload, _sparepart_diupload, _mttr_diupload])
     if _jumlah_tipe_diupload > 0:
         st.markdown("---")
         st.markdown("**💾 Simpan Perubahan Secara Permanen**")
-        if _jumlah_tipe_diupload == 1:
-            # --- Hanya 1 jenis data yg diupload -> download CSV tunggal langsung ---
-            if _realisasi_diupload:
-                _nama_file, _isi_file = "data_bkms.csv", df_raw.to_csv(index=False).encode("utf-8")
-            elif _maint_diupload:
-                _nama_file, _isi_file = "data_maintenance.csv", maint_raw.to_csv(index=False).encode("utf-8")
-            elif _sparepart_diupload:
-                _nama_file, _isi_file = "data_sparepart.csv", sparepart_raw.to_csv(index=False).encode("utf-8")
-            else:
-                _nama_file, _isi_file = "data_mttr.csv", mttr_raw.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                f"⬇️ Simpan Perubahan Secara Permanen ({_nama_file})",
-                _isi_file, file_name=_nama_file, mime="text/csv",
-                use_container_width=True,
-            )
+
+        _files_to_save = {}
+        if _realisasi_diupload:
+            _files_to_save["data_bkms.csv"] = df_raw.to_csv(index=False)
+        if _maint_diupload:
+            _files_to_save["data_maintenance.csv"] = maint_raw.to_csv(index=False)
+        if _sparepart_diupload:
+            _files_to_save["data_sparepart.csv"] = sparepart_raw.to_csv(index=False)
+        if _mttr_diupload:
+            _files_to_save["data_mttr.csv"] = mttr_raw.to_csv(index=False)
+
+        _gh_token = st.secrets.get("GITHUB_TOKEN")
+        _gh_repo = st.secrets.get("GITHUB_REPO")
+        _gh_branch = st.secrets.get("GITHUB_BRANCH", "main")
+
+        if _gh_token and _gh_repo:
+            # --- Mode OTOMATIS: commit langsung ke GitHub via Contents API ---
+            def _github_update_file(path: str, content_str: str, token: str, repo: str, branch: str, message: str):
+                import requests, base64
+                url = f"https://api.github.com/repos/{repo}/contents/{path}"
+                headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+                # Ambil SHA file saat ini dulu (wajib utk update file yg sdh ada di GitHub)
+                r_get = requests.get(url, headers=headers, params={"ref": branch}, timeout=30)
+                sha = r_get.json().get("sha") if r_get.status_code == 200 else None
+                content_b64 = base64.b64encode(content_str.encode("utf-8")).decode("utf-8")
+                payload = {"message": message, "content": content_b64, "branch": branch}
+                if sha:
+                    payload["sha"] = sha
+                r_put = requests.put(url, headers=headers, json=payload, timeout=30)
+                return r_put.status_code in (200, 201), r_put.json()
+
+            if st.button("🚀 Simpan ke GitHub Otomatis", use_container_width=True, type="primary"):
+                _berhasil, _gagal = [], []
+                with st.spinner(f"Menyimpan {len(_files_to_save)} file ke GitHub..."):
+                    for _fname, _content in _files_to_save.items():
+                        _ok, _resp = _github_update_file(
+                            _fname, _content, _gh_token, _gh_repo, _gh_branch,
+                            message=f"Update {_fname} via dashboard upload",
+                        )
+                        if _ok:
+                            _berhasil.append(_fname)
+                        else:
+                            _gagal.append(f"{_fname}: {_resp.get('message', 'unknown error')}")
+                if _berhasil:
+                    st.success(f"✅ Berhasil disimpan ke GitHub: {', '.join(_berhasil)}. "
+                               f"Reboot aplikasi supaya perubahan terpakai.")
+                if _gagal:
+                    st.error("Gagal menyimpan sebagian file:\n" + "\n".join(f"- {g}" for g in _gagal))
         else:
-            # --- Lebih dari 1 jenis data diupload -> bungkus jadi 1 file ZIP ---
-            import io as _io_zip
-            import zipfile as _zipfile
-            _zip_buf = _io_zip.BytesIO()
-            _daftar_file = []
-            with _zipfile.ZipFile(_zip_buf, "w", _zipfile.ZIP_DEFLATED) as _zf:
-                if _realisasi_diupload:
-                    _zf.writestr("data_bkms.csv", df_raw.to_csv(index=False))
-                    _daftar_file.append("data_bkms.csv")
-                if _maint_diupload:
-                    _zf.writestr("data_maintenance.csv", maint_raw.to_csv(index=False))
-                    _daftar_file.append("data_maintenance.csv")
-                if _sparepart_diupload:
-                    _zf.writestr("data_sparepart.csv", sparepart_raw.to_csv(index=False))
-                    _daftar_file.append("data_sparepart.csv")
-                if _mttr_diupload:
-                    _zf.writestr("data_mttr.csv", mttr_raw.to_csv(index=False))
-                    _daftar_file.append("data_mttr.csv")
-            st.caption(f"File yg akan disimpan: {', '.join(_daftar_file)}")
-            st.download_button(
-                "⬇️ Simpan Perubahan Secara Permanen (ZIP)",
-                _zip_buf.getvalue(), file_name="update_data_bkms.zip", mime="application/zip",
-                use_container_width=True,
-            )
+            # --- Mode MANUAL (fallback): secrets blm dikonfigurasi -> download spt biasa ---
+            st.caption("💡 Mau tombol ini otomatis commit ke GitHub tanpa download manual? Tambahkan "
+                       "`GITHUB_TOKEN` & `GITHUB_REPO` di Settings → Secrets aplikasi Anda.")
+            if len(_files_to_save) == 1:
+                _nama_file, _isi_str = next(iter(_files_to_save.items()))
+                st.download_button(
+                    f"⬇️ Simpan Perubahan Secara Permanen ({_nama_file})",
+                    _isi_str.encode("utf-8"), file_name=_nama_file, mime="text/csv",
+                    use_container_width=True,
+                )
+            else:
+                import io as _io_zip
+                import zipfile as _zipfile
+                _zip_buf = _io_zip.BytesIO()
+                with _zipfile.ZipFile(_zip_buf, "w", _zipfile.ZIP_DEFLATED) as _zf:
+                    for _fname, _content in _files_to_save.items():
+                        _zf.writestr(_fname, _content)
+                st.caption(f"File yg akan disimpan: {', '.join(_files_to_save.keys())}")
+                st.download_button(
+                    "⬇️ Simpan Perubahan Secara Permanen (ZIP)",
+                    _zip_buf.getvalue(), file_name="update_data_bkms.zip", mime="application/zip",
+                    use_container_width=True,
+                )
 
     # Tambahkan kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' ke data maintenance & sparepart, dicocokkan lewat
     # nama_unit terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori/jenis unit. Hasilnya disimpan
