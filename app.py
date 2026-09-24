@@ -68,10 +68,12 @@ def lookup_atribut_unit(target_df, ref_df, cols):
         for c in cols:
             out[c] = None
         return out
-    ref = ref_df.dropna(subset=["nama_unit"]).copy()
+    # Baris tanpa nama_unit TETAP dipakai (mis. CRANE KUMAI 2902 nama_unit-nya kosong di data BKMS) --
+    # selama kode unitnya ada, unit tsb masih bisa dicocokkan.
+    ref = ref_df[ref_df["nama_unit"].notna() | (ref_df["kode_unit"].notna() if "kode_unit" in ref_df.columns else False)].copy()
     kode_col = ref["kode_unit"] if "kode_unit" in ref.columns else pd.Series([None] * len(ref), index=ref.index)
     ref["_kode"] = [_kode_unit_ref(k, n) for k, n in zip(kode_col, ref["nama_unit"])]
-    ref["_nama"] = ref["nama_unit"].astype(str).str.strip().str.upper()
+    ref["_nama"] = ref["nama_unit"].fillna("").astype(str).str.strip().str.upper()
     ref["_lok"] = ref["lokasi"] if "lokasi" in ref.columns else None
 
     t_kode = target_df["nama_unit"].map(_kode_dari_teks)
@@ -84,7 +86,7 @@ def lookup_atribut_unit(target_df, ref_df, cols):
         _nuniq = rc.dropna(subset=["_kode"]).groupby("_kode")[c].nunique()
         _unik = set(_nuniq[_nuniq == 1].index)
         by_kode = (rc[rc["_kode"].isin(_unik)].drop_duplicates("_kode").set_index("_kode")[c].to_dict())
-        by_nama = rc.drop_duplicates("_nama").set_index("_nama")[c].to_dict()
+        by_nama = rc[rc["_nama"] != ""].drop_duplicates("_nama").set_index("_nama")[c].to_dict()
         vals = []
         for lok, kd, nm in zip(t_lok, t_kode, t_nama):
             v = None
@@ -1458,7 +1460,29 @@ def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df, maint_df=Non
         ws.auto_filter.ref = ws.dimensions
 
     # --- Sheet Data BKMS: Semua Data saja (tidak dipisah per site) ---
-    _write_sheet("Semua Data", data_df, highlight_col="jenis_unit")
+    # Ditambah kolom "blok" (MINING / PLANTATION - ALAT BERAT / PLANTATION - TRANSPORTASI), aturannya SAMA dgn
+    # pembagian blok di PPT & Perhitungan Detail: semua site Mining = MINING (termasuk unit TR di Tanjung),
+    # site Plantation dipisah per kategori AB/TR. Disisipkan tepat setelah kolom "lokasi".
+    semua_data = data_df.copy() if data_df is not None else pd.DataFrame()
+    if not semua_data.empty and "lokasi" in semua_data.columns:
+        _MINING = {"TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"}
+        _PLANT = {"SUNGAI DANAU", "KUMAI"}
+        def _blok(r):
+            lok = str(r.get("lokasi", "")).strip().upper()
+            kat = str(r.get("kategori", "")).strip().upper()
+            if lok in _MINING:
+                return "MINING"
+            if lok in _PLANT:
+                if kat == "AB":
+                    return "PLANTATION - ALAT BERAT"
+                if kat == "TR":
+                    return "PLANTATION - TRANSPORTASI"
+            return None
+        _blok_vals = semua_data.apply(_blok, axis=1)
+        if "blok" in semua_data.columns:
+            semua_data = semua_data.drop(columns=["blok"])
+        semua_data.insert(list(semua_data.columns).index("lokasi") + 1, "blok", _blok_vals)
+    _write_sheet("Semua Data", semua_data, highlight_col="jenis_unit")
 
     # --- Sheet Sasaran Mutu ---
     _write_sheet("Sasaran Mutu", sasaran_mutu_df)
@@ -3396,12 +3420,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         rows_top4 = chart_top_r4 + legend_h4 + 0.08
         rows_h4 = chart_h_r4 - legend_h4 - 0.1
         row_gap4 = 0.02 if n_rows4 > 16 else 0.04
-        row_h4 = max(0.13, min(0.42, (rows_h4 - max(n_rows4 - 1, 0) * row_gap4) / max(n_rows4, 1)))
+        total_gap4 = 0.08  # jarak ekstra sebelum baris TOTAL
+        _slots4 = n_rows4 + 1  # +1 utk baris TOTAL di bawah
+        row_h4 = max(0.13, min(0.42, (rows_h4 - total_gap4 - max(_slots4 - 1, 0) * row_gap4) / max(_slots4, 1)))
         lbl_font4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else (7 if n_rows4 <= 16 else (6 if n_rows4 <= 22 else 5)))
         val_font4 = lbl_font4
 
         def _row_y4(i):
-            return rows_top4 + i * (row_h4 + row_gap4)
+            return rows_top4 + i * (row_h4 + row_gap4) + (total_gap4 if i >= n_rows4 else 0)
 
         def _txt4(x, y, w, h, text, size, color, bold=True, align=PP_ALIGN.LEFT, italic=False):
             tb = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
@@ -3412,62 +3438,137 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             r.font.size = Pt(size); r.font.bold = bold; r.font.italic = italic; r.font.color.rgb = color; r.font.name = "Calibri"
             return tb
 
+        def _no_shadow4(shp):
+            """Hilangkan bayangan secara tuntas. shadow.inherit=False saja cukup utk PowerPoint, tapi LibreOffice
+            (dipakai utk konversi PDF) tetap mengambil bayangan dari style tema (effectRef) -> diset ke idx 0."""
+            shp.shadow.inherit = False
+            for el in shp._element.iter():
+                if el.tag.endswith("}effectRef"):
+                    el.set("idx", "0")
+            return shp
+
         def _rect4(x, y, w, h, color):
             shp = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(max(w, 0.005)), Inches(max(h, 0.005)))
             shp.fill.solid(); shp.fill.fore_color.rgb = color
-            shp.line.fill.background(); shp.shadow.inherit = False
-            return shp
+            shp.line.fill.background()
+            return _no_shadow4(shp)
+
+        SEP4 = RGBColor(0xEE, 0xF0, 0xF4)
+        SEP_TOTAL4 = RGBColor(0xC9, 0xCE, 0xD8)
+
+        def _separators4(x, w):
+            """Garis tipis pemisah antar baris (bukan pita belang -- pita berbayang tebal saat dirender) +
+            garis tebal di atas baris TOTAL."""
+            for i in range(1, n_rows4):
+                _rect4(x, _row_y4(i) - row_gap4 / 2 - 0.004, w, 0.008, SEP4)
+            _rect4(x, _row_y4(n_rows4) - total_gap4 / 2 - row_gap4 / 2 - 0.008, w, 0.016, SEP_TOTAL4)
+
+        def _badge4(x, y, w, h, text, bg, fg, size):
+            b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+            b.adjustments[0] = 0.5
+            b.fill.solid(); b.fill.fore_color.rgb = bg
+            b.line.fill.background(); _no_shadow4(b)
+            tf = b.text_frame; tf.vertical_anchor = MSO_ANCHOR.MIDDLE; tf.word_wrap = False
+            tf.margin_left = 0; tf.margin_right = 0; tf.margin_top = 0; tf.margin_bottom = 0
+            p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+            r = p.add_run(); r.text = text
+            r.font.size = Pt(size); r.font.bold = True; r.font.name = "Calibri"; r.font.color.rgb = fg
+            return b
+
+        RED_SOFT4 = RGBColor(0xFC, 0xE4, 0xE1)
+        GREEN_SOFT4 = RGBColor(0xDE, 0xF2, 0xE4)
+        GREY_SOFT4 = RGBColor(0xF1, 0xF2, 0xF5)
+
+        def _rp_kolom4(v):
+            return "\u2014" if (v is None or pd.isna(v) or v == 0) else fmt_rp(v)
 
         # ================= PANEL KIRI: Gap Biaya Maintenance (bar HORIZONTAL, sejajar baris panel kanan) =================
         add_card_panel(s, 0.4, panel_top4, 7.5, panel_h4)
         add_panel_header(s, 0.4, panel_top4, 7.5, "\U0001F527 Gap Biaya Maintenance \u2014 per Site & Kelompok Unit", height=0.4)
         if n_rows4 and rows4["gap_rp"].notna().any():
-            lbl_x4 = 0.55
-            lbl_w4 = 1.55
-            plot_l4 = lbl_x4 + lbl_w4 + 0.12
-            plot_r4 = 0.4 + 7.5 - 0.15
+            # Tata letak TABEL + BAR: Label | Budget | Realisasi | Capaian | Gap (bar divergen).
+            # Kolom angka mengisi ruang kosong di kiri sumbu & memberi konteks nilai absolut di balik tiap gap.
+            lbl_x4, lbl_w4 = 0.5, 1.35
+            bud_x4, bud_w4 = lbl_x4 + lbl_w4 + 0.1, 0.82
+            rea_x4, rea_w4 = bud_x4 + bud_w4 + 0.06, 0.82
+            cap_x4, cap_w4 = rea_x4 + rea_w4 + 0.12, 0.62
+            plot_l4 = cap_x4 + cap_w4 + 0.15
+            plot_r4 = 0.4 + 7.5 - 0.12
+            _separators4(lbl_x4, plot_r4 - lbl_x4)
+
             gaps4 = rows4["gap_rp"].fillna(0)
             pos_max4 = max(gaps4.max(), 0)
             neg_max4 = max(-gaps4.min(), 0)
-            # Ruang utk label nilai di ujung bar (kanan utk over budget, kiri utk di bawah budget)
-            room_txt4 = 1.3 if val_font4 >= 8 else 1.15
+            room_txt4 = 0.85 if val_font4 >= 8 else 0.75  # label gap kini cukup nilai Rp (Capaian sdh punya kolom sendiri)
             room_pos4 = room_txt4 if pos_max4 > 0 else 0.05
             room_neg4 = room_txt4 if neg_max4 > 0 else 0.05
             span4 = (pos_max4 + neg_max4) or 1
             k4 = (plot_r4 - plot_l4 - room_pos4 - room_neg4) / span4
             zero_x4 = plot_l4 + room_neg4 + neg_max4 * k4
 
-            # Legend
+            # Header kolom (sejajar legend panel kanan)
             leg_y4 = chart_top_r4
-            _rect4(plot_l4, leg_y4 + 0.08, 0.14, 0.14, RED)
-            _txt4(plot_l4 + 0.2, leg_y4, 1.3, legend_h4, "Over Budget", 8.5, TEXT_MUTED)
-            _rect4(plot_l4 + 1.35, leg_y4 + 0.08, 0.14, 0.14, TEAL)
-            _txt4(plot_l4 + 1.55, leg_y4, 1.8, legend_h4, "Di Bawah Budget", 8.5, TEXT_MUTED)
-            _txt4(plot_r4 - 2.2, leg_y4, 2.2, legend_h4, "Gap = Realisasi \u2212 Budget (Capaian %)", 7.5, TEXT_MUTED, bold=False, align=PP_ALIGN.RIGHT, italic=True)
+            hdr_font4 = 8
+            _txt4(bud_x4, leg_y4, bud_w4, legend_h4, "Budget", hdr_font4, TEXT_MUTED, align=PP_ALIGN.RIGHT)
+            _txt4(rea_x4, leg_y4, rea_w4, legend_h4, "Realisasi", hdr_font4, TEXT_MUTED, align=PP_ALIGN.RIGHT)
+            _txt4(cap_x4, leg_y4, cap_w4, legend_h4, "Capaian", hdr_font4, TEXT_MUTED, align=PP_ALIGN.CENTER)
+            _rect4(plot_l4 + 0.05, leg_y4 + 0.09, 0.12, 0.12, RED)
+            _txt4(plot_l4 + 0.22, leg_y4, 0.9, legend_h4, "Over Budget", hdr_font4, TEXT_MUTED)
+            _rect4(plot_l4 + 1.15, leg_y4 + 0.09, 0.12, 0.12, TEAL)
+            _txt4(plot_l4 + 1.32, leg_y4, 1.2, legend_h4, "Di Bawah Budget", hdr_font4, TEXT_MUTED)
+            _rect4(lbl_x4, leg_y4 + legend_h4 + 0.02, plot_r4 - lbl_x4, 0.012, SEP_TOTAL4)
 
-            # Garis nol
-            _rect4(zero_x4 - 0.006, rows_top4 - 0.04, 0.012, n_rows4 * (row_h4 + row_gap4) + 0.04, RGBColor(0xB8, 0xBE, 0xC8))
+            # Garis nol (hanya sepanjang baris unit, tdk menembus baris TOTAL)
+            _rect4(zero_x4 - 0.006, rows_top4 - 0.03, 0.012, _row_y4(n_rows4 - 1) + row_h4 - rows_top4 + 0.06, RGBColor(0xB8, 0xBE, 0xC8))
+
+            badge_h4 = min(0.22, row_h4 * 0.8)
+
+            def _cap_badge4(y, cap_v):
+                if cap_v is None or pd.isna(cap_v):
+                    _badge4(cap_x4, y + row_h4 / 2 - badge_h4 / 2, cap_w4, badge_h4, "N/A", GREY_SOFT4, TEXT_MUTED, min(8, val_font4))
+                else:
+                    over = cap_v > 100
+                    _badge4(cap_x4, y + row_h4 / 2 - badge_h4 / 2, cap_w4, badge_h4, f"{cap_v:.0f}%",
+                            RED_SOFT4 if over else GREEN_SOFT4, RED if over else GREEN, min(8.5, val_font4))
 
             for i, r in rows4.iterrows():
                 y = _row_y4(i)
                 _txt4(lbl_x4, y, lbl_w4, row_h4, r["label"], lbl_font4, TEXT_DARK, align=PP_ALIGN.RIGHT)
                 g = r["gap_rp"]
                 if pd.isna(g):
-                    _txt4(zero_x4 + 0.08, y, 2.5, row_h4, "tidak ada data budget/realisasi", max(lbl_font4 - 1, 5), TEXT_MUTED, bold=False, italic=True)
+                    _txt4(bud_x4, y, plot_r4 - bud_x4, row_h4, "tidak ada data budget/realisasi maintenance", max(lbl_font4 - 1, 5), TEXT_MUTED, bold=False, italic=True, align=PP_ALIGN.CENTER)
                     continue
-                bh = row_h4 * 0.72
+                _txt4(bud_x4, y, bud_w4, row_h4, _rp_kolom4(r["maint_b"]), val_font4, TEXT_MUTED, bold=False, align=PP_ALIGN.RIGHT)
+                _txt4(rea_x4, y, rea_w4, row_h4, _rp_kolom4(r["maint_r"]), val_font4, TEXT_DARK, align=PP_ALIGN.RIGHT)
+                _cap_badge4(y, r["cap"])
+                bh = row_h4 * 0.66
                 by = y + (row_h4 - bh) / 2
                 bw = max(abs(g) * k4, 0.02)
                 is_over = g > 0
                 bx = zero_x4 if is_over else zero_x4 - bw
                 _rect4(bx, by, bw, bh, RED if is_over else TEAL)
-                cap_v = r["cap"]
                 sign_txt4 = "+" if is_over else "\u2212"
-                txt = f"{sign_txt4}{fmt_rp(abs(g))}" + (f" ({cap_v:.0f}%)" if pd.notna(cap_v) else " (tanpa budget)")
+                txt = f"{sign_txt4}{fmt_rp(abs(g))}"
                 if is_over:
                     _txt4(bx + bw + 0.05, y, room_pos4, row_h4, txt, val_font4, RED, align=PP_ALIGN.LEFT)
                 else:
                     _txt4(bx - room_neg4 - 0.05, y, room_neg4, row_h4, txt, val_font4, TEAL, align=PP_ALIGN.RIGHT)
+
+            # --- Baris TOTAL ---
+            yt = _row_y4(n_rows4)
+            tot_b4 = rows4["maint_b"].fillna(0).sum()
+            tot_r4 = rows4["maint_r"].fillna(0).sum()
+            tot_cap4 = (tot_r4 / tot_b4 * 100) if tot_b4 else None
+            tot_gap4 = tot_r4 - tot_b4
+            tot_font4 = min(val_font4 + 0.5, 9)
+            _txt4(lbl_x4, yt, lbl_w4, row_h4, "TOTAL", tot_font4, NAVY, align=PP_ALIGN.RIGHT)
+            _txt4(bud_x4, yt, bud_w4, row_h4, _rp_kolom4(tot_b4), tot_font4, NAVY, align=PP_ALIGN.RIGHT)
+            _txt4(rea_x4, yt, rea_w4, row_h4, _rp_kolom4(tot_r4), tot_font4, NAVY, align=PP_ALIGN.RIGHT)
+            _cap_badge4(yt, tot_cap4)
+            _tot_over4 = tot_gap4 > 0
+            _txt4(plot_l4, yt, plot_r4 - plot_l4, row_h4,
+                  f"Gap total: {'+' if _tot_over4 else chr(0x2212)}{fmt_rp(abs(tot_gap4))} ({'over budget' if _tot_over4 else 'di bawah budget'})",
+                  tot_font4, RED if _tot_over4 else TEAL, align=PP_ALIGN.CENTER)
         else:
             add_textbox(s, 0.55, chart_top_r4 + 0.1, 5.6, 0.5, "Data Biaya Maintenance belum tersedia.", size=10, italic=True, color=TEXT_MUTED)
 
@@ -3488,6 +3589,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             _rect4(bar_x4 + 0.8, leg_y4 + 0.08, 0.14, 0.14, GOLD)
             _txt4(bar_x4 + 1.0, leg_y4, 0.8, legend_h4, "Non Rutin", 8.5, TEXT_MUTED)
             _txt4(dt_x4, leg_y4, dt_w4, legend_h4, "Cap. Downtime", 7.5, TEXT_MUTED, align=PP_ALIGN.CENTER)
+            _rect4(label_x4, leg_y4 + legend_h4 + 0.02, (8.3 + 4.6 - 0.12) - label_x4, 0.012, SEP_TOTAL4)
+            _separators4(label_x4, (8.3 + 4.6 - 0.12) - label_x4)
 
             for i, r in rows4.iterrows():
                 y = _row_y4(i)
@@ -3514,13 +3617,34 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 badge4.adjustments[0] = 0.5
                 badge4.fill.solid()
                 badge4.fill.fore_color.rgb = ((RGBColor(0xFC, 0xE4, 0xE1) if cap_dt_val > 100 else RGBColor(0xDE, 0xF2, 0xE4)) if has_dt4 else RGBColor(0xF1, 0xF2, 0xF5))
-                badge4.line.fill.background(); badge4.shadow.inherit = False
+                badge4.line.fill.background(); _no_shadow4(badge4)
                 btf4 = badge4.text_frame; btf4.vertical_anchor = MSO_ANCHOR.MIDDLE
                 btf4.margin_left = 0; btf4.margin_right = 0; btf4.margin_top = 0; btf4.margin_bottom = 0
                 bp4 = btf4.paragraphs[0]; bp4.alignment = PP_ALIGN.CENTER
                 br4 = bp4.add_run(); br4.text = f"{cap_dt_val:.0f}%" if has_dt4 else "\u2014"
                 br4.font.size = Pt(min(8.5, val_font4)); br4.font.bold = True; br4.font.name = "Calibri"
                 br4.font.color.rgb = ((RED if cap_dt_val > 100 else GREEN) if has_dt4 else TEXT_MUTED)
+
+            # --- Baris TOTAL: porsi Rutin/Non-Rutin keseluruhan (dari total Rupiah, bukan rata-rata %) ---
+            yt = _row_y4(n_rows4)
+            _tot_r = rutin_pivot4["RUTIN"].sum()
+            _tot_n = rutin_pivot4["NON RUTIN"].sum()
+            _tot_all = _tot_r + _tot_n
+            tot_font4 = min(val_font4 + 0.5, 9)
+            _txt4(label_x4, yt, label_w4, row_h4, "TOTAL", tot_font4, NAVY, align=PP_ALIGN.RIGHT)
+            if _tot_all:
+                _pr, _pn = _tot_r / _tot_all * 100, _tot_n / _tot_all * 100
+                bh = row_h4 * 0.72
+                by = yt + (row_h4 - bh) / 2
+                w_r, w_n = bar_max_w4 * _pr / 100, bar_max_w4 * _pn / 100
+                if w_r > 0:
+                    _rect4(bar_x4, by, w_r, bh, TEAL)
+                if w_n > 0:
+                    _rect4(bar_x4 + w_r, by, w_n, bh, GOLD)
+                if w_r > 0.32:
+                    _txt4(bar_x4, by, w_r, bh, f"{_pr:.0f}%", tot_font4, WHITE, align=PP_ALIGN.CENTER)
+                if w_n > 0.32:
+                    _txt4(bar_x4 + w_r, by, w_n, bh, f"{_pn:.0f}%", tot_font4, WHITE, align=PP_ALIGN.CENTER)
         else:
             add_textbox(s, 8.45, chart_top_m4 + 0.1, 4.3, 0.8,
                         "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
