@@ -1529,6 +1529,15 @@ with st.sidebar:
         if gagal:
             st.error("Gagal membaca sebagian file Realisasi:\n" + "\n".join(f"- {g}" for g in gagal))
 
+    uploaded_maint = st.file_uploader("Upload Data Maintenance (Pemeliharaan)", type=["xls", "xlsx"])
+    if uploaded_maint is not None:
+        try:
+            maint_raw = load_from_upload_maintenance(uploaded_maint)
+            st.success(f"Berhasil memuat {len(maint_raw):,} baris data maintenance dari file upload.")
+            _maint_diupload = True
+        except Exception as e:
+            st.error(f"Gagal membaca file maintenance: {e}")
+
     uploaded_sparepart = st.file_uploader("Upload Data Pemakaian Sparepart", type=["xls", "xlsx"])
     if uploaded_sparepart is not None:
         try:
