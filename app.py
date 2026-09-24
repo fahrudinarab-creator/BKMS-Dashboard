@@ -410,8 +410,21 @@ def load_from_upload_realisasi(uploaded_file, base_df) -> pd.DataFrame:
         new_rows = upload_df[upload_df.set_index(["id_unit", "lokasi", "bulan_no"]).index.isin(unmatched_keys)].copy()
         for col in budget_cols:
             new_rows[col] = 0
-        for col in ["nilai_asset", "kriteria_unit", "jenis_unit"]:  # kolom yg tdk ada di file upload realisasi
+        # --- Lookup metadata (kelompok_unit, kriteria_unit, jenis_unit, kategori) dari bulan LAIN yg sudah ada
+        # utk unit yg SAMA (kode_unit+lokasi) -- spy unit yg sudah dikenal di bulan lain TIDAK kehilangan
+        # info kelompok/kriteria/jenis-nya cuma krn baris bulan ini baru pertama kali ditambahkan. Kalau
+        # benar2 unit BARU (tdk ditemukan di bulan manapun), baru diisi None (perlu dilengkapi manual). ---
+        _meta_cols = ["kelompok_unit", "kriteria_unit", "jenis_unit"]
+        _meta_lookup = (base_df.dropna(subset=["kode_unit"])
+                         .drop_duplicates(subset=["kode_unit", "lokasi"], keep="last")
+                         .set_index(["kode_unit", "lokasi"])[_meta_cols])
+        for col in _meta_cols:
             new_rows[col] = None
+        for idx in new_rows.index:
+            _key = (new_rows.at[idx, "kode_unit"], new_rows.at[idx, "lokasi"])
+            if _key in _meta_lookup.index:
+                for col in _meta_cols:
+                    new_rows.at[idx, col] = _meta_lookup.loc[_key, col]
         new_rows_detail = new_rows[["id_unit", "nama_unit", "lokasi", "bulan", "kategori", "pendapatan_realisasi", "total_biaya_realisasi"]].copy()
         result = result.reset_index()
         result = pd.concat([result, new_rows], ignore_index=True, sort=False)
