@@ -3252,13 +3252,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rutin_pivot4 = rutin_pivot4.sort_values(["kelompok_unit", "lokasi"])
 
                 # --- % Capaian Downtime per (lokasi, kelompok_unit), dari Sasaran Mutu (formula mentah) ---
-                # Exclude Tarif Tetap & unit_sewa spy KONSISTEN dgn metodologi kartu KPI Downtime & Excel.
+                # TIDAK mengecualikan Tarif Tetap maupun unit sewa lagi -- ditampilkan APA ADANYA sesuai data
+                # riil yg ada di Sasaran Mutu (baik unit Floating Tarif maupun Tarif Tetap ikut dihitung).
                 if not sasaran_mutu_data.empty and "kelompok_unit" in sasaran_mutu_data.columns:
                     _sm_dt4b = sasaran_mutu_data.copy()
-                    if "jenis_unit" in _sm_dt4b.columns:
-                        _sm_dt4b = _sm_dt4b[_sm_dt4b["jenis_unit"] != "Tarif Tetap"]
-                    if "unit_sewa" in _sm_dt4b.columns:
-                        _sm_dt4b = _sm_dt4b[_sm_dt4b["unit_sewa"] != True]
                     if "breakdown_hm_km_realisasi" in _sm_dt4b.columns:
                         _sm_dt4b["breakdown_hm_km_realisasi"] = _sm_dt4b["breakdown_hm_km_realisasi"].fillna(0)
                     def _dt4b_grp(g):
@@ -3432,10 +3429,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         cap_dt_per_site5 = []
         if not sasaran_mutu_data.empty and sasaran_mutu_data["lokasi"].nunique() > 1:
             _sm_dtsite5 = sasaran_mutu_data.copy()
-            if "jenis_unit" in _sm_dtsite5.columns:
-                _sm_dtsite5 = _sm_dtsite5[_sm_dtsite5["jenis_unit"] != "Tarif Tetap"]
-            if "unit_sewa" in _sm_dtsite5.columns:
-                _sm_dtsite5 = _sm_dtsite5[_sm_dtsite5["unit_sewa"] != True]
             if "breakdown_hm_km_realisasi" in _sm_dtsite5.columns:
                 _sm_dtsite5["breakdown_hm_km_realisasi"] = _sm_dtsite5["breakdown_hm_km_realisasi"].fillna(0)
             _sm_dtsite5 = _sm_dtsite5.dropna(subset=["kelompok_unit"]) if "kelompok_unit" in _sm_dtsite5.columns else _sm_dtsite5.iloc[0:0]
@@ -3468,14 +3461,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # --- Hitung per Site & Jenis Unit lebih awal, dipakai baik di kartu KPI maupun chart di bawah ---
         # Realisasi Downtime dihitung dari FORMULA data mentah (Sum Breakdown / Sum Ideal), BUKAN average kolom
         # persentase yg sudah jadi -- konsisten dgn metodologi kartu KPI "% Capaian Realisasi Downtime" di atas.
-        # Tarif Tetap & unit_sewa dikecualikan (tdk relevan dihitung Downtime-nya).
+        # TIDAK mengecualikan Tarif Tetap maupun unit sewa lagi -- ditampilkan sesuai data riil Sasaran Mutu.
         dt_su5 = pd.DataFrame()
         if not sasaran_mutu_data.empty:
             _sm_dt5b = sasaran_mutu_data.dropna(subset=["kelompok_unit"]).copy() if "kelompok_unit" in sasaran_mutu_data.columns else pd.DataFrame()
-            if "jenis_unit" in _sm_dt5b.columns:
-                _sm_dt5b = _sm_dt5b[_sm_dt5b["jenis_unit"] != "Tarif Tetap"]
-            if "unit_sewa" in _sm_dt5b.columns:
-                _sm_dt5b = _sm_dt5b[_sm_dt5b["unit_sewa"] != True]
             if "breakdown_hm_km_realisasi" in _sm_dt5b.columns:
                 _sm_dt5b["breakdown_hm_km_realisasi"] = _sm_dt5b["breakdown_hm_km_realisasi"].fillna(0)
             def _dt5_grp(g):
