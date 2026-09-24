@@ -17,6 +17,87 @@ def _unit_label(name):
     code = m.group(1) if m else "?"
     return f"{code} — {name}"
 
+
+# ---------------------------------------------------------------
+# PENCOCOKAN UNIT antar sumber data (Pemeliharaan/Sparepart -> data BKMS)
+# ---------------------------------------------------------------
+# Nama unit di file Pemeliharaan/Sparepart sering BEDA penulisan dgn data BKMS, mis.
+#   "EXCAVATOR HITACHI ZX48U-5A (331-004)"  vs  "EXCAVATOR MINI 331-004"
+#   "POMPA MITSUBISHI 6D14 422-007"          vs  "Pompa Air" (kode_unit 4207)
+# Jadi pencocokan pakai KODE UNIT (format 3-3 digit), bukan nama lengkap. Urutan prioritas:
+#   1) (lokasi, kode unit)  -- kode yg sama bisa dipakai di beberapa site (mis. 312-014 ada di 3 site)
+#   2) kode unit saja       -- HANYA kalau nilainya tdk ambigu (sama di semua site)
+#   3) nama unit persis     -- cara lama, sbg cadangan terakhir
+_KODE_UNIT_PAT = re.compile(r'(\d{3})\s*-\s*(\d{3})')
+
+
+def _kode_dari_teks(v):
+    """Ambil kode unit 'ddd-ddd' TERAKHIR dari teks (nama unit biasanya diakhiri kode). None kalau tdk ada."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    found = _KODE_UNIT_PAT.findall(str(v))
+    if found:
+        a, b = found[-1]
+        return f"{a}-{b}"
+    return None
+
+
+def _kode_unit_ref(kode, nama=None):
+    """Normalisasi kode unit di data BKMS ke format 'ddd-ddd'."""
+    k = _kode_dari_teks(kode) or _kode_dari_teks(nama)
+    if k:
+        return k
+    if kode is None or (isinstance(kode, float) and pd.isna(kode)):
+        return None
+    s = str(kode).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    if re.fullmatch(r"\d{6}", s):          # 331004 -> 331-004
+        return f"{s[:3]}-{s[3:]}"
+    if re.fullmatch(r"42\d{2}", s):        # Pompa KUMAI: kode 4201..4209 di BKMS = 422-001..422-009 di Pemeliharaan
+        return f"422-0{s[2:]}"
+    return None
+
+
+def lookup_atribut_unit(target_df, ref_df, cols):
+    """Isi atribut unit (mis. kategori, jenis_unit, id_unit, kelompok_unit) utk target_df dari ref_df (data BKMS),
+    dicocokkan via KODE UNIT (lihat penjelasan di atas). Mengembalikan DataFrame dgn index = target_df.index."""
+    out = pd.DataFrame(index=target_df.index)
+    cols = [c for c in cols if c in ref_df.columns]
+    if target_df.empty or ref_df.empty or "nama_unit" not in target_df.columns or "nama_unit" not in ref_df.columns:
+        for c in cols:
+            out[c] = None
+        return out
+    ref = ref_df.dropna(subset=["nama_unit"]).copy()
+    kode_col = ref["kode_unit"] if "kode_unit" in ref.columns else pd.Series([None] * len(ref), index=ref.index)
+    ref["_kode"] = [_kode_unit_ref(k, n) for k, n in zip(kode_col, ref["nama_unit"])]
+    ref["_nama"] = ref["nama_unit"].astype(str).str.strip().str.upper()
+    ref["_lok"] = ref["lokasi"] if "lokasi" in ref.columns else None
+
+    t_kode = target_df["nama_unit"].map(_kode_dari_teks)
+    t_nama = target_df["nama_unit"].astype(str).str.strip().str.upper()
+    t_lok = target_df["lokasi"] if "lokasi" in target_df.columns else pd.Series([None] * len(target_df), index=target_df.index)
+
+    for c in cols:
+        rc = ref.dropna(subset=[c])
+        by_lok_kode = rc.dropna(subset=["_kode"]).drop_duplicates(["_lok", "_kode"]).set_index(["_lok", "_kode"])[c].to_dict()
+        _nuniq = rc.dropna(subset=["_kode"]).groupby("_kode")[c].nunique()
+        _unik = set(_nuniq[_nuniq == 1].index)
+        by_kode = (rc[rc["_kode"].isin(_unik)].drop_duplicates("_kode").set_index("_kode")[c].to_dict())
+        by_nama = rc.drop_duplicates("_nama").set_index("_nama")[c].to_dict()
+        vals = []
+        for lok, kd, nm in zip(t_lok, t_kode, t_nama):
+            v = None
+            if kd is not None:
+                v = by_lok_kode.get((lok, kd))
+                if v is None:
+                    v = by_kode.get(kd)
+            if v is None:
+                v = by_nama.get(nm)
+            vals.append(v)
+        out[c] = vals
+    return out
+
 def style_fig(fig):
     """Make chart background transparent so it blends with the black page,
     and keep text light/readable."""
@@ -225,30 +306,41 @@ METODOLOGI_PPT_PATH = Path(__file__).parent / "Metodologi_Laporan_RTM_BKMS.pptx"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 KATEGORI_LABEL = {"AB": "Alat Berat (AB)", "TR": "Transportasi (TR)"}
 
+
+def _file_mtime(path):
+    """Waktu modifikasi file -- dipakai sbg bagian KUNCI cache loader CSV di bawah. Tanpa ini, @st.cache_data
+    cuma mengenali nama file, jadi kalau isi file di-update (mis. commit baru ke GitHub) aplikasi TETAP
+    memakai isi lama dari cache sampai di-reboot."""
+    try:
+        return Path(path).stat().st_mtime
+    except Exception:
+        return None
+
+
 @st.cache_data
-def load_data(file) -> pd.DataFrame:
+def load_data(file, mtime=None) -> pd.DataFrame:
     return pd.read_csv(file)
 
 @st.cache_data
-def load_maintenance_data(file) -> pd.DataFrame:
+def load_maintenance_data(file, mtime=None) -> pd.DataFrame:
     if not Path(file).exists():
         return pd.DataFrame()
     return pd.read_csv(file)
 
 @st.cache_data
-def load_sparepart_data(file) -> pd.DataFrame:
+def load_sparepart_data(file, mtime=None) -> pd.DataFrame:
     if not Path(file).exists():
         return pd.DataFrame()
     return pd.read_csv(file)
 
 @st.cache_data
-def load_sasaran_mutu_data(file) -> pd.DataFrame:
+def load_sasaran_mutu_data(file, mtime=None) -> pd.DataFrame:
     if not Path(file).exists():
         return pd.DataFrame()
     return pd.read_csv(file, dtype={"id_unit": str})
 
 @st.cache_data
-def load_mttr_data(file) -> pd.DataFrame:
+def load_mttr_data(file, mtime=None) -> pd.DataFrame:
     if not Path(file).exists():
         return pd.DataFrame()
     return pd.read_csv(file)
@@ -545,14 +637,12 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
 
     # Lookup jenis_unit, kategori & kelompok_unit via nama_unit utk maint_all (data_maintenance.csv tdk selalu py kolom2 ini langsung)
     if not maint_all.empty:
-        unit_lookup = (data_all.dropna(subset=["nama_unit", "jenis_unit"])
-                        .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
-                        .drop_duplicates("_key").set_index("_key"))
-        maint_all["_key"] = maint_all["nama_unit"].astype(str).str.strip().str.upper()
-        maint_all["jenis_unit"] = maint_all["_key"].map(unit_lookup["jenis_unit"]) if "jenis_unit" not in maint_all.columns or maint_all["jenis_unit"].isna().all() else maint_all.get("jenis_unit")
-        maint_all["_blok"] = maint_all["_key"].map(unit_lookup["_blok"]) if "_blok" in unit_lookup.columns else None
-        if "kelompok_unit" in unit_lookup.columns:
-            maint_all["kelompok_unit"] = maint_all["_key"].map(unit_lookup["kelompok_unit"])
+        _lk_all = lookup_atribut_unit(maint_all, data_all, [c for c in ["jenis_unit", "_blok", "kelompok_unit"] if c in data_all.columns])
+        if "jenis_unit" not in maint_all.columns or maint_all["jenis_unit"].isna().all():
+            maint_all["jenis_unit"] = _lk_all["jenis_unit"] if "jenis_unit" in _lk_all.columns else None
+        maint_all["_blok"] = _lk_all["_blok"] if "_blok" in _lk_all.columns else None
+        if "kelompok_unit" in _lk_all.columns:
+            maint_all["kelompok_unit"] = _lk_all["kelompok_unit"]
         maint_all = maint_all.dropna(subset=["jenis_unit", "_blok"]) if "jenis_unit" in maint_all.columns else pd.DataFrame()
 
     blok_list = [b for b in [BLOK_TR, BLOK_AB, BLOK_MINING] if (data_all["_blok"] == b).any()]
@@ -1382,10 +1472,13 @@ def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df, maint_df=Non
     if maint_df is not None and not maint_df.empty:
         maint_out = maint_df.copy()
         if data_df is not None and not data_df.empty and {"nama_unit", "kelompok_unit"}.issubset(data_df.columns):
-            _lk = (data_df.dropna(subset=["nama_unit", "kelompok_unit"])
-                   .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
-                   .drop_duplicates("_key").set_index("_key")["kelompok_unit"])
-            maint_out["kelompok_unit"] = maint_out["nama_unit"].astype(str).str.strip().str.upper().map(_lk)
+            _lk_cols = [c for c in ["kategori", "jenis_unit", "id_unit", "kelompok_unit"] if c in data_df.columns]
+            _lk = lookup_atribut_unit(maint_out, data_df, _lk_cols)
+            for _c in _lk_cols:
+                if _c == "kelompok_unit" or _c not in maint_out.columns:
+                    maint_out[_c] = _lk[_c]
+                else:
+                    maint_out[_c] = maint_out[_c].where(maint_out[_c].notna(), _lk[_c])
         if "id_unit" in maint_out.columns:
             maint_out["id_unit"] = maint_out["id_unit"].apply(
                 lambda v: str(int(float(v))) if pd.notna(v) and str(v).replace(".", "", 1).isdigit() else v)
@@ -1578,10 +1671,10 @@ with st.sidebar:
 
     if IS_ADMIN:
         st.markdown("### 📁 Sumber Data")
-    df_raw = load_data(DATA_PATH)
-    maint_raw = load_maintenance_data(MAINT_DATA_PATH)
-    sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
-    mttr_raw = load_mttr_data(MTTR_DATA_PATH)
+    df_raw = load_data(DATA_PATH, _file_mtime(DATA_PATH))
+    maint_raw = load_maintenance_data(MAINT_DATA_PATH, _file_mtime(MAINT_DATA_PATH))
+    sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH, _file_mtime(SPAREPART_DATA_PATH))
+    mttr_raw = load_mttr_data(MTTR_DATA_PATH, _file_mtime(MTTR_DATA_PATH))
 
     # --- Upload Data Realisasi: MENGGABUNG (update) ke data yg sudah ada (id_unit + bulan) ---
     # supaya Budget yg sudah ada (sampai Des) tetap utuh, cuma kolom Realisasi yg diperbarui.
@@ -1801,45 +1894,40 @@ with st.sidebar:
                     use_container_width=True,
                 )
 
-    # Tambahkan kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' ke data maintenance & sparepart, dicocokkan lewat
-    # nama_unit terhadap data utama (df_raw) — supaya bisa di-crosscheck per kategori/jenis unit. Hasilnya disimpan
-    # kembali ke file CSV-nya (data_maintenance.csv & data_sparepart.csv) supaya kolom2 ini permanen di file.
-    # PENTING: proses ini (termasuk clear cache) HANYA dijalankan kalau kolomnya benar2 belum lengkap -- supaya
-    # tidak menulis ulang file & menghapus cache di SETIAP rerun (yg bikin dashboard jadi berat/lambat).
-    _maint_needs_fill = (not maint_raw.empty and "nama_unit" in maint_raw.columns and
-                         any(c not in maint_raw.columns or maint_raw[c].isna().any() for c in ["kategori", "jenis_unit", "id_unit"]))
-    _sp_needs_fill = (not sparepart_raw.empty and "nama_unit" in sparepart_raw.columns and
-                      any(c not in sparepart_raw.columns or sparepart_raw[c].isna().any() for c in ["kategori", "jenis_unit", "id_unit"]))
-    if not df_raw.empty and "nama_unit" in df_raw.columns and "kategori" in df_raw.columns and (_maint_needs_fill or _sp_needs_fill):
+    # Lengkapi kolom 'kategori' (AB/TR), 'jenis_unit', & 'id_unit' di data maintenance & sparepart (dicocokkan
+    # lewat KODE UNIT ke data utama, lihat lookup_atribut_unit). Hanya di MEMORI -- TIDAK lagi menulis ulang file
+    # CSV di server: dulu penulisan ulang ini bisa MENIMPA file CSV yg lebih baru dgn isi cache yg sudah usang.
+    # Kolom yg SUDAH terisi dipertahankan; hanya yg kosong yg diisi.
+    if not df_raw.empty and "nama_unit" in df_raw.columns and "kategori" in df_raw.columns:
         _unit_lookup_cols = [c for c in ["kategori", "jenis_unit", "id_unit"] if c in df_raw.columns]
-        _kategori_lookup = (
-            df_raw.dropna(subset=["nama_unit"])
-            .assign(_nama_unit_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
-            .drop_duplicates(subset=["_nama_unit_key"])
-            .set_index("_nama_unit_key")[_unit_lookup_cols]
-        )
-        if _maint_needs_fill:
-            maint_raw = maint_raw.copy()
-            _maint_key = maint_raw["nama_unit"].astype(str).str.strip().str.upper()
-            for _col in _unit_lookup_cols:
-                maint_raw[_col] = _maint_key.map(_kategori_lookup[_col])
-            try:
-                maint_raw.to_csv(MAINT_DATA_PATH, index=False)
-                load_maintenance_data.clear()
-            except Exception as _e_maint_save:
-                st.warning(f"Kolom kategori/jenis_unit berhasil ditambahkan, tapi gagal menyimpan ke {MAINT_DATA_PATH.name}: {_e_maint_save}")
-        if _sp_needs_fill:
-            sparepart_raw = sparepart_raw.copy()
-            _sp_key = sparepart_raw["nama_unit"].astype(str).str.strip().str.upper()
-            for _col in _unit_lookup_cols:
-                sparepart_raw[_col] = _sp_key.map(_kategori_lookup[_col])
-            try:
-                sparepart_raw.to_csv(SPAREPART_DATA_PATH, index=False)
-                load_sparepart_data.clear()
-            except Exception as _e_sp_save:
-                st.warning(f"Kolom kategori/jenis_unit berhasil ditambahkan, tapi gagal menyimpan ke {SPAREPART_DATA_PATH.name}: {_e_sp_save}")
 
-    sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH)
+        def _lengkapi_atribut_unit(df_):
+            if df_.empty or "nama_unit" not in df_.columns:
+                return df_
+            if not any(c not in df_.columns or df_[c].isna().any() for c in _unit_lookup_cols):
+                return df_
+            df_ = df_.copy()
+            _lk = lookup_atribut_unit(df_, df_raw, _unit_lookup_cols)
+            for _col in _unit_lookup_cols:
+                df_[_col] = df_[_col].where(df_[_col].notna(), _lk[_col]) if _col in df_.columns else _lk[_col]
+            return df_
+
+        maint_raw = _lengkapi_atribut_unit(maint_raw)
+        sparepart_raw = _lengkapi_atribut_unit(sparepart_raw)
+
+    # --- Info (khusus admin): bulan yg TERSEDIA di tiap data yg sedang dimuat aplikasi ---
+    if IS_ADMIN:
+        def _bln(df_):
+            if df_ is None or df_.empty or "bulan" not in df_.columns:
+                return "kosong"
+            _b = [m for m in MONTH_ORDER if m in set(df_["bulan"].dropna())]
+            return f"{', '.join(_b)} ({len(df_):,} baris)"
+        with st.expander("\U0001F4CB Cek data yang sedang dimuat"):
+            st.caption(f"**Maintenance:** {_bln(maint_raw)}")
+            st.caption(f"**Sparepart:** {_bln(sparepart_raw)}")
+            st.caption(f"**MTTR:** {_bln(mttr_raw)}")
+
+    sasaran_mutu_raw = load_sasaran_mutu_data(SASARAN_MUTU_PATH, _file_mtime(SASARAN_MUTU_PATH))
 
     st.markdown("---")
     st.markdown("### 🏭 Divisi")
@@ -3243,11 +3331,9 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             elif "nama_unit" in m4.columns:
                 valid_units4 = set(data["nama_unit"].astype(str).str.strip().str.upper().unique())
                 m4 = m4[m4["nama_unit"].astype(str).str.strip().str.upper().isin(valid_units4)]
-            # Lookup KELOMPOK UNIT via nama_unit (maint_data tdk punya kolom kelompok_unit langsung)
-            unit_lookup4 = (data.dropna(subset=["nama_unit", "kelompok_unit"])
-                             .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
-                             .drop_duplicates("_key").set_index("_key")["kelompok_unit"]) if "kelompok_unit" in data.columns else pd.Series(dtype=object)
-            m4["kelompok_unit"] = m4["nama_unit"].astype(str).str.strip().str.upper().map(unit_lookup4)
+            # Lookup KELOMPOK UNIT via KODE UNIT (maint_data tdk punya kolom kelompok_unit langsung) --
+            # lihat lookup_atribut_unit(): nama unit di Pemeliharaan sering beda penulisan dgn data BKMS.
+            m4["kelompok_unit"] = lookup_atribut_unit(m4, data, ["kelompok_unit"])["kelompok_unit"] if "kelompok_unit" in data.columns else None
             m4 = m4.dropna(subset=["kelompok_unit"])
             if not m4.empty:
                 rutin_su4 = m4.groupby(["lokasi", "kelompok_unit", "jenis_pemeliharaan"], as_index=False).agg(biaya=("biaya", "sum"))
