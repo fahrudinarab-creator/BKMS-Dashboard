@@ -1299,6 +1299,8 @@ def build_sasaran_mutu_excel(sasaran_mutu_df) -> bytes:
                 cell = ws.cell(row=r_i, column=c_i, value=(None if pd.isna(val) else val))
                 cell.font = NORMAL_FONT
                 cell.border = BORDER
+                if rupiah_cols and cols[c_i - 1] in rupiah_cols:
+                    cell.number_format = "#,##0"
                 if is_missing:
                     cell.fill = MISSING_FILL
         for c_i, col in enumerate(cols, start=1):
@@ -1319,7 +1321,7 @@ def build_sasaran_mutu_excel(sasaran_mutu_df) -> bytes:
     return buf.getvalue()
 
 @st.cache_data
-def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
+def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df, maint_df=None) -> bytes:
     """Bangun 1 file Excel 'Database Laporan' -- isinya sama dgn export data_bkms (Semua Data + per-site),
     ditambah sheet Sasaran Mutu & MTTR. Dipakai utk tombol download di sidebar."""
     import io as _io
@@ -1337,7 +1339,7 @@ def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
-    def _write_sheet(sheet_name, data, highlight_col=None):
+    def _write_sheet(sheet_name, data, highlight_col=None, rupiah_cols=None):
         ws = wb.create_sheet(sheet_name[:31])
         if data is None or data.empty:
             ws.cell(row=1, column=1, value="Data belum tersedia.")
@@ -1354,6 +1356,8 @@ def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
                 cell = ws.cell(row=r_i, column=c_i, value=(None if pd.isna(val) else val))
                 cell.font = NORMAL_FONT
                 cell.border = BORDER
+                if rupiah_cols and cols[c_i - 1] in rupiah_cols:
+                    cell.number_format = "#,##0"
                 if is_missing:
                     cell.fill = MISSING_FILL
         for c_i, col in enumerate(cols, start=1):
@@ -1371,6 +1375,29 @@ def build_database_laporan_excel(data_df, sasaran_mutu_df, mttr_df) -> bytes:
 
     # --- Sheet MTTR ---
     _write_sheet("MTTR", mttr_df)
+
+    # --- Sheet Biaya Maintenance: detail transaksi Pemeliharaan (sumber chart Rutin vs Non-Rutin) ---
+    # Ditambah kolom kelompok_unit (lookup nama_unit -> data BKMS), sama spt yg dipakai slide PPT.
+    maint_out = pd.DataFrame()
+    if maint_df is not None and not maint_df.empty:
+        maint_out = maint_df.copy()
+        if data_df is not None and not data_df.empty and {"nama_unit", "kelompok_unit"}.issubset(data_df.columns):
+            _lk = (data_df.dropna(subset=["nama_unit", "kelompok_unit"])
+                   .assign(_key=lambda d: d["nama_unit"].astype(str).str.strip().str.upper())
+                   .drop_duplicates("_key").set_index("_key")["kelompok_unit"])
+            maint_out["kelompok_unit"] = maint_out["nama_unit"].astype(str).str.strip().str.upper().map(_lk)
+        if "id_unit" in maint_out.columns:
+            maint_out["id_unit"] = maint_out["id_unit"].apply(
+                lambda v: str(int(float(v))) if pd.notna(v) and str(v).replace(".", "", 1).isdigit() else v)
+        maint_out = maint_out.rename(columns={"kelompok": "divisi"})
+        if "bulan_no" in maint_out.columns:
+            maint_out = maint_out.sort_values(["bulan_no", "lokasi", "tanggal"], kind="stable")
+        _urutan = ["tanggal", "bulan", "lokasi", "divisi", "id_unit", "nama_unit", "kategori", "kelompok_unit",
+                   "jenis_unit", "jenis_pemeliharaan", "kategori_sparepart", "tipe_biaya", "biaya", "keterangan"]
+        maint_out = maint_out[[c for c in _urutan if c in maint_out.columns]
+                              + [c for c in maint_out.columns if c not in _urutan and c != "bulan_no"]]
+    _write_sheet("Biaya Maintenance", maint_out, highlight_col="kelompok_unit" if "kelompok_unit" in maint_out.columns else None,
+                 rupiah_cols={"biaya"})
 
     buf = _io.BytesIO()
     wb.save(buf)
@@ -1508,7 +1535,49 @@ with st.sidebar:
     PLANTATION_SITES = ["SUNGAI DANAU", "KUMAI"]
     DIVISI_MAP = {"Mining": MINING_SITES, "Plantation": PLANTATION_SITES}
 
-    st.markdown("### 📁 Sumber Data")
+    # ================= AKSES ADMIN =================
+    # Hanya ADMIN (pemilik) yg bisa upload data & simpan ke GitHub. Orang lain yg membuka link share
+    # cuma bisa memakai filter & melihat/unduh laporan. Password diambil dari Secrets `ADMIN_PASSWORD`.
+    # Status login disimpan di session_state -> berlaku per browser/sesi, TIDAK ikut ke orang lain.
+    import hmac as _hmac
+    try:
+        _admin_pw_secret = st.secrets.get("ADMIN_PASSWORD")
+    except Exception:
+        _admin_pw_secret = None
+    if "is_admin" not in st.session_state:
+        st.session_state["is_admin"] = False
+
+    if _admin_pw_secret:
+        if st.session_state["is_admin"]:
+            _c_adm1, _c_adm2 = st.columns([3, 2])
+            _c_adm1.markdown("🔓 **Mode Admin aktif**")
+            if _c_adm2.button("Logout", use_container_width=True):
+                st.session_state["is_admin"] = False
+                st.rerun()
+        else:
+            with st.expander("🔒 Login Admin (khusus upload data)"):
+                _pw_input = st.text_input("Password Admin", type="password", key="_admin_pw_input")
+                if st.button("Masuk", use_container_width=True):
+                    if _pw_input and _hmac.compare_digest(str(_pw_input), str(_admin_pw_secret)):
+                        st.session_state["is_admin"] = True
+                        st.rerun()
+                    else:
+                        st.error("Password salah.")
+        IS_ADMIN = st.session_state["is_admin"]
+    else:
+        # Secrets ADMIN_PASSWORD belum diisi -> perilaku lama (semua orang bisa upload), dgn peringatan.
+        IS_ADMIN = True
+        st.warning("⚠️ `ADMIN_PASSWORD` belum diisi di Secrets — saat ini SIAPA PUN yg punya link bisa upload data. "
+                   "Isi Secrets tersebut supaya upload hanya bisa dilakukan admin.")
+
+    def _admin_uploader(*args, **kwargs):
+        """Pengganti st.file_uploader: hanya tampil utk admin. Non-admin -> dianggap tidak ada upload."""
+        if not IS_ADMIN:
+            return [] if kwargs.get("accept_multiple_files") else None
+        return st.file_uploader(*args, **kwargs)
+
+    if IS_ADMIN:
+        st.markdown("### 📁 Sumber Data")
     df_raw = load_data(DATA_PATH)
     maint_raw = load_maintenance_data(MAINT_DATA_PATH)
     sparepart_raw = load_sparepart_data(SPAREPART_DATA_PATH)
@@ -1523,7 +1592,7 @@ with st.sidebar:
     _sparepart_diupload = False
     _mttr_diupload = False
 
-    uploaded_realisasi_list = st.file_uploader("Upload Data Realisasi (format sama dgn template Budget)",
+    uploaded_realisasi_list = _admin_uploader("Upload Data Realisasi (format sama dgn template Budget)",
                                                  type=["xls", "xlsx"], accept_multiple_files=True)
     if uploaded_realisasi_list:
         total_upd, total_unmatch = 0, 0
@@ -1562,7 +1631,7 @@ with st.sidebar:
             return "-"
         return ", ".join([m for m in MONTH_ORDER if m in set(df_["bulan"].dropna())])
 
-    uploaded_maint_list = st.file_uploader("Upload Data Maintenance (Pemeliharaan)", type=["xls", "xlsx"],
+    uploaded_maint_list = _admin_uploader("Upload Data Maintenance (Pemeliharaan)", type=["xls", "xlsx"],
                                            accept_multiple_files=True)
     if uploaded_maint_list:
         _gagal_m = []
@@ -1582,7 +1651,7 @@ with st.sidebar:
         if _gagal_m:
             st.error("Gagal membaca sebagian file maintenance:\n" + "\n".join(f"- {g}" for g in _gagal_m))
 
-    uploaded_sparepart_list = st.file_uploader("Upload Data Pemakaian Sparepart", type=["xls", "xlsx"],
+    uploaded_sparepart_list = _admin_uploader("Upload Data Pemakaian Sparepart", type=["xls", "xlsx"],
                                                accept_multiple_files=True)
     if uploaded_sparepart_list:
         _gagal_s = []
@@ -1602,7 +1671,7 @@ with st.sidebar:
         if _gagal_s:
             st.error("Gagal membaca sebagian file sparepart:\n" + "\n".join(f"- {g}" for g in _gagal_s))
 
-    uploaded_workshop = st.file_uploader(
+    uploaded_workshop = _admin_uploader(
         "Upload Data MTTR",
         type=["xls", "xlsx"], accept_multiple_files=True)
     if uploaded_workshop:
@@ -1656,7 +1725,7 @@ with st.sidebar:
     # (user tdk perlu download+upload manual). Kalau BELUM dikonfigurasi -> fallback ke tombol download biasa
     # (spy fitur lama tetap jalan utk user yg blm setup token). ---
     _jumlah_tipe_diupload = sum([_realisasi_diupload, _maint_diupload, _sparepart_diupload, _mttr_diupload])
-    if _jumlah_tipe_diupload > 0:
+    if IS_ADMIN and _jumlah_tipe_diupload > 0:
         st.markdown("---")
         st.markdown("**💾 Simpan Perubahan Secara Permanen**")
 
@@ -3839,7 +3908,7 @@ colDB, colPPT = st.columns(2)
 with colDB:
     if st.button("📊 Buat Database Laporan (Excel)", use_container_width=True, type="primary"):
         with st.spinner("Menyusun Database Laporan..."):
-            st.session_state["database_laporan_bytes"] = build_database_laporan_excel(df_raw, sasaran_mutu_raw, mttr_raw)
+            st.session_state["database_laporan_bytes"] = build_database_laporan_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_raw)
     if "database_laporan_bytes" in st.session_state:
         st.download_button(
             "⬇️ Unduh Database Laporan (Excel)",
