@@ -2182,6 +2182,1045 @@ def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelomp
     avg_capaian = grouped["capaian"].mean()
     return avg_realisasi_display, avg_target_display, avg_capaian
 
+# =====================================================================================================
+# DETAIL PERHITUNGAN PPT (model baru): setiap slide PPT dibawa ke Excel, SEMUA angka = RUMUS yg tertaut
+# ke sheet data mentah di workbook yg sama (Data BKMS, Data Sasaran Mutu, Data Pemeliharaan, Data MTTR).
+# Per blok (TR / AB / MN) ada 4 slide; tiap slide = 1 sheet tampilan + 1 sheet "Perhitungan".
+# Daftar baris (Site — Kelompok Unit) & urutannya ditentukan saat file dibuat (sama dgn PPT); angkanya rumus.
+# =====================================================================================================
+import io as _io_dx
+import pandas as _pd_dx
+from openpyxl import Workbook as _WB_dx
+from openpyxl.utils import get_column_letter as _CL
+from openpyxl.styles import Font as _Font, PatternFill as _Fill, Alignment as _Al, Border as _Bd, Side as _Sd
+from openpyxl.formatting.rule import FormulaRule as _FRule
+from openpyxl.chart import BarChart as _Bar, DoughnutChart as _Dn, Reference as _Ref
+from openpyxl.chart.label import DataLabelList as _DLL
+from openpyxl.chart.series import DataPoint as _DP
+
+_DX_MINING = ["TANJUNG", "BUHUT", "BUHUT LHL", "AMPAH"]
+_DX_SITE_ABBR = {"SUNGAI DANAU": "S.DANAU", "BUHUT LHL": "B.LHL"}
+_DX_KEL_ABBR = {
+    "TANGKI SERIES 300": "TANGKI 300", "TANGKI SERIES 500": "TANGKI 500",
+    "TRUCK ARM ROLL 4x4": "ARM ROLL 4x4", "TRUCK ARM ROLL": "ARM ROLL",
+    "TRUCK - TUS": "TUS", "TRUCK - BAK": "BAK",
+    "DUMP TRUCK 4x4": "DT 4x4", "DUMP TRUCK HOWO": "DT HOWO", "DUMP TRUCK": "DT",
+    "EXCAVATOR MEDIUM": "EXC MEDIUM", "EXCAVATOR MINI": "EXC MINI",
+    "BULLDOZER MEDIUM": "BULLDOZER M", "BULLDOZER MINI": "BULLDOZER m",
+    "BACKHOE LOADER": "BACKHOE", "FARM TRACKTOR": "TRACTOR", "WHEEL LOADER": "WHL LOADER",
+    "TRUCK - BAK - PICK UP": "PICK UP", "PICK UP DOUBLE CABIN": "PU D.CABIN",
+}
+_DX_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+_DX_BLOK_TR, _DX_BLOK_AB, _DX_BLOK_MN = "PLANTATION - TRANSPORTASI", "PLANTATION - ALAT BERAT", "MINING"
+
+_FONT = "Arial"
+_NAVY = "1E2761"; _GOLD = "D98E1F"; _RED = "D64541"; _GREEN = "2E8B57"; _TEAL = "17A2B8"
+_MUTED = "6B7280"; _DARK = "1F2937"; _PURPLE = "8E6BC9"; _BLUE = "2E6DB4"
+_RED_BG = "FCE4E1"; _GREEN_BG = "DEF2E4"; _GOLD_BG = "FBEED8"; _GREY_BG = "F3F4F6"
+_thin = _Sd(style="thin", color="D1D5DB")
+_BORDER = _Bd(left=_thin, right=_thin, top=_thin, bottom=_thin)
+_CENTER = _Al(horizontal="center", vertical="center", wrap_text=True)
+_LEFT = _Al(horizontal="left", vertical="center", wrap_text=True)
+_RIGHT = _Al(horizontal="right", vertical="center")
+_PALETTE = ["0D9488", "1E5AA8", "D98E1F", "17A2B8", "7B5EA7", "E06C4F", "5BA84C", "2C3E7A", "C94F8A", "8C9A2B",
+            "467A9E", "B56A2E", "3FB49C", "9E9E3A", "6D4C9F", "A04545"]
+
+
+def _f(size=10, bold=False, color=_DARK, italic=False):
+    return _Font(name=_FONT, size=size, bold=bold, color=color, italic=italic)
+
+
+def _fill(h):
+    return _Fill("solid", start_color=h, end_color=h)
+
+
+def _blok_py(lok, kat):
+    if lok in _DX_MINING:
+        return _DX_BLOK_MN
+    return _DX_BLOK_AB if kat == "AB" else (_DX_BLOK_TR if kat == "TR" else None)
+
+
+def _blok_formula(lok, kat):
+    return (f'=IF(OR({lok}="TANJUNG",{lok}="BUHUT",{lok}="BUHUT LHL",{lok}="AMPAH"),"{_DX_BLOK_MN}",'
+            f'IF({kat}="AB","{_DX_BLOK_AB}",IF({kat}="TR","{_DX_BLOK_TR}","")))')
+
+
+def _rp(x):
+    """Format Rupiah spt PPT (Rp .. M / Jt / Rb). FIXED (bukan TEXT) spy aman di Excel berbahasa Indonesia."""
+    return (f'IF(ABS({x})>=1E9,"Rp "&FIXED({x}/1E9,2)&" M",IF(ABS({x})>=1E6,"Rp "&FIXED({x}/1E6,1)&" Jt",'
+            f'IF(ABS({x})>=1E3,"Rp "&FIXED({x}/1E3,1)&" Rb","Rp "&FIXED({x},0))))')
+
+
+def _pct(x, d=1):
+    # tanpa pemisah ribuan (TRUE) -> "1017%" spt di PPT, bukan "1,017%"
+    return f'FIXED({x}*100,{d},TRUE)&"%"'
+
+
+def _site(l):
+    return _DX_SITE_ABBR.get(l, l)
+
+
+def _kel(k):
+    return _DX_KEL_ABBR.get(k, k)
+
+
+class _DataSheet:
+    """Sheet data mentah: kolom bantu (rumus, header emas) + kolom asli (header navy)."""
+
+    def __init__(self, wb, name, df, helpers):
+        self.ws = wb.create_sheet(name)
+        self.name = name
+        self.df = df.reset_index(drop=True)
+        self.cols = [h for h, _ in helpers] + list(self.df.columns)
+        self.C = {n: _CL(i + 1) for i, n in enumerate(self.cols)}
+        self.n = len(self.df) + 1
+        ws = self.ws
+        for i, h in enumerate(self.cols, start=1):
+            c = ws.cell(1, i, h)
+            c.font = _f(9, True, "FFFFFF"); c.fill = _fill(_GOLD if i <= len(helpers) else _NAVY); c.alignment = _CENTER
+        num = set(self.df.select_dtypes("number").columns)
+        off = len(helpers)
+        for r, row in enumerate(self.df.itertuples(index=False), start=2):
+            for j, name in enumerate(self.df.columns):
+                v = row[j]
+                if v is None or (not isinstance(v, str) and _pd_dx.isna(v)):
+                    continue
+                if isinstance(v, (bool,)) or str(type(v)).endswith("bool_'>"):
+                    v = bool(v)
+                elif name in num:
+                    v = float(v)
+                ws.cell(r, off + 1 + j, v)
+            for k, (h, fn) in enumerate(helpers):
+                ws.cell(r, k + 1, fn(self.C, r))
+        ws.freeze_panes = ws.cell(2, off + 1)
+        for i in range(1, len(self.cols) + 1):
+            ws.column_dimensions[_CL(i)].width = 14
+        ws.column_dimensions["A"].width = 27
+        if "nama_unit" in self.C:
+            ws.column_dimensions[self.C["nama_unit"]].width = 34
+
+    def R(self, col):
+        return f"'{self.name}'!${self.C[col]}$2:${self.C[col]}${self.n}"
+
+
+class _Sheet:
+    """Helper sheet tampilan / perhitungan."""
+
+    def __init__(self, wb, name, grid=True):
+        self.ws = wb.create_sheet(name)
+        self.name = name
+        self.P = f"'{name}'!"
+        self.ws.sheet_view.showGridLines = False
+
+    def put(self, ref, v, fmt=None, bold=False, color=_DARK, align=_RIGHT, size=9, border=True, fillc=None, italic=False):
+        c = self.ws[ref]
+        c.value = v
+        c.font = _f(size, bold, color, italic)
+        c.alignment = align
+        if border:
+            c.border = _BORDER
+        if fmt:
+            c.number_format = fmt
+        if fillc:
+            c.fill = _fill(fillc)
+        return c
+
+    def merge_put(self, rng, v, **kw):
+        self.ws.merge_cells(rng)
+        return self.put(rng.split(":")[0], v, **kw)
+
+    def section(self, row, text, c1="B", c2="T", color=_NAVY):
+        self.ws.merge_cells(f"{c1}{row}:{c2}{row}")
+        c = self.ws[f"{c1}{row}"]
+        c.value = text
+        c.font = _f(11, True, "FFFFFF"); c.fill = _fill(color)
+        c.alignment = _Al(horizontal="left", vertical="center", indent=1)
+        self.ws.row_dimensions[row].height = 22
+
+    def header(self, row, col_start, labels, height=30):
+        for i, t in enumerate(labels):
+            c = self.ws.cell(row, col_start + i, t)
+            c.font = _f(9, True, "FFFFFF"); c.fill = _fill("4B5563"); c.alignment = _CENTER; c.border = _BORDER
+        self.ws.row_dimensions[row].height = height
+
+    def title(self, text, sub, blok, last_month, period_txt, note):
+        ws = self.ws
+        ws.merge_cells("B1:T1")
+        ws["B1"] = text
+        ws["B1"].font = _f(16, True, "FFFFFF"); ws["B1"].fill = _fill(_NAVY)
+        ws["B1"].alignment = _Al(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[1].height = 34
+        ws.merge_cells("B2:T2")
+        ws["B2"] = sub
+        ws["B2"].font = _f(10, False, "FFFFFF"); ws["B2"].fill = _fill(_NAVY)
+        ws["B2"].alignment = _Al(horizontal="right", vertical="center", indent=1)
+        for ref, v, b in (("B3", "Blok:", True), ("C3", blok, True), ("F3", "Bulan terakhir:", True), ("G3", last_month, True),
+                          ("J3", "Periode data:", True), ("K3", period_txt, True)):
+            ws[ref] = v
+            ws[ref].font = _f(9, True, _MUTED if ref in ("B3", "F3", "J3") else _DARK)
+        ws.merge_cells("N3:T3")
+        ws["N3"] = note
+        ws["N3"].font = _f(8, False, _MUTED, True); ws["N3"].alignment = _LEFT
+        ws.freeze_panes = "A4"
+
+    def card(self, col, top, label, val_f, val_fmt, sub_f, pill_f, good_cond, accent, width_cols=3, sub2_f=None):
+        """Kartu KPI: baris top = garis warna, +1 label, +2..+3 angka besar, +4 target/rincian, (+5 rincian 2), +last status."""
+        ws = self.ws
+        c0 = ws[col + "1"].column
+        c3 = _CL(c0 + width_cols - 1)
+        rng = lambda r: f"{col}{r}:{c3}{r}"
+        ws.merge_cells(rng(top)); ws[f"{col}{top}"].fill = _fill(accent)
+        ws.row_dimensions[top].height = 5
+        ws.merge_cells(rng(top + 1)); ws[f"{col}{top+1}"] = label
+        ws[f"{col}{top+1}"].font = _f(11, True, _MUTED); ws[f"{col}{top+1}"].alignment = _CENTER
+        ws.merge_cells(f"{col}{top+2}:{c3}{top+3}"); ws[f"{col}{top+2}"] = val_f
+        ws[f"{col}{top+2}"].font = _f(24, True, _DARK); ws[f"{col}{top+2}"].alignment = _CENTER
+        ws[f"{col}{top+2}"].number_format = val_fmt
+        ws.merge_cells(rng(top + 4)); ws[f"{col}{top+4}"] = sub_f
+        ws[f"{col}{top+4}"].font = _f(10, False, _MUTED); ws[f"{col}{top+4}"].alignment = _CENTER
+        last = top + 5
+        if sub2_f is not None:
+            ws.merge_cells(rng(top + 5)); ws[f"{col}{top+5}"] = sub2_f
+            ws[f"{col}{top+5}"].font = _f(10, False, _MUTED); ws[f"{col}{top+5}"].alignment = _CENTER
+            last = top + 6
+        ws.merge_cells(rng(last)); ws[f"{col}{last}"] = pill_f
+        ws[f"{col}{last}"].font = _f(10.5, True, _DARK); ws[f"{col}{last}"].alignment = _CENTER
+        for rr in range(top + 1, last + 1):
+            for cc in range(c0, c0 + width_cols):
+                ws.cell(rr, cc).border = _Bd(left=_thin if cc == c0 else None, right=_thin if cc == c0 + width_cols - 1 else None,
+                                             bottom=_thin if rr == last else None)
+        if good_cond:
+            ws.conditional_formatting.add(rng(last), _FRule(formula=[f"AND({good_cond})"], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+            ws.conditional_formatting.add(rng(last), _FRule(formula=[f"NOT(AND({good_cond}))"], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
+        for rr, h in ((top + 1, 22), (top + 2, 22), (top + 3, 22), (top + 4, 18), (last, 22)):
+            ws.row_dimensions[rr].height = h
+        return last
+
+    def note_box(self, rng, formula, color=_RED, bg=_RED_BG):
+        ws = self.ws
+        ws.merge_cells(rng)
+        a, b = rng.split(":")
+        c = ws[a]
+        c.value = formula
+        c.font = _f(11, True, color); c.fill = _fill(bg)
+        c.alignment = _Al(horizontal="left", vertical="center", wrap_text=True, indent=1)
+        r1, r2 = int("".join(ch for ch in a if ch.isdigit())), int("".join(ch for ch in b if ch.isdigit()))
+        c1 = ws[a].column; c2 = ws[b].column
+        med = _Sd(style="medium", color=color)
+        for rr in range(r1, r2 + 1):
+            ws.row_dimensions[rr].height = 20
+            for cc in range(c1, c2 + 1):
+                ws.cell(rr, cc).border = _Bd(top=med if rr == r1 else None, bottom=med if rr == r2 else None,
+                                             left=med if cc == c1 else None, right=med if cc == c2 else None)
+
+    def widths(self, spec):
+        for k, v in spec.items():
+            self.ws.column_dimensions[k].width = v
+
+
+def _bar_chart(kind="col", grouping="clustered", overlap=None, gap=60, height=9, width=30, legend="b"):
+    ch = _Bar(); ch.type = kind; ch.grouping = grouping; ch.gapWidth = gap
+    if overlap is not None:
+        ch.overlap = overlap
+    ch.height = height; ch.width = width
+    ch.y_axis.delete = False; ch.x_axis.delete = False
+    if legend:
+        ch.legend.position = legend
+    else:
+        ch.legend = None
+    return ch
+
+
+def _labels(ch, fmt, pos="outEnd"):
+    ch.dataLabels = _DLL(); ch.dataLabels.showVal = True; ch.dataLabels.numFmt = fmt
+    ch.dataLabels.showSerName = False; ch.dataLabels.showCatName = False
+    ch.dataLabels.showLegendKey = False; ch.dataLabels.showPercent = False
+    if pos:
+        ch.dataLabels.position = pos
+
+
+def _color_series(ch, colors):
+    for s_, c in zip(ch.series, colors):
+        s_.graphicalProperties.solidFill = c
+        s_.graphicalProperties.line.solidFill = c
+
+
+def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, kats, lookup_fn, lookup_base=None):
+    """Bangun workbook Detail Perhitungan PPT (bytes). Input SAMA dgn build_pptx (data yg sudah difilter).
+    lookup_fn = lookup_atribut_unit (pencocokan kode unit); lookup_base = data acuan pencocokan (default df_raw)."""
+    lookup_base = df_raw if lookup_base is None else lookup_base
+    months = [m for m in _DX_MONTHS if m in set(months)]
+    last_month = months[-1] if months else "-"
+    li = _DX_MONTHS.index(last_month) if last_month in _DX_MONTHS else 0
+    rom = ["I", "II", "III"][li // 4]
+    cawu = f"Cawu {rom}" if li % 4 == 3 else f"{last_month} (Cawu {rom})"
+    cawu_inline = f"Cawu {rom}" if li % 4 == 3 else f"{last_month}, Cawu {rom}"
+    period_txt = f"{months[0]} – {months[-1]}" if months else "-"
+
+    # ---------------- data (filter sama dgn PPT)
+    db = df_raw[df_raw["lokasi"].isin(sites) & df_raw["bulan"].isin(months) & df_raw["kategori"].isin(kats)].copy()
+    db["id_unit"] = db["id_unit"].astype(str).str.replace(r"\.0$", "", regex=True)
+    db["_blok"] = [_blok_py(l, k) for l, k in zip(db["lokasi"], db["kategori"])]
+    db["_katp"] = ["AB" if l in _DX_MINING else k for l, k in zip(db["lokasi"], db["kategori"])]
+    sm = sm_raw[sm_raw["lokasi"].isin(sites) & sm_raw["bulan"].isin(months)].copy() if sm_raw is not None else _pd_dx.DataFrame()
+    if not sm.empty:
+        sm.loc[sm["lokasi"].isin(_DX_MINING), "kategori"] = "AB"
+        sm = sm[sm["kategori"].isin(set(db["_katp"]))]
+        sm["id_unit"] = sm["id_unit"].astype(str).str.replace(r"\.0$", "", regex=True)
+    mt = maint_raw[maint_raw["lokasi"].isin(sites) & maint_raw["bulan"].isin(months)].copy() if maint_raw is not None else _pd_dx.DataFrame()
+    if not mt.empty:
+        _lk = lookup_fn(mt, lookup_base[lookup_base["bulan"].isin(months)], ["kategori", "kelompok_unit"])
+        mt["kategori"] = mt["kategori"].where(mt["kategori"].notna(), _lk["kategori"]) if "kategori" in mt.columns else _lk["kategori"]
+        mt["kelompok_unit"] = _lk["kelompok_unit"]
+        mt.loc[mt["lokasi"].isin(_DX_MINING), "kategori"] = "AB"
+        mt = mt[[c for c in ["tanggal", "bulan", "lokasi", "kategori", "kelompok_unit", "nama_unit", "jenis_pemeliharaan",
+                             "kategori_sparepart", "tipe_biaya", "biaya", "keterangan"] if c in mt.columns]]
+    mr = mttr_raw[mttr_raw["lokasi"].isin(sites) & mttr_raw["bulan"].isin(months)].copy() if mttr_raw is not None else _pd_dx.DataFrame()
+    if not mr.empty:
+        mr.loc[mr["lokasi"].isin(_DX_MINING), "kategori"] = "AB"
+
+    # Data kosong (mis. belum ada data Pemeliharaan utk bulan terpilih) tetap dibuatkan kolom lengkap,
+    # spy rumus yg merujuk ke kolomnya tetap valid (hasilnya 0 / "-").
+    def _ensure_cols(d_, cols_):
+        d_ = d_.copy() if d_ is not None else _pd_dx.DataFrame()
+        for c_ in cols_:
+            if c_ not in d_.columns:
+                d_[c_] = _pd_dx.Series(dtype="object")
+        return d_
+    sm = _ensure_cols(sm, ["id_unit", "lokasi", "bulan", "nama_unit", "kode_unit", "kelompok_unit", "kategori", "jenis_unit",
+                           "unit_sewa", "availability_target", "utilisasi_target", "downtime_target", "efektif_hm_km_realisasi",
+                           "breakdown_hm_km_realisasi", "tersedia_hm_km_realisasi", "hm_km_ideal_target"])
+    mt = _ensure_cols(mt, ["tanggal", "bulan", "lokasi", "kategori", "kelompok_unit", "nama_unit", "jenis_pemeliharaan",
+                           "kategori_sparepart", "tipe_biaya", "biaya", "keterangan"])
+    mr = _ensure_cols(mr, ["lokasi", "bulan", "tanggal", "nama_unit", "kategori", "jumlah_jam"])
+
+    wb = _WB_dx()
+    wb.remove(wb.active)
+    blocks = [b for b in (_DX_BLOK_TR, _DX_BLOK_AB, _DX_BLOK_MN) if b in set(db["_blok"])]
+    PREFIX = {_DX_BLOK_TR: "TR", _DX_BLOK_AB: "AB", _DX_BLOK_MN: "MN"}
+    SUBLBL = {_DX_BLOK_TR: "PLANTATION · TRANSPORTASI", _DX_BLOK_AB: "PLANTATION · ALAT BERAT", _DX_BLOK_MN: "MINING"}
+    # placeholder urutan sheet: tampilan & perhitungan dibuat per blok di bawah, data di akhir
+    D = {}
+
+    def _mk_data():
+        D["db"] = _DataSheet(wb, "Data BKMS", db.drop(columns=["_blok", "_katp"]), [
+            ("Blok", lambda C, r: _blok_formula(f"{C['lokasi']}{r}", f"{C['kategori']}{r}")),
+            ("Kategori PPT", lambda C, r: f'=IF(A{r}="{_DX_BLOK_MN}","AB",{C["kategori"]}{r})'),
+            ("Kunci Unit", lambda C, r: f'={C["lokasi"]}{r}&"|"&{C["id_unit"]}{r}'),
+            ("Unit Aktif Floating", lambda C, r: (f'=IF(AND({C["kriteria_unit"]}{r}="Floating Tarif",{C["nama_unit"]}{r}<>"",'
+                                                  f'OR(N({C["prestasi_realisasi"]}{r})>0,N({C["pendapatan_realisasi"]}{r})>0,N({C["total_biaya_realisasi"]}{r})>0)),1,0)')),
+            ("Hitung Unit", lambda C, r: (f'=IF(AND(D{r}=1,COUNTIFS(${C["lokasi"]}$2:{C["lokasi"]}{r},{C["lokasi"]}{r},'
+                                          f'${C["nama_unit"]}$2:{C["nama_unit"]}{r},{C["nama_unit"]}{r},${C["bulan"]}$2:{C["bulan"]}{r},{C["bulan"]}{r},'
+                                          f'$D$2:D{r},1)=1),1,0)')),
+            # --- BBM (sama dgn PPT): baris "tdk valid" (qty>0 tapi biaya=0) dikecualikan dari total BBM
+            ("BBM Valid", lambda C, r: (f'=IF(OR(AND(N({C["qty_bbm_realisasi"]}{r})>0,N({C["biaya_bbm_realisasi"]}{r})=0),'
+                                        f'AND(N({C["qty_bbm_budget"]}{r})>0,N({C["biaya_bbm_budget"]}{r})=0)),0,1)')),
+            # --- konsumsi BBM per kelompok: realisasi/budget yg datanya tdk lengkap (qty, biaya, prestasi) dinolkan
+            ("Qty BBM R (konsumsi)", lambda C, r: (f'=IF(AND(N({C["qty_bbm_realisasi"]}{r})>0,N({C["biaya_bbm_realisasi"]}{r})>0,'
+                                                   f'N({C["prestasi_realisasi"]}{r})>0),N({C["qty_bbm_realisasi"]}{r}),0)')),
+            ("Prestasi R (konsumsi)", lambda C, r: (f'=IF(AND(N({C["qty_bbm_realisasi"]}{r})>0,N({C["biaya_bbm_realisasi"]}{r})>0,'
+                                                    f'N({C["prestasi_realisasi"]}{r})>0),N({C["prestasi_realisasi"]}{r}),0)')),
+            ("Qty BBM B (konsumsi)", lambda C, r: (f'=IF(AND(N({C["qty_bbm_budget"]}{r})>0,N({C["biaya_bbm_budget"]}{r})>0,'
+                                                   f'N({C["prestasi_budget"]}{r})>0),N({C["qty_bbm_budget"]}{r}),0)')),
+            ("Prestasi B (konsumsi)", lambda C, r: (f'=IF(AND(N({C["qty_bbm_budget"]}{r})>0,N({C["biaya_bbm_budget"]}{r})>0,'
+                                                    f'N({C["prestasi_budget"]}{r})>0),N({C["prestasi_budget"]}{r}),0)')),
+        ])
+        dbs = D["db"]
+        D["sm"] = _DataSheet(wb, "Data Sasaran Mutu", sm, [
+            ("Blok", lambda C, r: _blok_formula(f"{C['lokasi']}{r}", f"{C['kategori']}{r}")),
+            ("Kriteria Unit", lambda C, r: (f"=IFERROR(INDEX({dbs.R('kriteria_unit')},MATCH({C['lokasi']}{r}&\"|\"&{C['id_unit']}{r},"
+                                            f"{dbs.R('Kunci Unit')},0)),\"\")")),
+            # target downtime UNIK per blok+site (kartu per-site di slide Downtime memakai rata2 target unik)
+            ("Target DT Unik", lambda C, r: (f'=IF({C["downtime_target"]}{r}="",0,IF(COUNTIFS($A$2:A{r},A{r},${C["lokasi"]}$2:{C["lokasi"]}{r},'
+                                             f'{C["lokasi"]}{r},${C["downtime_target"]}$2:{C["downtime_target"]}{r},{C["downtime_target"]}{r})=1,1,0))')),
+        ])
+        D["mt"] = _DataSheet(wb, "Data Pemeliharaan", mt, [
+            ("Blok", lambda C, r: _blok_formula(f"{C['lokasi']}{r}", f"{C['kategori']}{r}")),
+        ])
+        D["mr"] = _DataSheet(wb, "Data MTTR", mr, [
+            ("Blok", lambda C, r: _blok_formula(f"{C['lokasi']}{r}", f"{C['kategori']}{r}")),
+        ])
+
+    # sheet data dibuat dulu (butuh nama range), lalu dipindah ke paling belakang
+    _mk_data()
+    DB, SM, MT, MR = D["db"], D["sm"], D["mt"], D["mr"]
+    note_all = "Semua angka = rumus. Rincian: sheet '… Perhitungan'; data mentah: sheet 'Data …' (kolom emas = kolom bantu/rumus)."
+
+    for blok in blocks:
+        px = PREFIX[blok]
+        bd = db[db["_blok"] == blok]
+        BL = None  # sel Blok (di sheet slide 01)
+
+        # =========================== SLIDE 01 — INFORMASI KINERJA ===========================
+        v1 = _Sheet(wb, f"{px}-01 Informasi Kinerja"); c1 = _Sheet(wb, f"{px}-01 Perhitungan")
+        v1.title(f"KPI DASHBOARD — Informasi Kinerja s/d {cawu}", f"Informasi Kinerja · 01 · {SUBLBL[blok]}", blok, last_month, period_txt, note_all)
+        v1.widths({"A": 2, "B": 17, "C": 13, "D": 13, "E": 3, "F": 17, "G": 13, "H": 13, "I": 3, "J": 17, "K": 13, "L": 13,
+                   "M": 3, "N": 17, "O": 13, "P": 13, "Q": 3, "R": 27, "S": 8, "T": 8})
+        c1.widths({"A": 2, "B": 30, "C": 16, "D": 22, **{k: 14 for k in "EFGHIJKLMNOP"}})
+        BL = f"'{v1.name}'!$C$3"; LM = f"'{v1.name}'!$G$3"
+        P1 = c1.P
+        c1.section(2, f"{px}-01 PERHITUNGAN — sumber semua angka di sheet '{v1.name}'", "B", "P")
+        # (A) total
+        r = 4
+        c1.put(f"B{r}", "A. Total blok (Prestasi khusus Floating Tarif)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c1.header(r + 1, 2, ["Komponen", "Realisasi", "Budget"])
+        fl = f'{DB.R("kriteria_unit")},"Floating Tarif"'
+        rowsA = [
+            ("Prestasi (Floating Tarif)", f"=SUMIFS({DB.R('prestasi_realisasi')},{DB.R('Blok')},{BL},{fl})", f"=SUMIFS({DB.R('prestasi_budget')},{DB.R('Blok')},{BL},{fl})", "#,##0"),
+            ("Biaya Langsung (semua unit)", f"=SUMIFS({DB.R('biaya_langsung_realisasi')},{DB.R('Blok')},{BL})", f"=SUMIFS({DB.R('biaya_langsung_budget')},{DB.R('Blok')},{BL})", "#,##0"),
+            ("Biaya Tdk Langsung (semua unit)", f"=SUMIFS({DB.R('biaya_tidak_langsung_realisasi')},{DB.R('Blok')},{BL})", f"=SUMIFS({DB.R('biaya_tidak_langsung_budget')},{DB.R('Blok')},{BL})", "#,##0"),
+            ("Biaya Langsung / Prestasi", f'=IFERROR(C{r+3}/C{r+2},"")', f'=IFERROR(D{r+3}/D{r+2},"")', "#,##0.0"),
+            ("Biaya Tdk Langsung / Prestasi", f'=IFERROR(C{r+4}/C{r+2},"")', f'=IFERROR(D{r+4}/D{r+2},"")', "#,##0.0"),
+        ]
+        for i, (nm, fr, fb, fm) in enumerate(rowsA):
+            c1.put(f"B{r+2+i}", nm, bold=True, align=_LEFT); c1.put(f"C{r+2+i}", fr, fm); c1.put(f"D{r+2+i}", fb, fm)
+        PR, PB = f"{P1}$C${r+2}", f"{P1}$D${r+2}"
+        BLR, BLB = f"{P1}$C${r+5}", f"{P1}$D${r+5}"
+        BTR, BTB = f"{P1}$C${r+6}", f"{P1}$D${r+6}"
+        # (B) per kelompok (Floating)
+        k_map = bd.dropna(subset=["kriteria_unit"]).drop_duplicates(["lokasi", "id_unit"]).set_index(["lokasi", "id_unit"])["kriteria_unit"].to_dict()
+        smb = sm[[_blok_py(l, k) == blok for l, k in zip(sm["lokasi"], sm["kategori"])]].copy() if not sm.empty else sm
+        if not smb.empty:
+            smb["_krit"] = [k_map.get((l, i)) for l, i in zip(smb["lokasi"], smb["id_unit"])]
+            smk = smb[(smb["_krit"] == "Floating Tarif") & (smb["jenis_unit"] != "Tarif Tetap") & (smb["unit_sewa"] != True)].dropna(subset=["kelompok_unit"])
+            au_keys = smk[["lokasi", "kelompok_unit"]].drop_duplicates().sort_values(["kelompok_unit", "lokasi"]).values.tolist()
+        else:
+            au_keys = []
+        rB = r + 9
+        c1.put(f"B{rB}", "B. Capaian per Site & Kelompok Unit (khusus Floating Tarif, exclude unit sewa)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c1.header(rB + 1, 2, ["Label (chart)", "Site", "Kelompok Unit", "Prestasi Realisasi", "Prestasi Budget", "% Capaian Prestasi",
+                              "Efektif (HM/KM)", "Tersedia (HM/KM)", "Ideal (HM/KM)", "Utilisasi Realisasi", "Utilisasi Target",
+                              "% Capaian Utilisasi", "Availability Realisasi", "Availability Target", "% Capaian Availability"])
+        bf = rB + 2
+        for i, (lok, kel) in enumerate(au_keys):
+            rr = bf + i
+            c1.put(f"B{rr}", f"{_site(lok)} — {kel}", bold=True, align=_LEFT); c1.put(f"C{rr}", lok, align=_LEFT); c1.put(f"D{rr}", kel, align=_LEFT)
+            cd_ = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("kelompok_unit")},$D{rr},{DB.R("kriteria_unit")},"<>Tarif Tetap"'
+            c1.put(f"E{rr}", f"=SUMIFS({DB.R('prestasi_realisasi')},{cd_})", "#,##0")
+            c1.put(f"F{rr}", f"=SUMIFS({DB.R('prestasi_budget')},{cd_})", "#,##0")
+            c1.put(f"G{rr}", f'=IF(F{rr}=0,"",E{rr}/F{rr})', "0.0%", bold=True)
+            cs = (f'{SM.R("Blok")},{BL},{SM.R("lokasi")},$C{rr},{SM.R("kelompok_unit")},$D{rr},'
+                  f'{SM.R("Kriteria Unit")},"Floating Tarif",{SM.R("jenis_unit")},"<>Tarif Tetap",{SM.R("unit_sewa")},"<>TRUE"')
+            c1.put(f"H{rr}", f"=SUMIFS({SM.R('efektif_hm_km_realisasi')},{cs})", "#,##0")
+            c1.put(f"I{rr}", f"=SUMIFS({SM.R('tersedia_hm_km_realisasi')},{cs})", "#,##0")
+            c1.put(f"J{rr}", f"=SUMIFS({SM.R('hm_km_ideal_target')},{cs})", "#,##0")
+            c1.put(f"K{rr}", f'=IF(J{rr}=0,"",H{rr}/J{rr})', "0.0%")
+            c1.put(f"L{rr}", f'=IF(K{rr}="","",IFERROR(AVERAGEIFS({SM.R("utilisasi_target")},{cs})/100,""))', "0.0%")
+            c1.put(f"M{rr}", f'=IF(OR(K{rr}="",L{rr}="",L{rr}=0),"",K{rr}/L{rr})', "0.0%", bold=True)
+            c1.put(f"N{rr}", f'=IF(J{rr}=0,"",I{rr}/J{rr})', "0.0%")
+            c1.put(f"O{rr}", f'=IF(N{rr}="","",IFERROR(AVERAGEIFS({SM.R("availability_target")},{cs})/100,""))', "0.0%")
+            c1.put(f"P{rr}", f'=IF(OR(N{rr}="",O{rr}="",O{rr}=0),"",N{rr}/O{rr})', "0.0%", bold=True)
+        bl_ = bf + max(len(au_keys), 1) - 1
+        ravg = bl_ + 1
+        c1.put(f"B{ravg}", "RATA-RATA (= kartu KPI)", bold=True, align=_LEFT, fillc="EEF2FF")
+        for col in "KLMNOP":
+            c1.put(f"{col}{ravg}", f'=IFERROR(AVERAGE({col}{bf}:{col}{bl_}),"")', "0.0%", bold=True, color=_NAVY, fillc="EEF2FF")
+        # (C) populasi
+        pop = bd[(bd["bulan"] == last_month) & (bd["kriteria_unit"] == "Floating Tarif")]
+        pop = pop[(pop["prestasi_realisasi"].fillna(0) > 0) | (pop["pendapatan_realisasi"].fillna(0) > 0) | (pop["total_biaya_realisasi"].fillna(0) > 0)]
+        pop_n = pop.dropna(subset=["kelompok_unit"]).groupby(["lokasi", "kelompok_unit"])["nama_unit"].nunique()
+        pop_keys = [k for k in au_keys if pop_n.get(tuple(k), 0) > 0]
+        rC = ravg + 3
+        c1.put(f"B{rC}", "C. Populasi Unit (Floating Tarif, bulan terakhir, unit yg ada realisasinya)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c1.header(rC + 1, 2, ["Label (chart)", "Site", "Kelompok Unit", "Jumlah Unit", "Porsi"])
+        cf = rC + 2
+        cl_ = cf + max(len(pop_keys), 1) - 1
+        for i, (lok, kel) in enumerate(pop_keys):
+            rr = cf + i
+            c1.put(f"B{rr}", f"{_site(lok)} — {kel}", bold=True, align=_LEFT); c1.put(f"C{rr}", lok, align=_LEFT); c1.put(f"D{rr}", kel, align=_LEFT)
+            c1.put(f"E{rr}", f"=COUNTIFS({DB.R('Blok')},{BL},{DB.R('lokasi')},$C{rr},{DB.R('kelompok_unit')},$D{rr},{DB.R('bulan')},{LM},{DB.R('Hitung Unit')},1)", "0", bold=True)
+            c1.put(f"F{rr}", f"=IFERROR(E{rr}/SUM($E${cf}:$E${cl_}),0)", "0%")
+        rpt = cl_ + 1
+        c1.put(f"B{rpt}", "TOTAL", bold=True, align=_LEFT)
+        c1.put(f"E{rpt}", f"=SUM(E{cf}:E{cl_})", "0", bold=True, color=_NAVY)
+        # (D) gap pendapatan
+        g_ = bd.groupby(["lokasi", "kelompok_unit"])[["pendapatan_realisasi", "pendapatan_budget"]].sum()
+        gap_keys = [list(k) for k, v in g_.iterrows() if v["pendapatan_realisasi"] > 0 or v["pendapatan_budget"] > 0]
+        rD = rpt + 3
+        c1.put(f"B{rD}", "D. Gap Pendapatan per Site & Kelompok Unit (semua kriteria) — dasar kotak analisa", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c1.header(rD + 1, 2, ["Label", "Site", "Kelompok Unit", "Pendapatan Realisasi", "Pendapatan Budget", "Gap (R - B)",
+                              "Prestasi Realisasi", "Prestasi Budget", "% Capaian Prestasi"])
+        df_ = rD + 2
+        for i, (lok, kel) in enumerate(gap_keys):
+            rr = df_ + i
+            c1.put(f"B{rr}", f"{_site(lok)} — {kel}", bold=True, align=_LEFT); c1.put(f"C{rr}", lok, align=_LEFT); c1.put(f"D{rr}", kel, align=_LEFT)
+            cr_ = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("kelompok_unit")},$D{rr}'
+            c1.put(f"E{rr}", f"=SUMIFS({DB.R('pendapatan_realisasi')},{cr_})", "#,##0")
+            c1.put(f"F{rr}", f"=SUMIFS({DB.R('pendapatan_budget')},{cr_})", "#,##0")
+            c1.put(f"G{rr}", f"=E{rr}-F{rr}", "#,##0;[Red]-#,##0", bold=True)
+            c1.put(f"H{rr}", f"=SUMIFS({DB.R('prestasi_realisasi')},{cr_})", "#,##0")
+            c1.put(f"I{rr}", f"=SUMIFS({DB.R('prestasi_budget')},{cr_})", "#,##0")
+            c1.put(f"J{rr}", f'=IF(I{rr}=0,"",H{rr}/I{rr})', "0.0%")
+        dl_ = df_ + max(len(gap_keys), 1) - 1
+        rmin = dl_ + 1
+        c1.put(f"B{rmin}", "Gap paling minus", bold=True, align=_LEFT)
+        c1.put(f"G{rmin}", f"=MIN(G{df_}:G{dl_})", "#,##0;[Red]-#,##0", bold=True, color=_RED)
+        c1.put(f"H{rmin}", f"=MATCH(G{rmin},G{df_}:G{dl_},0)", "0")
+        c1.put(f"I{rmin}", "← posisi baris", border=False, size=8, color=_MUTED, italic=True, align=_LEFT)
+        pick = lambda col: f"INDEX({P1}${col}${df_}:${col}${dl_},{P1}$H${rmin})"
+        # kartu
+        rp_fmt = '[>=1000000]"Rp "#,##0.0,," Jt";[>=1000]"Rp "#,##0.0," Rb";"Rp "#,##0'
+        v1.card("B", 5, "Capaian Prestasi", f'=IFERROR({PR}/{PB},"")', "0.0%", '="Target: 100.0%"',
+                f'=IF(B7="","Data tidak tersedia",IF(B7>=1,"✓ "&{_pct("B7")}&" — Tercapai","✗ "&{_pct("B7")}&" — Belum Tercapai"))', "$B$7>=1", _GREEN)
+        v1.card("F", 5, "Capaian Utilisasi", f"={P1}K{ravg}", "0.0%", f'=IF({P1}L{ravg}="","Target: -","Target: "&{_pct(f"{P1}L{ravg}")})',
+                f'=IF({P1}M{ravg}="","Data tidak tersedia",IF({P1}M{ravg}>=1,"✓ ","✗ ")&{_pct(f"{P1}M{ravg}")}&" dari Target")', f"{P1}$M${ravg}>=1", _GOLD)
+        v1.card("J", 5, "Capaian Availability", f"={P1}N{ravg}", "0.0%", f'=IF({P1}O{ravg}="","Target: -","Target: "&{_pct(f"{P1}O{ravg}")})',
+                f'=IF({P1}P{ravg}="","Data tidak tersedia",IF({P1}P{ravg}>=1,"✓ ","✗ ")&{_pct(f"{P1}P{ravg}")}&" dari Target")', f"{P1}$P${ravg}>=1", _TEAL)
+        v1.card("N", 5, "Biaya Langsung / Prestasi", f"={BLR}", rp_fmt, f'=IF({BLB}="","Budget: -","Budget: "&{_rp(BLB)})',
+                f'=IF(OR({BLB}="",{BLR}=""),"Target = 0",IF({BLR}/{BLB}<=1,"✓ "&{_pct(f"{BLR}/{BLB}")}&" — Under Budget","✗ "&{_pct(f"{BLR}/{BLB}")}&" — Over Budget"))', f"{BLR}/{BLB}<=1", _GREEN)
+        v1.card("R", 5, "Biaya T.Langsung / Prestasi", f"={BTR}", rp_fmt, f'=IF({BTB}="","Budget: -","Budget: "&{_rp(BTB)})',
+                f'=IF(OR({BTB}="",{BTR}=""),"Target = 0",IF({BTR}/{BTB}<=1,"✓ "&{_pct(f"{BTR}/{BTB}")}&" — Under Budget","✗ "&{_pct(f"{BTR}/{BTB}")}&" — Over Budget"))', f"{BTR}/{BTB}<=1", _PURPLE)
+        v1.section(12, "Capaian Prestasi, Utilisasi & Availability — per Site & Kelompok Unit", "B", "P")
+        v1.section(12, "Populasi Unit", "R", "T")
+        if au_keys:
+            ch = _bar_chart(overlap=-10, height=10.8, width=34.5)
+            for col_idx in (7, 13, 16):
+                ch.add_data(_Ref(c1.ws, min_col=col_idx, min_row=rB + 1, max_row=bl_), titles_from_data=True)
+            ch.set_categories(_Ref(c1.ws, min_col=2, min_row=bf, max_row=bl_))
+            _color_series(ch, (_BLUE, _GOLD, _TEAL)); _labels(ch, "0%"); ch.y_axis.numFmt = "0%"
+            v1.ws.add_chart(ch, "B13")
+        if pop_keys:
+            dn = _Dn(); dn.holeSize = 58; dn.firstSliceAng = 0
+            dn.add_data(_Ref(c1.ws, min_col=5, min_row=cf - 1, max_row=cl_), titles_from_data=True)
+            dn.set_categories(_Ref(c1.ws, min_col=2, min_row=cf, max_row=cl_))
+            for i in range(len(pop_keys)):
+                pt = _DP(idx=i); pt.graphicalProperties.solidFill = _PALETTE[i % len(_PALETTE)]
+                pt.graphicalProperties.line.solidFill = "FFFFFF"
+                dn.series[0].dPt.append(pt)
+            dn.legend = None; dn.height = 6.3; dn.width = 7.9
+            v1.ws.add_chart(dn, "R13")
+            v1.ws.merge_cells("R25:T25")
+            v1.put("R25", f"={P1}E{rpt}", '0" unit"', bold=True, size=16, border=False, align=_CENTER)
+            for i in range(len(pop_keys)):
+                rr = 26 + i
+                v1.put(f"Q{rr}", "●", border=False, align=_CENTER, size=11, color=_PALETTE[i % len(_PALETTE)])
+                v1.put(f"R{rr}", f"={P1}B{cf+i}", border=False, align=_LEFT, size=8.5)
+                v1.put(f"S{rr}", f"={P1}E{cf+i}", border=False, bold=True, size=8.5)
+                v1.put(f"T{rr}", f"={P1}F{cf+i}", "0%", border=False, size=8.5, color=_MUTED)
+        an_row = max(35, 26 + len(pop_keys) + 1)
+        if gap_keys:
+            lab_w, gap_w, pr_w, pb_w, cap_w = pick("B"), pick("G"), pick("E"), pick("F"), pick("J")
+            v1.note_box(f"B{an_row}:P{an_row+2}", (
+                f'=IF({P1}$G${rmin}>=0,"Tidak ada unit dengan gap pendapatan minus — seluruh unit mencapai/melebihi target pendapatan.",'
+                f'{lab_w}&" adalah unit dengan GAP PENDAPATAN MINUS PALING TINGGI ("&{_rp(gap_w)}&") — Realisasi "&{_rp(pr_w)}'
+                f'&" vs Budget "&{_rp(pb_w)}&", dengan Capaian Prestasi "&IF({cap_w}="","tidak tersedia",{_pct(cap_w)})&". "'
+                f'&IF({cap_w}="","Data capaian prestasi unit ini belum tersedia untuk analisis lebih lanjut.",'
+                f'IF({cap_w}<1,"Rendahnya capaian prestasi unit ini menjadi salah satu penyebab utama kekurangan pendapatan.",'
+                f'"Meski capaian prestasi sudah tercapai, gap pendapatan tetap terjadi — kemungkinan disebabkan faktor lain (tarif/rate, harga jual, atau komposisi pekerjaan).")))'))
+
+        # =========================== SLIDE 04 (dihitung dulu: tabel downtime dipakai slide 02) ===========================
+        v4 = _Sheet(wb, f"{px}-04 Analisis Downtime"); c4 = _Sheet(wb, f"{px}-04 Perhitungan")
+        P4 = c4.P
+        c4.widths({"A": 2, "B": 30, "C": 16, "D": 22, **{k: 14 for k in "EFGHIJKLMNOP"}})
+        c4.section(2, f"{px}-04 PERHITUNGAN — sumber semua angka di sheet '{v4.name}'", "B", "P")
+        # (A) downtime per kelompok utk KARTU (exclude jenis_unit Tarif Tetap & unit sewa; semua kriteria)
+        if not smb.empty:
+            smd = smb[(smb["jenis_unit"] != "Tarif Tetap") & (smb["unit_sewa"] != True)].dropna(subset=["kelompok_unit"])
+            dtk_keys = smd[["lokasi", "kelompok_unit"]].drop_duplicates().sort_values(["kelompok_unit", "lokasi"]).values.tolist()
+            sma = smb.dropna(subset=["kelompok_unit"])
+        else:
+            dtk_keys = []; sma = smb
+        rA4 = 4
+        c4.put(f"B{rA4}", "A. Downtime per Site & Kelompok (dasar kartu Capaian Downtime; exclude jenis unit Tarif Tetap & unit sewa)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c4.header(rA4 + 1, 2, ["Label", "Site", "Kelompok Unit", "Breakdown (HM/KM)", "Ideal (HM/KM)", "Downtime Realisasi", "Downtime Target", "% Capaian Downtime"])
+        af = rA4 + 2
+        for i, (lok, kel) in enumerate(dtk_keys):
+            rr = af + i
+            c4.put(f"B{rr}", f"{_site(lok)} — {_kel(kel)}", bold=True, align=_LEFT); c4.put(f"C{rr}", lok, align=_LEFT); c4.put(f"D{rr}", kel, align=_LEFT)
+            cs = f'{SM.R("Blok")},{BL},{SM.R("lokasi")},$C{rr},{SM.R("kelompok_unit")},$D{rr},{SM.R("jenis_unit")},"<>Tarif Tetap",{SM.R("unit_sewa")},"<>TRUE"'
+            c4.put(f"E{rr}", f"=SUMIFS({SM.R('breakdown_hm_km_realisasi')},{cs})", "#,##0")
+            c4.put(f"F{rr}", f"=SUMIFS({SM.R('hm_km_ideal_target')},{cs})", "#,##0")
+            c4.put(f"G{rr}", f'=IF(F{rr}=0,"",E{rr}/F{rr})', "0.0%")
+            c4.put(f"H{rr}", f'=IF(G{rr}="","",IFERROR(AVERAGEIFS({SM.R("downtime_target")},{cs})/100,""))', "0.0%")
+            c4.put(f"I{rr}", f'=IF(OR(G{rr}="",H{rr}="",H{rr}=0),"",G{rr}/H{rr})', "0.0%", bold=True)
+        al_ = af + max(len(dtk_keys), 1) - 1
+        ra4 = al_ + 1
+        c4.put(f"B{ra4}", "RATA-RATA (= kartu Capaian Downtime)", bold=True, align=_LEFT, fillc="EEF2FF")
+        for col in "GHI":
+            c4.put(f"{col}{ra4}", f'=IFERROR(AVERAGE({col}{af}:{col}{al_}),"")', "0.0%", bold=True, color=_NAVY, fillc="EEF2FF")
+        CAPDT = f"{P4}$I${ra4}"
+        # (B) downtime per site (rincian kartu): realisasi = rata2 per kelompok (semua unit), target = rata2 target UNIK
+        site_keys = []
+        if not sma.empty and sma["lokasi"].nunique() > 1:
+            res = []
+            for lok, g in sma.groupby("lokasi"):
+                tu = g["downtime_target"].dropna().unique()
+                if len(tu) == 0:
+                    continue
+                reals = [gk["breakdown_hm_km_realisasi"].fillna(0).sum() / gk["hm_km_ideal_target"].sum() * 100
+                         for _, gk in g.groupby("kelompok_unit") if gk["hm_km_ideal_target"].sum()]
+                if reals:
+                    res.append((lok, sum(reals) / len(reals)))
+            site_keys = [l for l, _ in sorted(res, key=lambda x: x[1], reverse=True)]
+        rB4 = ra4 + 3
+        c4.put(f"B{rB4}", "B. Downtime per Site (rincian di kartu; semua unit)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        dts_keys = sma[["lokasi", "kelompok_unit"]].drop_duplicates().sort_values(["lokasi", "kelompok_unit"]).values.tolist() if not sma.empty else []
+        # B1: per site+kelompok (semua unit)
+        c4.header(rB4 + 1, 2, ["Site", "Kelompok Unit", "Breakdown (HM/KM)", "Ideal (HM/KM)", "Downtime Realisasi"])
+        b4f = rB4 + 2
+        for i, (lok, kel) in enumerate(dts_keys):
+            rr = b4f + i
+            c4.put(f"B{rr}", lok, align=_LEFT); c4.put(f"C{rr}", kel, align=_LEFT)
+            cs = f'{SM.R("Blok")},{BL},{SM.R("lokasi")},$B{rr},{SM.R("kelompok_unit")},$C{rr}'
+            c4.put(f"D{rr}", f"=SUMIFS({SM.R('breakdown_hm_km_realisasi')},{cs})", "#,##0")
+            c4.put(f"E{rr}", f"=SUMIFS({SM.R('hm_km_ideal_target')},{cs})", "#,##0")
+            c4.put(f"F{rr}", f'=IF(E{rr}=0,"",D{rr}/E{rr})', "0.0%")
+        b4l = b4f + max(len(dts_keys), 1) - 1
+        # B2: ringkasan per site
+        rB4s = b4l + 2
+        c4.header(rB4s, 2, ["Site", "Realisasi (rata2 kelompok)", "Target (rata2 target unik)", "% Capaian Downtime", "Teks kartu"])
+        s4f = rB4s + 1
+        for i, lok in enumerate(site_keys):
+            rr = s4f + i
+            c4.put(f"B{rr}", lok, align=_LEFT)
+            c4.put(f"C{rr}", f'=IFERROR(AVERAGEIFS($F${b4f}:$F${b4l},$B${b4f}:$B${b4l},B{rr}),"")', "0.0%")
+            c4.put(f"D{rr}", (f'=IFERROR(SUMIFS({SM.R("downtime_target")},{SM.R("Blok")},{BL},{SM.R("lokasi")},B{rr},{SM.R("Target DT Unik")},1)/'
+                              f'COUNTIFS({SM.R("Blok")},{BL},{SM.R("lokasi")},B{rr},{SM.R("Target DT Unik")},1)/100,"")'), "0.0%")
+            c4.put(f"E{rr}", f'=IF(OR(C{rr}="",D{rr}="",D{rr}=0),"",C{rr}/D{rr})', "0.0%", bold=True)
+            c4.put(f"F{rr}", f'=IF(E{rr}="","","{_site(lok)} "&FIXED(E{rr}*100,0,TRUE)&"%")', align=_LEFT)
+        s4l = s4f + len(site_keys) - 1
+        dt_site_txt = (f'=_xlfn.TEXTJOIN("  ·  ",TRUE,{P4}F{s4f}:F{s4l})' if site_keys else '=""')
+        # (C) chart downtime per kelompok (SEMUA unit), urutan capaian tertinggi (sama dgn PPT)
+        dtc = []
+        if not sma.empty:
+            for (lok, kel), g in sma.groupby(["lokasi", "kelompok_unit"]):
+                si = g["hm_km_ideal_target"].sum()
+                t = g["downtime_target"].mean()
+                if si and t and not _pd_dx.isna(t):
+                    dtc.append((lok, kel, g["breakdown_hm_km_realisasi"].fillna(0).sum() / si * 100 / t * 100))
+        dtc.sort(key=lambda x: x[2], reverse=True)
+        rC4 = (s4l if site_keys else rB4s) + 3
+        c4.put(f"B{rC4}", "C. % Capaian Downtime per Site & Kelompok Unit (chart; semua unit)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c4.header(rC4 + 1, 2, ["Label (chart)", "Site", "Kelompok Unit", "Breakdown (HM/KM)", "Ideal (HM/KM)", "Downtime Realisasi",
+                               "Downtime Target", "% Capaian Downtime", "Melebihi target", "Dalam target"])
+        c4f = rC4 + 2
+        for i, (lok, kel, _) in enumerate(dtc):
+            rr = c4f + i
+            c4.put(f"B{rr}", f"{_site(lok)} — {_kel(kel)}", bold=True, align=_LEFT); c4.put(f"C{rr}", lok, align=_LEFT); c4.put(f"D{rr}", kel, align=_LEFT)
+            cs = f'{SM.R("Blok")},{BL},{SM.R("lokasi")},$C{rr},{SM.R("kelompok_unit")},$D{rr}'
+            c4.put(f"E{rr}", f"=SUMIFS({SM.R('breakdown_hm_km_realisasi')},{cs})", "#,##0")
+            c4.put(f"F{rr}", f"=SUMIFS({SM.R('hm_km_ideal_target')},{cs})", "#,##0")
+            c4.put(f"G{rr}", f'=IF(F{rr}=0,"",E{rr}/F{rr})', "0.0%")
+            c4.put(f"H{rr}", f'=IFERROR(AVERAGEIFS({SM.R("downtime_target")},{cs})/100,"")', "0.0%")
+            c4.put(f"I{rr}", f'=IF(OR(G{rr}="",H{rr}="",H{rr}=0),"",G{rr}/H{rr})', "0.0%", bold=True)
+            c4.put(f"J{rr}", f'=IF(N(I{rr})>1,I{rr},0)', "0%;;;")
+            c4.put(f"K{rr}", f'=IF(N(I{rr})>1,0,N(I{rr}))', "0%;;;")
+        c4l = c4f + max(len(dtc), 1) - 1
+        rs4 = c4l + 1
+        c4.put(f"B{rs4}", "Jumlah unit / melebihi target / posisi terburuk", bold=True, align=_LEFT)
+        c4.put(f"C{rs4}", f"=COUNT(I{c4f}:I{c4l})", "0", bold=True)
+        c4.put(f"D{rs4}", f'=COUNTIF(I{c4f}:I{c4l},">1")', "0", bold=True, color=_RED)
+        c4.put(f"E{rs4}", f"=IFERROR(MATCH(MAX(I{c4f}:I{c4l}),I{c4f}:I{c4l},0),0)", "0")
+        # (D) MTTR
+        rD4 = rs4 + 3
+        c4.put(f"B{rD4}", "D. MTTR (Mean Time To Repair) — dari Data MTTR", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c4.header(rD4 + 1, 2, ["Site", "Total Jam Perbaikan", "Jumlah Kejadian", "MTTR (jam)", "Teks kartu"])
+        mrb = mr[[_blok_py(l, k) == blok for l, k in zip(mr["lokasi"], mr["kategori"])]] if not mr.empty else mr
+        mttr_sites = []
+        if not mrb.empty and mrb["lokasi"].nunique() > 1:
+            mttr_sites = mrb.groupby("lokasi")["jumlah_jam"].sum().sort_values(ascending=False).index.tolist()
+        d4f = rD4 + 2
+        rr = d4f
+        c4.put(f"B{rr}", "TOTAL BLOK", bold=True, align=_LEFT)
+        c4.put(f"C{rr}", f"=SUMIFS({MR.R('jumlah_jam')},{MR.R('Blok')},{BL})", "#,##0.0")
+        c4.put(f"D{rr}", f"=COUNTIFS({MR.R('Blok')},{BL})", "#,##0")
+        c4.put(f"E{rr}", f'=IF(D{rr}=0,"",C{rr}/D{rr})', "0.0", bold=True)
+        MTTR_T, MTTR_N = f"{P4}$E${d4f}", f"{P4}$D${d4f}"
+        for i, lok in enumerate(mttr_sites):
+            rr = d4f + 1 + i
+            c4.put(f"B{rr}", lok, align=_LEFT)
+            c4.put(f"C{rr}", f"=SUMIFS({MR.R('jumlah_jam')},{MR.R('Blok')},{BL},{MR.R('lokasi')},B{rr})", "#,##0.0")
+            c4.put(f"D{rr}", f"=COUNTIFS({MR.R('Blok')},{BL},{MR.R('lokasi')},B{rr})", "#,##0")
+            c4.put(f"E{rr}", f'=IF(D{rr}=0,"",C{rr}/D{rr})', "0.0")
+            c4.put(f"F{rr}", f'=IF(E{rr}="","","{_site(lok)} "&FIXED(E{rr},1)&"j")', align=_LEFT)
+        mttr_site_txt = (f'=_xlfn.TEXTJOIN("  ·  ",TRUE,{P4}F{d4f+1}:F{d4f+len(mttr_sites)})' if mttr_sites else '=""')
+        # (E) Rutin vs Non-Rutin (kartu) & (F) kategori sparepart
+        mtb = mt[[_blok_py(l, k) == blok for l, k in zip(mt["lokasi"], mt["kategori"])]] if not mt.empty else mt
+        rE4 = d4f + len(mttr_sites) + 3
+        c4.put(f"B{rE4}", "E. Maintenance Rutin vs Non-Rutin (porsi biaya, dari Data Pemeliharaan)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c4.header(rE4 + 1, 2, ["Site", "Biaya Rutin", "Biaya Non-Rutin", "Total Biaya", "% Rutin", "% Non-Rutin", "Teks Rutin", "Teks Non-Rutin"])
+        rut_sites = []
+        if not mtb.empty and mtb["lokasi"].nunique() > 1:
+            st_ = mtb.groupby("lokasi")["biaya"].sum().sort_values(ascending=False)
+            rut_sites = [l for l, v in st_.items() if v > 0]
+        e4f = rE4 + 2
+        c4.put(f"B{e4f}", "TOTAL BLOK", bold=True, align=_LEFT)
+        for i, lok in enumerate([None] + rut_sites):
+            rr = e4f + i
+            if lok:
+                c4.put(f"B{rr}", lok, align=_LEFT)
+            crit = f'{MT.R("Blok")},{BL}' + (f',{MT.R("lokasi")},B{rr}' if lok else "")
+            c4.put(f"C{rr}", f'=SUMIFS({MT.R("biaya")},{crit},{MT.R("jenis_pemeliharaan")},"RUTIN")', "#,##0")
+            c4.put(f"D{rr}", f'=SUMIFS({MT.R("biaya")},{crit},{MT.R("jenis_pemeliharaan")},"NON RUTIN")', "#,##0")
+            c4.put(f"E{rr}", f'=SUMIFS({MT.R("biaya")},{crit})', "#,##0")
+            c4.put(f"F{rr}", f'=IF(E{rr}=0,"",' + (f"C{rr}/E{rr})" if not lok else f"C{rr}/E{rr})"), "0.0%", bold=True)
+            c4.put(f"G{rr}", f'=IF(E{rr}=0,"",' + (f"D{rr}/E{rr})" if not lok else f"1-F{rr})"), "0.0%", bold=True)
+            if lok:
+                c4.put(f"H{rr}", f'=IF(F{rr}="","","{_site(lok)} "&FIXED(F{rr}*100,0,TRUE)&"%")', align=_LEFT)
+                c4.put(f"I{rr}", f'=IF(G{rr}="","","{_site(lok)} "&FIXED(G{rr}*100,0,TRUE)&"%")', align=_LEFT)
+        RUT, NRUT = f"{P4}$F${e4f}", f"{P4}$G${e4f}"
+        e4l = e4f + len(rut_sites)
+        rut_txt = (f'="Rutin: "&_xlfn.TEXTJOIN("  ·  ",TRUE,{P4}H{e4f+1}:H{e4l})' if rut_sites else '=""')
+        nrut_txt = (f'="Non-Rutin: "&_xlfn.TEXTJOIN("  ·  ",TRUE,{P4}I{e4f+1}:I{e4l})' if rut_sites else None)
+        rF4 = e4l + 3
+        c4.put(f"B{rF4}", "F. Kategori Sparepart — 10 nilai tertinggi (biaya pemeliharaan per sistem)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        kat_top, kat_sites = [], []
+        if not mtb.empty:
+            ka = mtb.groupby("kategori_sparepart")["biaya"].sum().sort_values(ascending=False).head(10)
+            kat_top = list(ka.index)
+            kat_sites = mtb[mtb["kategori_sparepart"].isin(kat_top)].groupby("lokasi")["biaya"].sum().sort_values(ascending=False).index.tolist()
+        c4.header(rF4 + 1, 2, ["No", "Kategori"] + kat_sites + ["Total"])
+        f4f = rF4 + 2
+        for i, kat in enumerate(kat_top):
+            rr = f4f + i
+            c4.put(f"B{rr}", i + 1, "0", align=_CENTER); c4.put(f"C{rr}", kat, bold=True, align=_LEFT)
+            for j, lok in enumerate(kat_sites):
+                col = _CL(4 + j)
+                c4.put(f"{col}{rr}", f'=SUMIFS({MT.R("biaya")},{MT.R("Blok")},{BL},{MT.R("kategori_sparepart")},$C{rr},{MT.R("lokasi")},"{lok}")', "#,##0")
+            colT = _CL(4 + len(kat_sites))
+            c4.put(f"{colT}{rr}", f'=SUMIFS({MT.R("biaya")},{MT.R("Blok")},{BL},{MT.R("kategori_sparepart")},$C{rr})', "#,##0", bold=True, color=_GOLD)
+        # ---- tampilan slide 04
+        v4.title(f"KEY INSIGHTS — Downtime Analysis & Varian s/d {cawu}", f"Analisis Downtime · 04 · {SUBLBL[blok]}", blok, last_month, period_txt, note_all)
+        v4.widths({"A": 2, **{_CL(i): 11 for i in range(2, 21)}})
+        v4.ws["C3"] = f"='{v1.name}'!C3"
+        v4.ws["G3"] = f"='{v1.name}'!G3"
+        v4.card("B", 5, "Capaian Downtime (Realisasi s/d " + cawu_inline + ")", f"={CAPDT}", "0.0%", dt_site_txt,
+                f'=IF({CAPDT}="","Data tidak tersedia",IF({CAPDT}>1,"✗ Melebihi Target","✓ Dalam Target"))', f"{CAPDT}<=1", _RED, width_cols=6)
+        v4.card("H", 5, "MTTR (Mean Time To Repair)", f"={MTTR_T}", '0.0" jam"', mttr_site_txt,
+                f'=IF({MTTR_T}="","Data Workshop belum tersedia","Dari "&SUBSTITUTE(FIXED({MTTR_N},0),",",".")&" kejadian perbaikan")', "TRUE", _TEAL, width_cols=6)
+        v4.card("N", 5, "Rutin vs Non-Rutin (porsi biaya maintenance)",
+                f'=IF({RUT}="","-",FIXED({RUT}*100,0,TRUE)&"% / "&FIXED({NRUT}*100,0,TRUE)&"%")', "@", rut_txt,
+                f'=IF({RUT}="","Data tidak tersedia",IF({RUT}>=0.5,"✓ Rutin Lebih Dominan","✗ Non-Rutin Lebih Dominan"))', f"N({RUT})>=0.5", _GREEN,
+                width_cols=7, sub2_f=nrut_txt)
+        v4.section(14, "% Downtime — per Site & Kelompok Unit", "B", "L")
+        v4.section(14, "Kategori Sparepart — Nilai Tertinggi per Site", "N", "T", color=_NAVY)
+        if dtc:
+            ch = _bar_chart(grouping="stacked", overlap=100, height=9.5, width=24)
+            for col_idx in (10, 11):
+                ch.add_data(_Ref(c4.ws, min_col=col_idx, min_row=rC4 + 1, max_row=c4l), titles_from_data=True)
+            ch.set_categories(_Ref(c4.ws, min_col=2, min_row=c4f, max_row=c4l))
+            _color_series(ch, (_RED, _GREEN)); _labels(ch, "0%;;;", pos=None); ch.y_axis.numFmt = "0%"
+            v4.ws.add_chart(ch, "B15")
+        # tabel sparepart di tampilan
+        hdr = ["No", "Kategori"] + [_site(l) for l in kat_sites] + ["Total"]
+        cols_sp = ["N", "O"] + [_CL(16 + j) for j in range(len(kat_sites))] + [_CL(16 + len(kat_sites))]
+        for j, (col, h) in enumerate(zip(cols_sp, hdr)):
+            v4.put(f"{col}15", h, bold=True, color="FFFFFF", fillc="4B5563", align=_CENTER)
+        for i, kat in enumerate(kat_top):
+            rr = 16 + i
+            v4.put(f"N{rr}", i + 1, "0", bold=True, color="FFFFFF", fillc=_GOLD, align=_CENTER)
+            v4.put(f"O{rr}", f"={P4}C{f4f+i}", bold=True, align=_LEFT)
+            for j in range(len(kat_sites)):
+                src = f"{P4}{_CL(4+j)}{f4f+i}"
+                v4.put(f"{cols_sp[2+j]}{rr}", f'=IF({src}=0,"-",{_rp(src)})', align=_CENTER)
+            srcT = f"{P4}{_CL(4+len(kat_sites))}{f4f+i}"
+            v4.put(f"{cols_sp[-1]}{rr}", f"={_rp(srcT)}", bold=True, color=_GOLD, align=_CENTER)
+        v4.ws.column_dimensions["O"].width = 26
+        if dtc:
+            npos = f"{P4}$E${rs4}"
+            v4.note_box("B35:L37", (
+                f'=IF({P4}$D${rs4}>0,{P4}$D${rs4}&" dari "&{P4}$C${rs4}&" unit ("&FIXED({P4}$D${rs4}/{P4}$C${rs4}*100,0,TRUE)&"%) melebihi target downtime. Unit paling kritis: "'
+                f'&INDEX({P4}$B${c4f}:$B${c4l},{npos})&" dengan Capaian Downtime "&FIXED(INDEX({P4}$I${c4f}:$I${c4l},{npos})*100,0,TRUE)&"% (downtime realisasinya "'
+                f'&FIXED(INDEX({P4}$I${c4f}:$I${c4l},{npos})*100-100,0,TRUE)&"% di atas batas yang diizinkan) — prioritaskan preventive maintenance pada unit-unit ini.",'
+                f'"Seluruh "&{P4}$C${rs4}&" unit berada dalam target downtime yang diizinkan. Pertahankan jadwal preventive maintenance saat ini.")'))
+
+        # =========================== SLIDE 02 — BIAYA OPERASIONAL ===========================
+        v2 = _Sheet(wb, f"{px}-02 Biaya Operasional"); c2 = _Sheet(wb, f"{px}-02 Perhitungan")
+        P2 = c2.P
+        c2.widths({"A": 2, "B": 30, "C": 16, "D": 22, **{k: 14 for k in "EFGHIJKLMNOPQ"}})
+        c2.section(2, f"{px}-02 PERHITUNGAN — sumber semua angka di sheet '{v2.name}'", "B", "P")
+        rA2 = 4
+        c2.put(f"B{rA2}", "A. Ringkasan Biaya (BBM hanya baris yg valid; Cap. Fisik: Prestasi Floating / Qty BBM / Capaian Downtime)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c2.header(rA2 + 1, 2, ["Metrik", "Budget", "Aktual", "Capaian", "Cap. Fisik", "Fisik: lebih tinggi lebih baik?"])
+        bbm_ok = f'{DB.R("BBM Valid")},1'
+        rows2 = [
+            ("Total Biaya", f"=SUMIFS({DB.R('total_biaya_budget')},{DB.R('Blok')},{BL})", f"=SUMIFS({DB.R('total_biaya_realisasi')},{DB.R('Blok')},{BL})",
+             f"={PR}/{PB}", True, bd["total_biaya_realisasi"].sum()),
+            ("Upah Operator", f"=SUMIFS({DB.R('upah_budget')},{DB.R('Blok')},{BL})", f"=SUMIFS({DB.R('upah_realisasi')},{DB.R('Blok')},{BL})", None, None,
+             bd["upah_realisasi"].sum()),
+            ("Biaya BBM", f"=SUMIFS({DB.R('biaya_bbm_budget')},{DB.R('Blok')},{BL},{bbm_ok})", f"=SUMIFS({DB.R('biaya_bbm_realisasi')},{DB.R('Blok')},{BL},{bbm_ok})",
+             f"=IFERROR(SUMIFS({DB.R('qty_bbm_realisasi')},{DB.R('Blok')},{BL},{bbm_ok})/SUMIFS({DB.R('qty_bbm_budget')},{DB.R('Blok')},{BL},{bbm_ok}),\"\")", False,
+             None),
+            ("Biaya Maintenance", f"=SUMIFS({DB.R('maintenance_budget')},{DB.R('Blok')},{BL})", f"=SUMIFS({DB.R('maintenance_realisasi')},{DB.R('Blok')},{BL})",
+             f"={CAPDT}", False, bd["maintenance_realisasi"].sum()),
+            ("Biaya Lainnya", f"=SUMIFS({DB.R('lainnya_budget')},{DB.R('Blok')},{BL})", f"=SUMIFS({DB.R('lainnya_realisasi')},{DB.R('Blok')},{BL})", None, None,
+             bd["lainnya_realisasi"].sum()),
+        ]
+        _bad = ((bd["qty_bbm_realisasi"] > 0) & (bd["biaya_bbm_realisasi"].fillna(0) == 0)) | ((bd["qty_bbm_budget"] > 0) & (bd["biaya_bbm_budget"].fillna(0) == 0))
+        rows2[2] = rows2[2][:5] + (bd.loc[~_bad, "biaya_bbm_realisasi"].sum(),)
+        order2 = [rows2[0]] + sorted(rows2[1:], key=lambda x: -x[5])
+        a2f = rA2 + 2
+        for i, (nm, fb, fr, ff, hib, _) in enumerate(order2):
+            rr = a2f + i
+            c2.put(f"B{rr}", nm, bold=True, align=_LEFT)
+            c2.put(f"C{rr}", fb, "#,##0"); c2.put(f"D{rr}", fr, "#,##0")
+            c2.put(f"E{rr}", f'=IF(C{rr}=0,"",D{rr}/C{rr})', "0.0%", bold=True)
+            c2.put(f"F{rr}", ff if ff else "", "0.0%"); c2.put(f"G{rr}", ("YA" if hib else "TIDAK") if hib is not None else "", align=_CENTER)
+        # BTL per site
+        rB2 = a2f + 7
+        c2.put(f"B{rB2}", "B. Biaya Tidak Langsung per Site (Kategori)", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c2.header(rB2 + 1, 2, ["Site (Kategori)", "Site", "Kategori", "Budget", "Aktual", "% Target", "% BTL", "Over budget?"])
+        btl = bd.groupby(["lokasi", "_katp"])[["biaya_tidak_langsung_realisasi", "biaya_tidak_langsung_budget"]].sum()
+        btl = btl[(btl["biaya_tidak_langsung_realisasi"] > 0) | (btl["biaya_tidak_langsung_budget"] > 0)].sort_values("biaya_tidak_langsung_realisasi", ascending=False)
+        b2f = rB2 + 2
+        btl_keys = list(btl.index)
+        b2l = b2f + max(len(btl_keys), 1) - 1
+        for i, (lok, kat) in enumerate(btl_keys):
+            rr = b2f + i
+            c2.put(f"B{rr}", f"{_site(lok)} ({kat})", bold=True, align=_LEFT); c2.put(f"C{rr}", lok, align=_LEFT); c2.put(f"D{rr}", kat, align=_CENTER)
+            cr_ = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("Kategori PPT")},$D{rr}'
+            c2.put(f"E{rr}", f"=SUMIFS({DB.R('biaya_tidak_langsung_budget')},{cr_})", "#,##0")
+            c2.put(f"F{rr}", f"=SUMIFS({DB.R('biaya_tidak_langsung_realisasi')},{cr_})", "#,##0")
+            c2.put(f"G{rr}", f'=IF(E{rr}=0,"",F{rr}/E{rr})', "0%", bold=True)
+            c2.put(f"H{rr}", f"=IFERROR(F{rr}/SUM($F${b2f}:$F${b2l}),0)", "0.0%")
+            c2.put(f"I{rr}", f'=IF(AND(G{rr}<>"",N(G{rr})>1),B{rr},"")', align=_LEFT)
+        # BBM per kelompok
+        rC2 = b2l + 3
+        c2.put(f"B{rC2}", "C. Analisa Penyebab Kenaikan Biaya BBM per Site & Kelompok Unit", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        hdrC = ["Label (chart)", "Site", "Kelompok Unit", "Kategori", "Qty BBM R", "Qty BBM B", "Prestasi R", "Prestasi B",
+                "Cap. Prestasi", "Cap. Konsumsi", "Harga BBM R (Rp/Ltr)", "Harga BBM B (Rp/Ltr)", "Capaian Harga BBM",
+                "Gap Biaya BBM (Rp)", "Penyebab dominan"]
+        c2.header(rC2 + 1, 2, hdrC)
+        d3 = bd.copy()
+        vr = (d3["qty_bbm_realisasi"].fillna(0) > 0) & (d3["biaya_bbm_realisasi"].fillna(0) > 0) & (d3["prestasi_realisasi"].fillna(0) > 0)
+        vb = (d3["qty_bbm_budget"].fillna(0) > 0) & (d3["biaya_bbm_budget"].fillna(0) > 0) & (d3["prestasi_budget"].fillna(0) > 0)
+        d3["_qr"] = d3["qty_bbm_realisasi"].where(vr, 0); d3["_pr"] = d3["prestasi_realisasi"].where(vr, 0)
+        d3["_qb"] = d3["qty_bbm_budget"].where(vb, 0); d3["_pb"] = d3["prestasi_budget"].where(vb, 0)
+        su3 = d3.groupby(["lokasi", "_katp", "kelompok_unit"])[["_qr", "_qb", "_pr", "_pb"]].sum().reset_index()
+        su3 = su3[(su3["_qr"] > 0) | (su3["_qb"] > 0)]
+
+        def _capk(r):
+            if r["_katp"] == "AB":
+                rr_ = (r["_qr"] / r["_pr"]) if r["_pr"] else None
+                rb_ = (r["_qb"] / r["_pb"]) if r["_pb"] else None
+                return None if (rr_ is None or not rb_) else rr_ / rb_
+            rr_ = (r["_pr"] / r["_qr"]) if r["_qr"] else None
+            rb_ = (r["_pb"] / r["_qb"]) if r["_qb"] else None
+            return None if (not rr_ or rb_ is None) else rb_ / rr_
+        su3 = su3[[(_capk(r) is not None) for _, r in su3.iterrows()]].sort_values(["kelompok_unit", "lokasi"]).head(12)
+        bbm_keys = su3[["lokasi", "_katp", "kelompok_unit"]].values.tolist()
+        c2f = rC2 + 2
+        c2l = c2f + max(len(bbm_keys), 1) - 1
+        for i, (lok, kat, kel) in enumerate(bbm_keys):
+            rr = c2f + i
+            c2.put(f"B{rr}", f"{_site(lok)} — {kel}", bold=True, align=_LEFT); c2.put(f"C{rr}", lok, align=_LEFT)
+            c2.put(f"D{rr}", kel, align=_LEFT); c2.put(f"E{rr}", kat, align=_CENTER)
+            ck = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("Kategori PPT")},$E{rr},{DB.R("kelompok_unit")},$D{rr}'
+            c2.put(f"F{rr}", f"=SUMIFS({DB.R('Qty BBM R (konsumsi)')},{ck})", "#,##0")
+            c2.put(f"G{rr}", f"=SUMIFS({DB.R('Qty BBM B (konsumsi)')},{ck})", "#,##0")
+            c2.put(f"H{rr}", f"=SUMIFS({DB.R('Prestasi R (konsumsi)')},{ck})", "#,##0")
+            c2.put(f"I{rr}", f"=SUMIFS({DB.R('Prestasi B (konsumsi)')},{ck})", "#,##0")
+            c2.put(f"J{rr}", f'=IF(I{rr}=0,"",H{rr}/I{rr})', "0%", bold=True)
+            c2.put(f"K{rr}", (f'=IF($E{rr}="AB",IFERROR((F{rr}/H{rr})/(G{rr}/I{rr}),""),IFERROR((I{rr}/G{rr})/(H{rr}/F{rr}),""))'), "0%", bold=True)
+            ch_ = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("kelompok_unit")},$D{rr},{DB.R("BBM Valid")},1'
+            c2.put(f"L{rr}", f"=IFERROR(SUMIFS({DB.R('biaya_bbm_realisasi')},{ch_})/SUMIFS({DB.R('qty_bbm_realisasi')},{ch_}),\"\")", "#,##0")
+            c2.put(f"M{rr}", f"=IFERROR(SUMIFS({DB.R('biaya_bbm_budget')},{ch_})/SUMIFS({DB.R('qty_bbm_budget')},{ch_}),\"\")", "#,##0")
+            c2.put(f"N{rr}", f'=IF(OR(L{rr}="",M{rr}="",M{rr}=0),"",L{rr}/M{rr})', "0%", bold=True)
+            cg = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("kelompok_unit")},$D{rr}'
+            c2.put(f"O{rr}", f"=SUMIFS({DB.R('biaya_bbm_realisasi')},{cg})-SUMIFS({DB.R('biaya_bbm_budget')},{cg})", "#,##0;[Red]-#,##0")
+            dp = f'IF(J{rr}="",-1,ABS(J{rr}-1))'; dk = f"ABS(K{rr}-1)"; dh = f'IF(N{rr}="",-1,ABS(N{rr}-1))'
+            c2.put(f"P{rr}", (f'=IF(AND({dp}>={dk},{dp}>={dh}),"Volume Operasi (Prestasi) "&IF(J{rr}>1,"Naik","Turun"),'
+                              f'IF({dk}>={dh},"Konsumsi BBM "&IF(K{rr}>1,"Naik","Turun"),"Harga BBM "&IF(N{rr}>1,"Naik","Turun")))'), align=_LEFT)
+        rmx = c2l + 1
+        c2.put(f"B{rmx}", "Dampak Rupiah terbesar (posisi baris)", bold=True, align=_LEFT)
+        c2.put(f"O{rmx}", f"=MAX(O{c2f}:O{c2l})", "#,##0;[Red]-#,##0", bold=True)
+        c2.put(f"P{rmx}", f"=IFERROR(MATCH(O{rmx},O{c2f}:O{c2l},0),0)", "0", bold=True)
+        # ---- tampilan slide 02
+        v2.title(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {cawu}", f"Biaya Operasional · 02 · {SUBLBL[blok]}", blok, last_month, period_txt, note_all)
+        v2.widths({"A": 2, **{_CL(i): 11 for i in range(2, 21)}})
+        v2.ws["C3"] = f"='{v1.name}'!C3"; v2.ws["G3"] = f"='{v1.name}'!G3"
+        v2.ws.merge_cells("B5:J5")
+        v2.put("B5", f"Ringkasan Biaya PT. BKMS (s/d {cawu_inline})", bold=True, size=13, border=False, align=_LEFT)
+        for j, (rng, h) in enumerate((("B6:C6", "Metrik"), ("D6:E6", "Budget"), ("F6:G6", "Aktual"), ("H6:H6", "Capaian"), ("I6:J6", "Cap. Fisik"))):
+            v2.merge_put(rng, h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER)
+        capd = lambda x: f'IF({x}="","-",IF({x}>9.99,">999%",{_pct(x)}))'
+        for i in range(5):
+            rr = 7 + i; src = a2f + i
+            v2.merge_put(f"B{rr}:C{rr}", f"={P2}B{src}", align=_LEFT)
+            v2.merge_put(f"D{rr}:E{rr}", f"={_rp(f'{P2}C{src}')}", align=_LEFT)
+            v2.merge_put(f"F{rr}:G{rr}", f"={_rp(f'{P2}D{src}')}", align=_LEFT)
+            v2.put(f"H{rr}", f"={capd(f'{P2}E{src}')}", bold=True, align=_LEFT)
+            fx = f"{P2}F{src}"; hi = f"{P2}G{src}"
+            v2.merge_put(f"I{rr}:J{rr}", (f'=IF({fx}="","-",IF({fx}>9.99,">999%",{_pct(fx)}))'), bold=True, align=_LEFT)
+            ex = f"{P2}$E${src}"; fxa = f"{P2}$F${src}"; hia = f"{P2}$G${src}"
+            v2.ws.conditional_formatting.add(f"H{rr}", _FRule(formula=[f'AND({ex}<>"",N({ex})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+            v2.ws.conditional_formatting.add(f"H{rr}", _FRule(formula=[f'AND({ex}<>"",N({ex})>1)'], fill=_fill(_RED), font=_Font(name=_FONT, bold=True, color="FFFFFF")))
+            good_f = f'AND({fxa}<>"",IF({hia}="YA",N({fxa})>=1,N({fxa})<=1))'
+            bad_f = f'AND({fxa}<>"",NOT(IF({hia}="YA",N({fxa})>=1,N({fxa})<=1)))'
+            v2.ws.conditional_formatting.add(f"I{rr}:J{rr}", _FRule(formula=[good_f], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+            v2.ws.conditional_formatting.add(f"I{rr}:J{rr}", _FRule(formula=[bad_f], fill=_fill(_RED), font=_Font(name=_FONT, bold=True, color="FFFFFF")))
+        overj = f"_xlfn.TEXTJOIN(\" & \",TRUE,{P2}I{b2f}:I{b2l})"
+        v2.ws.merge_cells("L5:T5")
+        v2.put("L5", f'=IF({overj}="","✅ BTL — UNDER BUDGET secara keseluruhan","⚠️ BTL — UNDER BUDGET, kecuali "&{overj})', bold=True, size=11, align=_CENTER)
+        v2.ws.conditional_formatting.add("L5:T5", _FRule(formula=[f'LEFT($L$5,1)="✅"'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+        v2.ws.conditional_formatting.add("L5:T5", _FRule(formula=[f'LEFT($L$5,1)<>"✅"'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
+        for rng, h in (("L6:N6", "Site (Kategori)"), ("O6:P6", "Budget"), ("Q6:R6", "Aktual"), ("S6:S6", "% Target"), ("T6:T6", "% BTL")):
+            v2.merge_put(rng, h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER)
+        for i in range(len(btl_keys)):
+            rr = 7 + i; src = b2f + i
+            v2.merge_put(f"L{rr}:N{rr}", f"={P2}B{src}", align=_LEFT)
+            v2.merge_put(f"O{rr}:P{rr}", f"={_rp(f'{P2}E{src}')}", align=_LEFT)
+            v2.merge_put(f"Q{rr}:R{rr}", f"={_rp(f'{P2}F{src}')}", align=_LEFT)
+            g_ = f"{P2}G{src}"
+            v2.put(f"S{rr}", f'=IF({g_}="","-",FIXED({g_}*100,0,TRUE)&"%")', bold=True, align=_LEFT)
+            v2.put(f"T{rr}", f"=FIXED({P2}H{src}*100,1)&\"%\"", align=_LEFT)
+            ga = f"{P2}$G${src}"
+            v2.ws.conditional_formatting.add(f"S{rr}", _FRule(formula=[f'AND({ga}<>"",N({ga})<=1)'], font=_Font(name=_FONT, bold=True, color=_GREEN)))
+            v2.ws.conditional_formatting.add(f"S{rr}", _FRule(formula=[f'AND({ga}<>"",N({ga})>1)'], font=_Font(name=_FONT, bold=True, color=_RED)))
+        top_c = max(13, 8 + len(btl_keys))
+        v2.section(top_c, "Analisa Penyebab Kenaikan Biaya BBM — per Site & Kelompok Unit")
+        if bbm_keys:
+            ch = _bar_chart(overlap=-8, height=9, width=39, legend="t")
+            for col_idx in (10, 11, 14):
+                ch.add_data(_Ref(c2.ws, min_col=col_idx, min_row=rC2 + 1, max_row=c2l), titles_from_data=True)
+            ch.set_categories(_Ref(c2.ws, min_col=2, min_row=c2f, max_row=c2l))
+            _color_series(ch, ("7B5CC9", "D98A2E", "3FA86B")); _labels(ch, "0%"); ch.y_axis.numFmt = "0%"
+            v2.ws.add_chart(ch, f"B{top_c+1}")
+            pk = lambda col: f"INDEX({P2}${col}${c2f}:${col}${c2l},{P2}$P${rmx})"
+            nb = top_c + 20
+            v2.note_box(f"B{nb}:T{nb+2}", (
+                f'={pk("B")}&" adalah unit dengan dampak Rupiah biaya BBM terbesar ("&{_rp("ABS(" + pk("O") + ")")}&" "&IF({pk("O")}>0,"over budget","hemat")'
+                f'&") — penyebab dominannya: "&{pk("P")}&" (Cap. Prestasi "&IF({pk("J")}="","data tidak tersedia",FIXED({pk("J")}*100,0,TRUE)&"%")'
+                f'&", Cap. Konsumsi "&FIXED({pk("K")}*100,0,TRUE)&"%, Cap. Harga BBM "&IF({pk("N")}="","data tidak tersedia",FIXED({pk("N")}*100,0,TRUE)&"%")&")."'),
+                color="7A5C0D", bg=_GOLD_BG)
+
+        # =========================== SLIDE 03 — ANALISIS BIAYA MAINTENANCE ===========================
+        v3 = _Sheet(wb, f"{px}-03 Analisis Biaya"); c3 = _Sheet(wb, f"{px}-03 Perhitungan")
+        P3 = c3.P
+        c3.widths({"A": 2, "B": 28, "C": 16, "D": 22, **{k: 14 for k in "EFGHIJKLMNOPQRS"}})
+        c3.section(2, f"{px}-03 PERHITUNGAN — sumber semua angka di sheet '{v3.name}'", "B", "P")
+        ms = bd.groupby(["lokasi", "kelompok_unit"])[["maintenance_realisasi", "maintenance_budget"]].sum()
+        mkeys = {k for k, v in ms.iterrows() if v["maintenance_realisasi"] > 0 or v["maintenance_budget"] > 0}
+        rkeys = set()
+        if not mtb.empty:
+            mk_ = mtb.dropna(subset=["kelompok_unit"])
+            if not mk_.empty:
+                tt = mk_[mk_["jenis_pemeliharaan"].isin(["RUTIN", "NON RUTIN"])].groupby(["lokasi", "kelompok_unit"])["biaya"].sum()
+                rkeys = {k for k, v in tt.items() if v > 0}
+        rows3 = sorted(mkeys | rkeys, key=lambda k: (k[1], k[0]))
+        c3.put("B4", "A. Gap Biaya Maintenance, Rutin/Non-Rutin & Capaian Downtime per Site & Kelompok Unit", border=False, bold=True, color=_NAVY, size=10, align=_LEFT)
+        c3.header(5, 2, ["Label", "Site", "Kelompok Unit", "Maint. Realisasi", "Maint. Budget", "% Capaian", "Gap (R - B)",
+                         "Over budget (Rp)", "Di bawah budget (Rp)", "Biaya Rutin", "Biaya Non-Rutin", "% Rutin", "% Non-Rutin",
+                         "Breakdown (HM/KM)", "Ideal (HM/KM)", "Cap. Downtime", "Rutin", "Non-Rutin"])
+        a3f = 6
+        a3l = a3f + max(len(rows3), 1) - 1
+        for i, (lok, kel) in enumerate(rows3):
+            rr = a3f + i
+            c3.put(f"B{rr}", f"{_site(lok)} — {_kel(kel)}", bold=True, align=_LEFT); c3.put(f"C{rr}", lok, align=_LEFT); c3.put(f"D{rr}", kel, align=_LEFT)
+            cb = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("kelompok_unit")},$D{rr}'
+            has_m = (lok, kel) in mkeys
+            c3.put(f"E{rr}", f"=SUMIFS({DB.R('maintenance_realisasi')},{cb})" if has_m else "", "#,##0")
+            c3.put(f"F{rr}", f"=SUMIFS({DB.R('maintenance_budget')},{cb})" if has_m else "", "#,##0")
+            c3.put(f"G{rr}", f'=IF(OR(E{rr}="",N(F{rr})=0),"",E{rr}/F{rr})', "0%", bold=True)
+            c3.put(f"H{rr}", f'=IF(E{rr}="","",E{rr}-F{rr})', "#,##0;[Red]-#,##0", bold=True)
+            c3.put(f"I{rr}", f"=IF(N(H{rr})>0,H{rr},0)", '"+Rp "#,##0.0,," Jt";"−Rp "#,##0.0,," Jt";;')
+            c3.put(f"J{rr}", f"=IF(N(H{rr})<0,H{rr},0)", '"+Rp "#,##0.0,," Jt";"−Rp "#,##0.0,," Jt";;')
+            cm = f'{MT.R("Blok")},{BL},{MT.R("lokasi")},$C{rr},{MT.R("kelompok_unit")},$D{rr}'
+            c3.put(f"K{rr}", f'=SUMIFS({MT.R("biaya")},{cm},{MT.R("jenis_pemeliharaan")},"RUTIN")', "#,##0")
+            c3.put(f"L{rr}", f'=SUMIFS({MT.R("biaya")},{cm},{MT.R("jenis_pemeliharaan")},"NON RUTIN")', "#,##0")
+            c3.put(f"M{rr}", f'=IF(K{rr}+L{rr}=0,"",K{rr}/(K{rr}+L{rr}))', "0%", bold=True)
+            c3.put(f"N{rr}", f'=IF(M{rr}="","",1-M{rr})', "0%", bold=True)
+            cs = f'{SM.R("Blok")},{BL},{SM.R("lokasi")},$C{rr},{SM.R("kelompok_unit")},$D{rr}'
+            c3.put(f"O{rr}", f"=SUMIFS({SM.R('breakdown_hm_km_realisasi')},{cs})", "#,##0")
+            c3.put(f"P{rr}", f"=SUMIFS({SM.R('hm_km_ideal_target')},{cs})", "#,##0")
+            c3.put(f"Q{rr}", (f'=IF(OR(M{rr}="",P{rr}=0),"",IFERROR((O{rr}/P{rr})/(AVERAGEIFS({SM.R("downtime_target")},{cs})/100),""))'), "0%", bold=True)
+            c3.put(f"R{rr}", f"=N(M{rr})", "0%;;;"); c3.put(f"S{rr}", f"=N(N{rr})", "0%;;;")
+        rt3 = a3l + 1
+        c3.put(f"B{rt3}", "TOTAL", bold=True, align=_LEFT, fillc="EEF2FF")
+        for col in "EFKL":
+            c3.put(f"{col}{rt3}", f"=SUM({col}{a3f}:{col}{a3l})", "#,##0", bold=True, fillc="EEF2FF")
+        c3.put(f"G{rt3}", f'=IF(F{rt3}=0,"",E{rt3}/F{rt3})', "0%", bold=True, fillc="EEF2FF")
+        c3.put(f"H{rt3}", f"=E{rt3}-F{rt3}", "#,##0;[Red]-#,##0", bold=True, fillc="EEF2FF")
+        c3.put(f"M{rt3}", f'=IF(K{rt3}+L{rt3}=0,"",K{rt3}/(K{rt3}+L{rt3}))', "0%", bold=True, fillc="EEF2FF")
+        c3.put(f"N{rt3}", f'=IF(M{rt3}="","",1-M{rt3})', "0%", bold=True, fillc="EEF2FF")
+        rs3 = rt3 + 2
+        c3.put(f"B{rs3}", "Ringkasan analisa", bold=True, color=_NAVY, border=False, align=_LEFT)
+        c3.header(rs3 + 1, 2, ["Jumlah kelompok", "Over budget", "Tanpa budget (over)", "Posisi over terbesar"])
+        rs = rs3 + 2
+        c3.put(f"B{rs}", f"=ROWS(B{a3f}:B{a3l})", "0", align=_CENTER)
+        c3.put(f"C{rs}", f'=COUNTIF(H{a3f}:H{a3l},">0")', "0", align=_CENTER, bold=True, color=_RED)
+        c3.put(f"D{rs}", f'=COUNTIFS(H{a3f}:H{a3l},">0",F{a3f}:F{a3l},0)', "0", align=_CENTER)
+        c3.put(f"E{rs}", f"=IFERROR(MATCH(MAX(H{a3f}:H{a3l}),H{a3f}:H{a3l},0),0)", "0", align=_CENTER)
+        # ---- tampilan slide 03
+        v3.title(f"ANALISIS: Biaya Maintenance & Rutin/Non-Rutin — s/d {cawu}", f"Analisis Biaya · 03 · {SUBLBL[blok]}", blok, last_month, period_txt, note_all)
+        v3.widths({"A": 2, **{_CL(i): 11 for i in range(2, 21)}})
+        v3.ws["C3"] = f"='{v1.name}'!C3"; v3.ws["G3"] = f"='{v1.name}'!G3"
+        v3.section(5, "Gap Biaya Maintenance — per Site & Kelompok Unit", "B", "J")
+        v3.section(5, "Rutin vs Non-Rutin — per Site & Kelompok Unit", "L", "T")
+        if rows3:
+            hh = max(8, 0.55 * len(rows3) + 2)
+            ch = _bar_chart(kind="bar", grouping="stacked", overlap=100, height=hh, width=17.5, legend="t")
+            for col_idx in (9, 10):
+                ch.add_data(_Ref(c3.ws, min_col=col_idx, min_row=5, max_row=a3l), titles_from_data=True)
+            ch.set_categories(_Ref(c3.ws, min_col=2, min_row=a3f, max_row=a3l))
+            _color_series(ch, (_RED, _TEAL))
+            _labels(ch, '"+Rp "#,##0.0,," Jt";"−Rp "#,##0.0,," Jt";;', pos=None)
+            ch.x_axis.scaling.orientation = "maxMin"; ch.y_axis.numFmt = '#,##0,," Jt"'
+            ch.x_axis.tickLblPos = "low"  # nama kelompok di tepi kiri (tdk menabrak batang negatif)
+            v3.ws.add_chart(ch, "B6")
+            ch2 = _bar_chart(kind="bar", grouping="percentStacked", overlap=100, height=hh, width=17.5, legend="t")
+            for col_idx in (18, 19):
+                ch2.add_data(_Ref(c3.ws, min_col=col_idx, min_row=5, max_row=a3l), titles_from_data=True)
+            ch2.set_categories(_Ref(c3.ws, min_col=2, min_row=a3f, max_row=a3l))
+            _color_series(ch2, (_TEAL, _GOLD)); _labels(ch2, "0%;;;", pos=None)
+            ch2.x_axis.scaling.orientation = "maxMin"; ch2.y_axis.numFmt = "0%"
+            v3.ws.add_chart(ch2, "L6")
+            # tabel ringkas di bawah chart (angka yg sama dgn PPT)
+            t0 = 6 + int(hh * 2) + 2
+            for rng, h in (("B{0}:D{0}", "Site — Kelompok"), ("E{0}:E{0}", "Capaian"), ("F{0}:G{0}", "Gap"), ("H{0}:H{0}", "% Rutin"),
+                           ("I{0}:I{0}", "% Non-Rutin"), ("J{0}:J{0}", "Cap. Downtime")):
+                v3.merge_put(rng.format(t0), h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER)
+            for i in range(len(rows3) + 1):
+                rr = t0 + 1 + i; src = a3f + i if i < len(rows3) else rt3
+                v3.merge_put(f"B{rr}:D{rr}", f"={P3}B{src}", bold=True, align=_LEFT)
+                g_ = f"{P3}G{src}"; h_ = f"{P3}H{src}"
+                v3.put(f"E{rr}", f'=IF({g_}="","N/A",FIXED({g_}*100,0,TRUE)&"%")', bold=True, align=_CENTER)
+                v3.ws.conditional_formatting.add(f"E{rr}", _FRule(formula=[f'AND({g_}<>"",N({g_})>1)'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
+                v3.ws.conditional_formatting.add(f"E{rr}", _FRule(formula=[f'AND({g_}<>"",N({g_})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+                if i < len(rows3):
+                    v3.merge_put(f"F{rr}:G{rr}", f'=IF({h_}="","tidak ada data",IF({h_}>0,"+","−")&{_rp("ABS(" + h_ + ")")})', align=_CENTER)
+                else:
+                    v3.merge_put(f"F{rr}:G{rr}", f'="Gap total: "&IF({h_}>0,"+","−")&{_rp("ABS(" + h_ + ")")}&IF({h_}>0," (over budget)"," (di bawah budget)")', bold=True, align=_CENTER)
+                m_ = f"{P3}M{src}"; n_ = f"{P3}N{src}"
+                v3.put(f"H{rr}", f'=IF({m_}="","—",FIXED({m_}*100,0,TRUE)&"%")', align=_CENTER)
+                v3.put(f"I{rr}", f'=IF({n_}="","—",FIXED({n_}*100,0,TRUE)&"%")', align=_CENTER)
+                if i < len(rows3):
+                    q_ = f"{P3}Q{src}"
+                    v3.put(f"J{rr}", f'=IF({q_}="","—",FIXED({q_}*100,0,TRUE)&"%")', bold=True, align=_CENTER)
+                    v3.ws.conditional_formatting.add(f"J{rr}", _FRule(formula=[f'AND({q_}<>"",N({q_})>1)'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
+                    v3.ws.conditional_formatting.add(f"J{rr}", _FRule(formula=[f'AND({q_}<>"",N({q_})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+            nb = t0 + len(rows3) + 3
+            pos = f"{P3}$E${rs}"
+            pk = lambda col: f"INDEX({P3}${col}${a3f}:${col}${a3l},{pos})"
+            v3.note_box(f"B{nb}:T{nb+2}", (
+                f'=IF({P3}$C${rs}=0,"Dari "&{P3}$B${rs}&" kelompok unit per site, tidak ada yang over budget pada biaya maintenance — seluruhnya berada dalam/di bawah budget.",'
+                f'"Dari "&{P3}$B${rs}&" kelompok unit per site, terdapat "&{P3}$C${rs}&" kelompok yang OVER BUDGET biaya maintenance"'
+                f'&IF({P3}$D${rs}>0," (termasuk "&{P3}$D${rs}&" kelompok tanpa budget)","")&". Over budget terbesar pada "&{pk("B")}'
+                f'&" (+"&{_rp(pk("H"))}&", "&IF({pk("G")}="","tanpa budget","Capaian "&FIXED({pk("G")}*100,0,TRUE)&"%")&") dengan "'
+                f'&IF({pk("N")}="","tanpa transaksi pemeliharaan tercatat","porsi pemeliharaan Non-Rutin "&FIXED({pk("N")}*100,0,TRUE)&"%")'
+                f'&" dan "&IF({pk("Q")}="","Capaian Downtime belum tersedia","Capaian Downtime "&FIXED({pk("Q")}*100,0,TRUE)&"%")&".")'),
+                color="7A5C0D", bg=_GOLD_BG)
+
+    # urutan sheet: per blok (01..04 tampilan+perhitungan), data di belakang
+    order = []
+    for blok in blocks:
+        px = PREFIX[blok]
+        for n in ("01 Informasi Kinerja", "01 Perhitungan", "02 Biaya Operasional", "02 Perhitungan",
+                  "03 Analisis Biaya", "03 Perhitungan", "04 Analisis Downtime", "04 Perhitungan"):
+            order.append(f"{px}-{n}")
+    order += ["Data BKMS", "Data Sasaran Mutu", "Data Pemeliharaan", "Data MTTR"]
+    wb._sheets = [wb[n] for n in order]
+    for ws_ in wb.worksheets:
+        ws_.sheet_properties.tabColor = (_NAVY if ws_.title.startswith("Data") else
+                                        (_GOLD if ws_.title.endswith("Perhitungan") else "2E8B57"))
+    # Excel menghitung ulang semua rumus saat file dibuka (file ini tdk menyimpan hasil hitungan)
+    from openpyxl.workbook.properties import CalcProperties as _CalcP
+    wb.calculation = _CalcP(fullCalcOnLoad=True)
+    buf = _io_dx.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------
 # HEADER
 # ---------------------------------------------------------------
@@ -4583,9 +5622,16 @@ with colPPT:
             sparepart_for_pptx = sparepart_df_site_bulan if not sparepart_raw.empty else pd.DataFrame()
             pptx_bytes = build_pptx(df, maint_for_pptx, sparepart_for_pptx, sel_site, sel_month, sel_kat, sasaran_mutu_df, mttr_raw)
             st.session_state["pptx_bytes"] = pptx_bytes
-            st.session_state["perhitungan_detail_bytes"] = build_perhitungan_detail_excel(
-                df_raw, sasaran_mutu_raw, mttr_raw, maint_raw, sel_site, sel_month, sel_kat
-            )
+            # Detail Perhitungan PPT MODEL BARU: tiap slide dibawa ke Excel, semua angka = rumus yg tertaut ke
+            # sheet data mentah. Input SAMA PERSIS dgn build_pptx di atas spy angkanya identik dgn slide.
+            try:
+                st.session_state["perhitungan_detail_bytes"] = build_detail_ppt_excel(
+                    df, sasaran_mutu_df, maint_for_pptx, mttr_raw, sel_site, sel_month, sel_kat,
+                    lookup_atribut_unit, lookup_base=df_raw)
+                st.session_state.pop("perhitungan_detail_error", None)
+            except Exception as _e_dx:
+                st.session_state.pop("perhitungan_detail_bytes", None)
+                st.session_state["perhitungan_detail_error"] = str(_e_dx)
             pdf_bytes, pdf_err = convert_pptx_to_pdf_bytes(pptx_bytes)
             if pdf_bytes is not None:
                 st.session_state["pptx_pdf_bytes"] = pdf_bytes
@@ -4619,8 +5665,10 @@ with colPPT:
             file_name="Perhitungan_Detail_PPT_BKMS.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            help="Format laporan PPTX dalam bentuk Excel: menunjukkan angka REAL & sumber data di balik setiap metrik, sesuai struktur blok Divisi & filter Site/Bulan/Kategori saat tombol 'Buat Presentasi' diklik.",
+            help="Setiap slide PPT dalam bentuk Excel (per blok: 4 sheet tampilan + 4 sheet perhitungan). Semua angka berupa RUMUS yg tertaut ke sheet data mentah (Data BKMS, Sasaran Mutu, Pemeliharaan, MTTR) -- ubah datanya, angka & chart ikut berubah.",
         )
+    elif "perhitungan_detail_error" in st.session_state:
+        st.caption(f"⚠️ Detail perhitungan gagal dibuat: {st.session_state['perhitungan_detail_error']}")
 
 st.markdown("---")
 
