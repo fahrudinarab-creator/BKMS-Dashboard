@@ -2325,6 +2325,18 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     data.loc[data["lokasi"].isin(MINING_SITES_MERGE), "kategori"] = "AB"
     if mttr_data is None:
         mttr_data = pd.DataFrame()
+    # Aturan penggabungan yg SAMA wajib diterapkan jg ke data Pemeliharaan, Sparepart & MTTR -- kalau tidak, transaksi
+    # unit TR di site Mining (mis. truk tangki TANJUNG 261-018/262-002) masih berkategori "TR" & TERBUANG saat
+    # difilter kategori blok Mining (yg isinya cuma "AB"), shg chart Rutin/Non-Rutin menampilkan "tidak ada transaksi".
+    def _gabung_kategori_mining(df_):
+        if df_ is None or df_.empty or "lokasi" not in df_.columns or "kategori" not in df_.columns:
+            return df_
+        df_ = df_.copy()
+        df_.loc[df_["lokasi"].isin(MINING_SITES_MERGE), "kategori"] = "AB"
+        return df_
+    maint_data = _gabung_kategori_mining(maint_data)
+    sparepart_data = _gabung_kategori_mining(sparepart_data)
+    mttr_data = _gabung_kategori_mining(mttr_data)
     if sasaran_mutu_data is not None and not sasaran_mutu_data.empty:
         sasaran_mutu_data = sasaran_mutu_data.copy()
         sasaran_mutu_data.loc[sasaran_mutu_data["lokasi"].isin(MINING_SITES_MERGE), "kategori"] = "AB"
