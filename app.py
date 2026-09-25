@@ -3657,9 +3657,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # Tata letak TABEL + BAR: Label | Budget | Realisasi | Capaian | Gap (bar divergen).
             # Kolom angka mengisi ruang kosong di kiri sumbu & memberi konteks nilai absolut di balik tiap gap.
             lbl_x4, lbl_w4 = 0.5, 1.35
-            bud_x4, bud_w4 = lbl_x4 + lbl_w4 + 0.1, 0.82
-            rea_x4, rea_w4 = bud_x4 + bud_w4 + 0.06, 0.82
-            cap_x4, cap_w4 = rea_x4 + rea_w4 + 0.12, 0.62
+            # Kolom Budget & Realisasi TIDAK ditampilkan (permintaan user) -> Label | Capaian | Gap (bar lebih lebar)
+            cap_x4, cap_w4 = lbl_x4 + lbl_w4 + 0.15, 0.62
             plot_l4 = cap_x4 + cap_w4 + 0.15
             plot_r4 = 0.4 + 7.5 - 0.12
             _separators4(lbl_x4, plot_r4 - lbl_x4)
@@ -3677,8 +3676,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # Header kolom (sejajar legend panel kanan)
             leg_y4 = chart_top_r4
             hdr_font4 = 8
-            _txt4(bud_x4, leg_y4, bud_w4, legend_h4, "Budget", hdr_font4, TEXT_MUTED, align=PP_ALIGN.RIGHT)
-            _txt4(rea_x4, leg_y4, rea_w4, legend_h4, "Realisasi", hdr_font4, TEXT_MUTED, align=PP_ALIGN.RIGHT)
             _txt4(cap_x4, leg_y4, cap_w4, legend_h4, "Capaian", hdr_font4, TEXT_MUTED, align=PP_ALIGN.CENTER)
             _rect4(plot_l4 + 0.05, leg_y4 + 0.09, 0.12, 0.12, RED)
             _txt4(plot_l4 + 0.22, leg_y4, 0.9, legend_h4, "Over Budget", hdr_font4, TEXT_MUTED)
@@ -3704,10 +3701,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 _txt4(lbl_x4, y, lbl_w4, row_h4, r["label"], lbl_font4, TEXT_DARK, align=PP_ALIGN.RIGHT)
                 g = r["gap_rp"]
                 if pd.isna(g):
-                    _txt4(bud_x4, y, plot_r4 - bud_x4, row_h4, "tidak ada data budget/realisasi maintenance", max(lbl_font4 - 1, 5), TEXT_MUTED, bold=False, italic=True, align=PP_ALIGN.CENTER)
+                    _txt4(cap_x4, y, plot_r4 - cap_x4, row_h4, "tidak ada data budget/realisasi maintenance", max(lbl_font4 - 1, 5), TEXT_MUTED, bold=False, italic=True, align=PP_ALIGN.CENTER)
                     continue
-                _txt4(bud_x4, y, bud_w4, row_h4, _rp_kolom4(r["maint_b"]), val_font4, TEXT_MUTED, bold=False, align=PP_ALIGN.RIGHT)
-                _txt4(rea_x4, y, rea_w4, row_h4, _rp_kolom4(r["maint_r"]), val_font4, TEXT_DARK, align=PP_ALIGN.RIGHT)
                 _cap_badge4(y, r["cap"])
                 bh = row_h4 * 0.66
                 by = y + (row_h4 - bh) / 2
@@ -3730,8 +3725,6 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             tot_gap4 = tot_r4 - tot_b4
             tot_font4 = min(val_font4 + 0.5, 9)
             _txt4(lbl_x4, yt, lbl_w4, row_h4, "TOTAL", tot_font4, NAVY, align=PP_ALIGN.RIGHT)
-            _txt4(bud_x4, yt, bud_w4, row_h4, _rp_kolom4(tot_b4), tot_font4, NAVY, align=PP_ALIGN.RIGHT)
-            _txt4(rea_x4, yt, rea_w4, row_h4, _rp_kolom4(tot_r4), tot_font4, NAVY, align=PP_ALIGN.RIGHT)
             _cap_badge4(yt, tot_cap4)
             _tot_over4 = tot_gap4 > 0
             _txt4(plot_l4, yt, plot_r4 - plot_l4, row_h4,
@@ -3818,33 +3811,114 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         "Data Maintenance (jenis_pemeliharaan) belum tersedia. Silakan upload data Pemeliharaan terlebih dahulu.",
                         size=10, italic=True, color=TEXT_MUTED)
 
-        # ================= INSIGHT: hubungkan Capaian Biaya Maintenance dgn porsi Non-Rutin =================
+        # ================= INSIGHT: ringkasan over budget + unit over terbesar (Non-Rutin & Downtime-nya) =================
+        # Format: "Dari N kelompok unit per site, terdapat X kelompok yang OVER BUDGET ... Over budget terbesar pada
+        # <Site — Kelompok> (+Rp.., Capaian ..%) dgn porsi pemeliharaan Non-Rutin ..% dan Capaian Downtime ..%."
+        # Dihitung dari baris yg SAMA dgn kedua chart di atas (rows4), jadi angkanya pasti cocok dgn yg tampil.
         insight_top4 = panel_top4 + panel_h4 - note_h4
-        if not maint_su4_full.empty and not rutin_pivot4.empty:
-            merge4 = maint_su4_full.merge(rutin_pivot4[["lokasi", "kelompok_unit", "pct_nonrutin"]], on=["lokasi", "kelompok_unit"], how="inner")
-            over_budget4 = merge4[merge4["cap"].notna() & (merge4["cap"] > 100)]  # exclude cap=None (unit tanpa budget) dari analisa over-budget ini
-            if not over_budget4.empty:
-                worst4 = over_budget4.sort_values("gap_rp", ascending=False).iloc[0]
-                avg_nonrutin_over4 = over_budget4["pct_nonrutin"].mean()
-                under_budget4 = merge4[merge4["cap"].notna() & (merge4["cap"] <= 100)]
-                avg_nonrutin_under4 = under_budget4["pct_nonrutin"].mean() if not under_budget4.empty else None
-                if avg_nonrutin_under4 is not None and avg_nonrutin_over4 > avg_nonrutin_under4:
-                    banding_txt4 = (f"Rata-rata porsi Non-Rutin pada unit yang OVER BUDGET ({avg_nonrutin_over4:.0f}%) lebih tinggi dibanding "
-                                     f"unit yang sesuai/di bawah budget ({avg_nonrutin_under4:.0f}%) \u2014 mengindikasikan preventive maintenance "
-                                     f"yang belum memadai menjadi salah satu penyebab pembengkakan biaya.")
+        _rows_gap4 = rows4[rows4["gap_rp"].notna()] if n_rows4 else pd.DataFrame()
+        if not _rows_gap4.empty:
+            n_kel4 = n_rows4
+            over4 = _rows_gap4[_rows_gap4["gap_rp"] > 0]
+            if not over4.empty:
+                n_tanpa_budget4 = int(over4["cap"].isna().sum())
+                ket_tb4 = f" (termasuk {n_tanpa_budget4} kelompok tanpa budget)" if n_tanpa_budget4 else ""
+                w4 = over4.sort_values("gap_rp", ascending=False).iloc[0]
+                cap_txt4 = f"Capaian {w4['cap']:.0f}%" if pd.notna(w4["cap"]) else "tanpa budget"
+                nr_txt4 = (f"porsi pemeliharaan Non-Rutin {w4['pct_nonrutin']:.0f}%" if pd.notna(w4.get("pct_nonrutin"))
+                           else "tanpa transaksi pemeliharaan tercatat")
+                _dt4 = w4.get("cap_downtime")
+                dt_txt4 = f"Capaian Downtime {_dt4:.0f}%" if (_dt4 is not None and pd.notna(_dt4)) else "Capaian Downtime belum tersedia"
+                # --- Tampilan "strip sorotan" (lebih enak dipresentasikan dibanding 1 paragraf panjang) ---
+                # [ikon] | 10 dari 13 kelompok OVER BUDGET | Over terbesar: S.DANAU — DT (+Rp.., Capaian ..%) |
+                #          Porsi Non-Rutin ..% (+ mini bar) | Capaian Downtime ..% (+ status). Isi = format kalimat yg disetujui.
+                bx4, by4, bw4, bh4 = 0.55, insight_top4, 12.0, note_h4 - 0.1
+                strip4 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(bx4), Inches(by4), Inches(bw4), Inches(bh4))
+                strip4.adjustments[0] = min(0.12, 0.35 / bh4)
+                strip4.fill.solid(); strip4.fill.fore_color.rgb = GOLD_BG
+                strip4.line.color.rgb = GOLD; strip4.line.width = Pt(1.25)
+                _no_shadow4(strip4)
+                ic_d4 = min(0.46, bh4 - 0.2)
+                ic4 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(bx4 + 0.16), Inches(by4 + bh4 / 2 - ic_d4 / 2), Inches(ic_d4), Inches(ic_d4))
+                ic4.fill.solid(); ic4.fill.fore_color.rgb = GOLD; ic4.line.fill.background(); _no_shadow4(ic4)
+                _ictf4 = ic4.text_frame; _ictf4.vertical_anchor = MSO_ANCHOR.MIDDLE
+                _ictf4.margin_left = 0; _ictf4.margin_right = 0; _ictf4.margin_top = 0; _ictf4.margin_bottom = 0
+                _icp4 = _ictf4.paragraphs[0]; _icp4.alignment = PP_ALIGN.CENTER
+                _icr4 = _icp4.add_run(); _icr4.text = "\U0001F4A1"; _icr4.font.size = Pt(14); _icr4.font.name = EMOJI_FONT
+
+                BROWN4 = RGBColor(0x7A, 0x5C, 0x0D)
+                DIV4 = RGBColor(0xE6, 0xCF, 0x9E)
+                lab_y4, lab_h4 = by4 + 0.07, 0.2
+                big_y4, big_h4 = by4 + 0.25, 0.36
+                sub_y4, sub_h4 = by4 + bh4 - 0.25, 0.2
+                seg_x4 = bx4 + 0.16 + ic_d4 + 0.2
+                seg_w4 = [2.35, 3.0, 2.65, 2.3]  # total + jarak antar kolom muat di dalam kotak (lebar 12 in)
+
+                def _div4(x):
+                    _rect4(x - 0.12, by4 + 0.14, 0.012, bh4 - 0.28, DIV4)
+
+                # 1) Jumlah kelompok over budget
+                x1 = seg_x4
+                _txt4(x1, lab_y4, seg_w4[0], lab_h4, "Kelompok unit over budget", 8.5, BROWN4, bold=False)
+                _tb_big = s.shapes.add_textbox(Inches(x1), Inches(big_y4), Inches(seg_w4[0]), Inches(big_h4))
+                _tfb = _tb_big.text_frame; _tfb.word_wrap = True; _tfb.vertical_anchor = MSO_ANCHOR.MIDDLE
+                _tfb.margin_left = 0; _tfb.margin_right = 0; _tfb.margin_top = 0; _tfb.margin_bottom = 0
+                _pb = _tfb.paragraphs[0]
+                _rb1 = _pb.add_run(); _rb1.text = f"{len(over4)}"
+                _rb1.font.size = Pt(22); _rb1.font.bold = True; _rb1.font.color.rgb = RED; _rb1.font.name = "Calibri"
+                _rb2 = _pb.add_run(); _rb2.text = f" dari {n_kel4} kelompok"
+                _rb2.font.size = Pt(12); _rb2.font.bold = True; _rb2.font.color.rgb = TEXT_DARK; _rb2.font.name = "Calibri"
+                _txt4(x1, sub_y4, seg_w4[0], sub_h4,
+                      (f"termasuk {n_tanpa_budget4} kelompok tanpa budget" if n_tanpa_budget4 else "per site & kelompok unit"),
+                      8, TEXT_MUTED, bold=False, italic=True)
+
+                # 2) Over budget terbesar
+                x2 = x1 + seg_w4[0] + 0.24
+                _div4(x2)
+                _txt4(x2, lab_y4, seg_w4[1], lab_h4, "Over budget terbesar", 8.5, BROWN4, bold=False)
+                _txt4(x2, big_y4, seg_w4[1], big_h4, str(w4["label"]), 16, NAVY)
+                _txt4(x2, sub_y4, seg_w4[1], sub_h4, f"+{fmt_rp(w4['gap_rp'])}  \u00b7  {cap_txt4}", 9.5, RED)
+
+                # 3) Porsi Non-Rutin unit tsb (+ mini bar Rutin/Non-Rutin)
+                x3 = x2 + seg_w4[1] + 0.24
+                _div4(x3)
+                _txt4(x3, lab_y4, seg_w4[2], lab_h4, "Porsi pemeliharaan Non-Rutin", 8.5, BROWN4, bold=False)
+                _nr4 = w4.get("pct_nonrutin")
+                if pd.notna(_nr4):
+                    _txt4(x3, big_y4, 0.8, big_h4, f"{_nr4:.0f}%", 20, GOLD)
+                    mb_x4, mb_w4, mb_h4 = x3 + 0.85, seg_w4[2] - 0.95, 0.13
+                    mb_y4 = big_y4 + big_h4 / 2 - mb_h4 / 2
+                    _w_r4 = mb_w4 * (100 - _nr4) / 100
+                    if _w_r4 > 0:
+                        _rect4(mb_x4, mb_y4, _w_r4, mb_h4, TEAL)
+                    _rect4(mb_x4 + _w_r4, mb_y4, mb_w4 - _w_r4, mb_h4, GOLD)
+                    _txt4(x3, sub_y4, seg_w4[2], sub_h4, f"Rutin {100 - _nr4:.0f}%  \u00b7  Non-Rutin {_nr4:.0f}%", 8, TEXT_MUTED, bold=False)
                 else:
-                    banding_txt4 = "Perlu ditelusuri lebih lanjut apakah ada korelasi antara porsi Non-Rutin dan pembengkakan biaya maintenance."
-                add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\U0001F4A1",
-                                 f"{worst4['label']} adalah unit dengan dampak Rupiah biaya OVER BUDGET terbesar ({fmt_rp(worst4['gap_rp'])}, Capaian {worst4['cap']:.0f}%), "
-                                 f"dengan porsi Non-Rutin {worst4['pct_nonrutin']:.0f}%. {banding_txt4}",
-                                 GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
+                    _txt4(x3, big_y4, seg_w4[2], big_h4, "\u2014", 20, TEXT_MUTED)
+                    _txt4(x3, sub_y4, seg_w4[2], sub_h4, "tanpa transaksi pemeliharaan", 8, TEXT_MUTED, bold=False, italic=True)
+
+                # 4) Capaian Downtime unit tsb
+                x4 = x3 + seg_w4[2] + 0.24
+                _div4(x4)
+                _txt4(x4, lab_y4, seg_w4[3], lab_h4, "Capaian Downtime", 8.5, BROWN4, bold=False)
+                if _dt4 is not None and pd.notna(_dt4):
+                    _dt_over4 = _dt4 > 100
+                    _txt4(x4, big_y4, 0.82, big_h4, f"{_dt4:.0f}%", 20, RED if _dt_over4 else GREEN)
+                    _badge4(x4 + 0.86, big_y4 + big_h4 / 2 - 0.11, min(1.2, seg_w4[3] - 0.9), 0.22,
+                            "Melebihi target" if _dt_over4 else "Dalam target",
+                            RED_SOFT4 if _dt_over4 else GREEN_SOFT4, RED if _dt_over4 else GREEN, 8)
+                    _txt4(x4, sub_y4, seg_w4[3], sub_h4, "\u2264 100% = sesuai target downtime", 8, TEXT_MUTED, bold=False)
+                else:
+                    _txt4(x4, big_y4, seg_w4[3], big_h4, "\u2014", 20, TEXT_MUTED)
+                    _txt4(x4, sub_y4, seg_w4[3], sub_h4, "data downtime belum tersedia", 8, TEXT_MUTED, bold=False, italic=True)
             else:
                 add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2705",
-                                 "Tidak ada unit yang over budget pada biaya maintenance \u2014 seluruh unit berada dalam/di bawah budget.",
+                                 f"Dari {n_kel4} kelompok unit per site, tidak ada yang over budget pada biaya maintenance \u2014 "
+                                 f"seluruhnya berada dalam/di bawah budget.",
                                  GREEN_BG, GREEN, GREEN)
         else:
             add_finding_box(s, 0.55, insight_top4, 12.0, note_h4 - 0.1, "\u2139\ufe0f",
-                             "Data belum cukup lengkap untuk analisis korelasi antara Capaian Biaya Maintenance dan porsi Non-Rutin.",
+                             "Data Biaya Maintenance belum tersedia untuk analisis.",
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
         # ================= SLIDE 4: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
