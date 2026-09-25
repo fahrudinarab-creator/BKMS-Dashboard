@@ -2408,7 +2408,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         r = p.add_run(); r.text = title
         r.font.size = Pt(20); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = "Calibri"
         if subtitle_right:
-            tb2 = s.shapes.add_textbox(Inches(9.5), Inches(0.28), Inches(3.4), Inches(0.4))
+            # Kotak dilebarkan ke kiri (mulai 8.4 in; judul terpanjang di kiri selesai sktr 7.9 in) spy subjudul
+            # panjang spt "Analisis Downtime · 04 · PLANTATION · TRANSPORTASI" tetap 1 baris (tdk ter-wrap).
+            tb2 = s.shapes.add_textbox(Inches(8.4), Inches(0.28), Inches(4.5), Inches(0.4))
+            tb2.text_frame.word_wrap = True
             p2 = tb2.text_frame.paragraphs[0]
             p2.alignment = PP_ALIGN.RIGHT
             r2 = p2.add_run(); r2.text = subtitle_right
@@ -2997,44 +3000,91 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             _header_bar_pop = add_panel_header(slide, pie_panel_x, top, pie_panel_w, f"\U0001F4CA Populasi Unit \u00b7 {_total_pop_header}", height=0.34)
             _header_bar_pop.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
             if pop_rows:
-                pop_rows_final = sorted(pop_rows, key=lambda x: x[1], reverse=True)  # descending (bullet chart: terbesar di ATAS)
+                # === DONUT CHART (variasi visual; sebelumnya bullet/bar horizontal spt chart lain di slide ini) ===
+                # Donut di atas dgn TOTAL unit di tengah lubang, legenda di bawah: warna \u2022 Site \u2014 Kelompok \u2022
+                # jumlah unit \u2022 porsi %. Urutan mengikuti chart di kiri (searah jarum jam dari atas).
+                # Urutan SAMA dgn chart Capaian Prestasi/Utilisasi/Availability di kiri (per Kelompok Unit, lalu Site)
+                _urut_au = {r["label"]: i for i, r in enumerate(au_rows_floating)}
+                pop_rows_final = sorted(pop_rows, key=lambda x: _urut_au.get(x[0], len(_urut_au)))
                 total_unit_pop = sum(n for _, n in pop_rows_final)
-                bar_h_avail = pie_panel_h - 0.5
-                n_bullet = len(pop_rows_final)
-                row_h_bullet = bar_h_avail / n_bullet
-                max_val_bullet = max(n for _, n in pop_rows_final) if pop_rows_final else 1
-                label_w_bullet = pie_w_x * 0.42   # lebar kolom label kategori (kiri)
-                track_x_bullet = pie_x_left + label_w_bullet
-                track_w_bullet = pie_w_x - label_w_bullet - 0.35  # sisakan ruang kanan utk angka
-                BULLET_COLOR = RGBColor(0x0D, 0x94, 0x88)
-                BULLET_TRACK_BG = RGBColor(0xE9, 0xEC, 0xEF)
-                for i_bl, (lbl_bl, val_bl) in enumerate(pop_rows_final):
-                    row_y_bl = chart_top_x + i_bl * row_h_bullet
-                    bar_h_bl = row_h_bullet * 0.42  # bar bullet TIPIS (khas bullet chart), bukan setebal bar biasa
-                    bar_y_bl = row_y_bl + (row_h_bullet - bar_h_bl) / 2
-                    # Label kategori (kiri, rata kiri)
-                    _tb_lbl_bl = slide.shapes.add_textbox(Inches(pie_x_left), Inches(row_y_bl), Inches(label_w_bullet - 0.05), Inches(row_h_bullet))
-                    _tf_lbl_bl = _tb_lbl_bl.text_frame; _tf_lbl_bl.word_wrap = False; _tf_lbl_bl.vertical_anchor = MSO_ANCHOR.MIDDLE
-                    _tf_lbl_bl.margin_left = 0; _tf_lbl_bl.margin_right = 0; _tf_lbl_bl.margin_top = 0; _tf_lbl_bl.margin_bottom = 0
-                    _p_lbl_bl = _tf_lbl_bl.paragraphs[0]; _p_lbl_bl.alignment = PP_ALIGN.LEFT
-                    _r_lbl_bl = _p_lbl_bl.add_run(); _r_lbl_bl.text = lbl_bl
-                    _r_lbl_bl.font.size = Pt(6); _r_lbl_bl.font.bold = False; _r_lbl_bl.font.color.rgb = TEXT_DARK; _r_lbl_bl.font.name = "Calibri"
-                    # Track/skala latar belakang (abu muda, mewakili "rentang penuh" khas bullet chart)
-                    _track_bl = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(track_x_bullet), Inches(bar_y_bl), Inches(track_w_bullet), Inches(bar_h_bl))
-                    _track_bl.fill.solid(); _track_bl.fill.fore_color.rgb = BULLET_TRACK_BG
-                    _track_bl.line.fill.background(); _track_bl.shadow.inherit = False
-                    # Bar bullet (nilai aktual, proporsional thd nilai terbesar)
-                    bar_w_bl = track_w_bullet * (val_bl / max_val_bullet) if max_val_bullet else 0
-                    _bar_bl = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(track_x_bullet), Inches(bar_y_bl), Inches(max(bar_w_bl, 0.02)), Inches(bar_h_bl))
-                    _bar_bl.fill.solid(); _bar_bl.fill.fore_color.rgb = BULLET_COLOR
-                    _bar_bl.line.fill.background(); _bar_bl.shadow.inherit = False
-                    # Angka nilai (kanan, setelah track)
-                    _tb_val_bl = slide.shapes.add_textbox(Inches(track_x_bullet + track_w_bullet + 0.04), Inches(row_y_bl), Inches(0.3), Inches(row_h_bullet))
-                    _tf_val_bl = _tb_val_bl.text_frame; _tf_val_bl.word_wrap = False; _tf_val_bl.vertical_anchor = MSO_ANCHOR.MIDDLE
-                    _tf_val_bl.margin_left = 0; _tf_val_bl.margin_right = 0; _tf_val_bl.margin_top = 0; _tf_val_bl.margin_bottom = 0
-                    _p_val_bl = _tf_val_bl.paragraphs[0]; _p_val_bl.alignment = PP_ALIGN.LEFT
-                    _r_val_bl = _p_val_bl.add_run(); _r_val_bl.text = str(val_bl)
-                    _r_val_bl.font.size = Pt(6.5); _r_val_bl.font.bold = True; _r_val_bl.font.color.rgb = BULLET_COLOR; _r_val_bl.font.name = "Calibri"
+                n_pop = len(pop_rows_final)
+                DONUT_PALETTE = [RGBColor(0x0D, 0x94, 0x88), RGBColor(0x1E, 0x5A, 0xA8), RGBColor(0xD9, 0x8E, 0x1F),
+                                 RGBColor(0x17, 0xA2, 0xB8), RGBColor(0x7B, 0x5E, 0xA7), RGBColor(0xE0, 0x6C, 0x4F),
+                                 RGBColor(0x5B, 0xA8, 0x4C), RGBColor(0x2C, 0x3E, 0x7A), RGBColor(0xC9, 0x4F, 0x8A),
+                                 RGBColor(0x8C, 0x9A, 0x2B), RGBColor(0x46, 0x7A, 0x9E), RGBColor(0xB5, 0x6A, 0x2E),
+                                 RGBColor(0x3F, 0xB4, 0x9C), RGBColor(0x9E, 0x9E, 0x3A), RGBColor(0x6D, 0x4C, 0x9F),
+                                 RGBColor(0xA0, 0x45, 0x45)]
+                pop_colors = [DONUT_PALETTE[i % len(DONUT_PALETTE)] for i in range(n_pop)]
+
+                area_top_pop = chart_top_x
+                area_h_pop = pie_panel_h - (chart_top_x - top) - 0.1
+                # Kelompok banyak (>9) -> donut dikecilkan spy legenda di bawahnya tetap terbaca (font tdk terlalu kecil)
+                donut_d = min(pie_w_x - 0.3, max(1.35, area_h_pop * 0.46)) if n_pop <= 9 else max(1.15, area_h_pop * 0.31)
+                donut_x = pie_panel_x + (pie_panel_w - donut_d) / 2
+                donut_y = area_top_pop + 0.02
+
+                cd_pop = CategoryChartData()
+                cd_pop.categories = [lbl for lbl, _ in pop_rows_final]
+                cd_pop.add_series("Populasi", tuple(int(v) for _, v in pop_rows_final))
+                gf_pop = slide.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(donut_x), Inches(donut_y),
+                                                Inches(donut_d), Inches(donut_d), cd_pop)
+                ch_pop = gf_pop.chart
+                ch_pop.has_legend = False
+                ch_pop.has_title = False
+                pl_pop = ch_pop.plots[0]
+                pl_pop.has_data_labels = False
+                pl_pop.vary_by_categories = True
+                for i_p, pt_p in enumerate(ch_pop.series[0].points):
+                    pt_p.format.fill.solid(); pt_p.format.fill.fore_color.rgb = pop_colors[i_p]
+                    pt_p.format.line.color.rgb = WHITE; pt_p.format.line.width = Pt(1.25)
+                # Lubang donut lebih besar (default ~50%) spy angka total di tengah lega; mulai dari arah jam 12
+                for el in ch_pop._chartSpace.iter():
+                    tag = el.tag.split("}")[-1]
+                    if tag == "holeSize":
+                        el.set("val", "62")
+                    elif tag == "firstSliceAng":
+                        el.set("val", "0")
+                # Angka total di tengah lubang donut
+                _c_w = donut_d * 0.6
+                _tb_c = slide.shapes.add_textbox(Inches(donut_x + (donut_d - _c_w) / 2), Inches(donut_y + donut_d / 2 - 0.3),
+                                                 Inches(_c_w), Inches(0.6))
+                _tf_c = _tb_c.text_frame; _tf_c.word_wrap = True; _tf_c.vertical_anchor = MSO_ANCHOR.MIDDLE
+                _tf_c.margin_left = 0; _tf_c.margin_right = 0; _tf_c.margin_top = 0; _tf_c.margin_bottom = 0
+                _p_c = _tf_c.paragraphs[0]; _p_c.alignment = PP_ALIGN.CENTER
+                _r_c = _p_c.add_run(); _r_c.text = str(total_unit_pop)
+                _c_size = max(13, min(22, donut_d * 12))  # angka tengah ikut besar-kecilnya donut
+                _r_c.font.size = Pt(_c_size); _r_c.font.bold = True; _r_c.font.color.rgb = TEXT_DARK; _r_c.font.name = "Calibri"
+                _p_c2 = _tf_c.add_paragraph(); _p_c2.alignment = PP_ALIGN.CENTER
+                _r_c2 = _p_c2.add_run(); _r_c2.text = "unit"
+                _r_c2.font.size = Pt(8.5 if donut_d >= 1.6 else 7); _r_c2.font.color.rgb = TEXT_MUTED; _r_c2.font.name = "Calibri"
+
+                # Legenda di bawah donut
+                leg_top_pop = donut_y + donut_d + 0.1
+                leg_h_pop = (top + pie_panel_h - 0.1) - leg_top_pop
+                leg_row_h = min(0.26, leg_h_pop / max(n_pop, 1))
+                leg_font = 7.5 if leg_row_h >= 0.22 else (7 if leg_row_h >= 0.18 else (6.5 if leg_row_h >= 0.16 else 5.5))
+                dot_d = min(0.11, leg_row_h * 0.6)
+                pct_w_pop = 0.38; cnt_w_pop = 0.28
+                lbl_x_pop = pie_x_left + dot_d + 0.07
+                lbl_w_pop = pie_w_x - (dot_d + 0.07) - cnt_w_pop - pct_w_pop
+                for i_p, (lbl_p, val_p) in enumerate(pop_rows_final):
+                    y_p = leg_top_pop + i_p * leg_row_h
+                    _dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(pie_x_left), Inches(y_p + (leg_row_h - dot_d) / 2), Inches(dot_d), Inches(dot_d))
+                    _dot.fill.solid(); _dot.fill.fore_color.rgb = pop_colors[i_p]
+                    _dot.line.fill.background(); _dot.shadow.inherit = False
+                    for _el in _dot._element.iter():
+                        if _el.tag.endswith("}effectRef"):
+                            _el.set("idx", "0")
+                    for _x, _w, _txt, _al, _bold, _col in (
+                            (lbl_x_pop, lbl_w_pop, lbl_p, PP_ALIGN.LEFT, False, TEXT_DARK),
+                            (lbl_x_pop + lbl_w_pop, cnt_w_pop, str(val_p), PP_ALIGN.RIGHT, True, TEXT_DARK),
+                            (lbl_x_pop + lbl_w_pop + cnt_w_pop, pct_w_pop, f"{val_p / total_unit_pop * 100:.0f}%", PP_ALIGN.RIGHT, False, TEXT_MUTED)):
+                        _tb = slide.shapes.add_textbox(Inches(_x), Inches(y_p), Inches(_w), Inches(leg_row_h))
+                        _tf = _tb.text_frame; _tf.word_wrap = True; _tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+                        _tf.margin_left = 0; _tf.margin_right = 0; _tf.margin_top = 0; _tf.margin_bottom = 0
+                        _pp = _tf.paragraphs[0]; _pp.alignment = _al
+                        _rr = _pp.add_run(); _rr.text = _txt
+                        _rr.font.size = Pt(leg_font); _rr.font.bold = _bold; _rr.font.color.rgb = _col; _rr.font.name = "Calibri"
             else:
                 add_textbox(slide, pie_x_left, chart_top_x + 0.3, pie_w_x, 0.4, "Data populasi tidak tersedia.", size=8, italic=True, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
 
@@ -3091,7 +3141,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              GREEN_BG, GREEN, GREEN)
 
         # ================= SLIDE 2: BIAYA OPERASIONAL — Ringkasan Biaya vs Fisik =================
-        s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period}", f"Biaya Operasional \u00b7 {snum2}{divisi_label}{kat_suffix}")
+        s = add_content_slide(f"BIAYA OPERASIONAL — Budget vs Aktual s/d {period_cawu}", f"Biaya Operasional \u00b7 {snum2}{divisi_label}{kat_suffix}")
 
         # --- Filter khusus BBM: baris dgn qty_bbm ada TAPI biaya_bbm ATAU prestasi tidak ada -> jangan dihitung ---
         def _bbm_valid_mask(df_):
@@ -3416,7 +3466,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
 
         # ================= SLIDE 3: ANALISIS Biaya Maintenance & Maintenance Rutin/Non-Rutin =================
-        s = add_content_slide(f"ANALISIS: Biaya Maintenance & Rutin/Non-Rutin \u2014 s/d {period}", f"Analisis Biaya \u00b7 {snum3}{divisi_label}{kat_suffix}")
+        s = add_content_slide(f"ANALISIS: Biaya Maintenance & Rutin/Non-Rutin \u2014 s/d {period_cawu}", f"Analisis Biaya \u00b7 {snum3}{divisi_label}{kat_suffix}")
 
         panel_top4 = 1.0
         panel_bottom4 = 7.3
@@ -3798,7 +3848,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                              GOLD_BG, GOLD, RGBColor(0x7A, 0x5C, 0x0D))
 
         # ================= SLIDE 4: KEY INSIGHTS \u2014 DOWNTIME ANALYSIS & VARIAN =================
-        s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period}", f"Analisis Downtime \u00b7 {snum4}{divisi_label}{kat_suffix}")
+        s = add_content_slide(f"KEY INSIGHTS \u2014 Downtime Analysis & Varian s/d {period_cawu}", f"Analisis Downtime \u00b7 {snum4}{divisi_label}{kat_suffix}")
 
         _sm_dt5 = sasaran_mutu_data.copy()
         if not _sm_dt5.empty and "breakdown_hm_km_realisasi" in _sm_dt5.columns:
@@ -3903,7 +3953,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         card_w5 = (12.5 - 2 * card_gap5) / 3
 
         add_kpi_card(s, 0.4, card_top5, card_w5, card_h5, "\u23f8", RED, RED,
-                     "% Capaian Realisasi Downtime (s/d " + period + ")",
+                     "% Capaian Realisasi Downtime (s/d " + period_cawu_inline + ")",
                      (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
                      ("  \u00b7  ".join(cap_dt_per_site5) if cap_dt_per_site5 else ""),
                      (f"\u2717 Over Target" if (cap_dt5 is not None and cap_dt5 > 100)
@@ -5223,4 +5273,4 @@ else:
     st.markdown(f'<div class="insight-box"><b>3 unit paling bermasalah:</b><ul>{bullets_tp_html}</ul></div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("Dashboard Operational Review • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat oleh Budget Control")
+st.caption("Dashboard Operational Review • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat oleh ALIP BA TA")
