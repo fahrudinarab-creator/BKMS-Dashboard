@@ -2150,6 +2150,68 @@ def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelomp
 # ---------------------------------------------------------------
 # HEADER
 # ---------------------------------------------------------------
+# Ikon daun putih utk slide pembukaan (dari Slide_Pembukaan.pptx), disimpan inline spy tdk perlu file tambahan.
+_COVER_ICON_B64 = (
+    "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"
+)
+
 LOGO_PATH = Path(__file__).parent / "logo.png"
 
 def get_logo_base64() -> str:
@@ -2616,6 +2678,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     import datetime as _dt
 
     period = sorted(month_list, key=lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99)[-1] if month_list else "-"
+
+    # Label periode per CAWU (caturwulan): Cawu I = Jan-Apr, Cawu II = May-Aug, Cawu III = Sep-Dec.
+    # Kalau bulan terakhir = akhir cawu (Apr/Aug/Dec) -> "Cawu II"; kalau di tengah cawu -> "Jun (Cawu II)".
+    _CAWU_ROMAWI = ["I", "II", "III"]
+    if period in MONTH_ORDER:
+        _idx_p = MONTH_ORDER.index(period)
+        _cawu_no = _idx_p // 4
+        period_cawu = (f"Cawu {_CAWU_ROMAWI[_cawu_no]}" if _idx_p % 4 == 3
+                       else f"{period} (Cawu {_CAWU_ROMAWI[_cawu_no]})")
+    else:
+        period_cawu = period
     site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
     kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
     _bulan_id = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
@@ -2667,7 +2740,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         ach_prestasi_kpi = ach_txt_pct(prestasi_r_kpi, prestasi_b_kpi) if (prestasi_r_kpi is not None and prestasi_b_kpi) else None
 
         # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
-        s = add_content_slide(f"KPI DASHBOARD — Performance Keseluruhan s/d {period}", f"Ringkasan Kinerja · {snum1}{divisi_label}{kat_suffix}")
+        s = add_content_slide(f"KPI DASHBOARD — Informasi Kinerja s/d {period_cawu}", f"Ringkasan Kinerja · {snum1}{divisi_label}{kat_suffix}")
 
         # --- Siapkan data chart: % Capaian Utilisasi & % Capaian Prestasi per Site & KELOMPOK UNIT ---
         # (bukan lagi per Jenis Unit -- supaya unit sejenis dari BEBERAPA SITE bisa dibandingkan berdampingan,
@@ -4033,6 +4106,80 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
     plantation_sites_sel = [s for s in site_list if s in PLANTATION_SITES_PPTX]
     mining_sites_sel = [s for s in site_list if s in MINING_SITES_PPTX]
     both_divisi_selected = bool(plantation_sites_sel) and bool(mining_sites_sel)
+
+    # ================= SLIDE PEMBUKAAN (paling depan) =================
+    # Replika Slide_Pembukaan.pptx (desain 10x5.625 in, diskalakan ke 13.333x7.5 in). Teks CAWU, tahun, &
+    # bulan OTOMATIS mengikuti bulan terakhir yg dipilih di filter.
+    def add_cover_slide():
+        import base64 as _b64
+        import io as _io_c
+        from pptx.dml.color import RGBColor as _RGB
+        SC = 13.333 / 10.0  # faktor skala dari desain asli
+
+        def _I(v):
+            return Inches(v * SC)
+
+        cs = prs.slides.add_slide(blank)
+        add_bg(cs, _RGB(0x1E, 0x27, 0x61))
+
+        def _shape(kind, x, y, w, h, color):
+            shp = cs.shapes.add_shape(kind, _I(x), _I(y), _I(w), _I(h))
+            shp.fill.solid(); shp.fill.fore_color.rgb = color
+            shp.line.fill.background(); shp.shadow.inherit = False
+            for el in shp._element.iter():
+                if el.tag.endswith("}effectRef"):
+                    el.set("idx", "0")
+            return shp
+
+        def _text(x, y, w, h, text, size, color, bold=False, spc=None, align=PP_ALIGN.LEFT):
+            tb = cs.shapes.add_textbox(_I(x), _I(y), _I(w), _I(h))
+            tf = tb.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.margin_left = Inches(0.1); tf.margin_right = Inches(0.1); tf.margin_top = 0; tf.margin_bottom = 0
+            p = tf.paragraphs[0]; p.alignment = align
+            r = p.add_run(); r.text = text
+            r.font.size = Pt(size * SC); r.font.bold = bold; r.font.name = "Calibri"; r.font.color.rgb = color
+            if spc is not None:
+                r.font._element.set("spc", str(int(spc * SC)))
+            return tb
+
+        # Dekorasi: strip kiri, 2 lingkaran kanan atas, garis aksen, pita nilai perusahaan di bawah
+        _shape(MSO_SHAPE.RECTANGLE, 0, 0, 0.18, 5.625, _RGB(0x00, 0xB4, 0xD8))
+        _shape(MSO_SHAPE.OVAL, 6.2, -1.8, 7.0, 7.0, _RGB(0x25, 0x36, 0x80))
+        _shape(MSO_SHAPE.OVAL, 7.1, -0.8, 5.0, 5.0, _RGB(0x2D, 0x3F, 0x90))
+        _shape(MSO_SHAPE.RECTANGLE, 0.45, 2.88, 3.5, 0.055, _RGB(0x00, 0xB4, 0xD8))
+        _shape(MSO_SHAPE.RECTANGLE, 0, 5.05, 10.0, 0.575, _RGB(0x14, 0x1D, 0x4A))
+
+        # Periode: CAWU dari bulan terakhir; tahun = tahun berjalan, mundur 1 thn kalau bulan data > bulan sekarang
+        _romawi = ["I", "II", "III"]
+        if period in MONTH_ORDER:
+            _ip = MONTH_ORDER.index(period)
+            _thn = _now.year - 1 if _ip > _now.month - 1 else _now.year
+            _cawu = f"CAWU {_romawi[_ip // 4]}"
+            if _ip % 4 != 3:  # belum akhir cawu -> sebut bulan terakhirnya
+                _cawu += f" (s/d {_bulan_id[_ip].upper()})"
+            cawu_txt = f"{_cawu} \u2014 TAHUN {_thn}"
+            tempat_tgl = f"Banjarmasin, {_bulan_id[_ip]} {_thn}"
+        else:
+            cawu_txt = f"TAHUN {_now.year}"
+            tempat_tgl = f"Banjarmasin, {tgl_laporan}"
+
+        WHITE_ = _RGB(0xFF, 0xFF, 0xFF); SOFT_ = _RGB(0xCA, 0xDC, 0xFC)
+        CYAN_ = _RGB(0x00, 0xB4, 0xD8); GREY_ = _RGB(0x64, 0x74, 0x8B)
+        _text(0.5, 0.46, 7.0, 0.3, "PT. BUANA KARYA MANDIRI SEJAHTERA", 8.5, SOFT_, bold=True, spc=200)
+        _text(0.45, 0.92, 8.0, 0.98, "TINJAUAN", 60, WHITE_, bold=True)
+        _text(0.45, 1.76, 8.0, 0.98, "MANAJEMEN", 60, CYAN_, bold=True)
+        _text(0.45, 2.98, 6.0, 0.44, cawu_txt, 18, SOFT_)
+        _text(0.45, 3.48, 5.0, 0.36, tempat_tgl, 13, GREY_)
+        _text(0.45, 4.45, 5.0, 0.36, "Prepared by : Dept. SM & Sustainability", 10.5, GREY_)
+        _text(0, 5.07, 10.0, 0.4,
+              "Integritas  \u25CF  Kemandirian  \u25CF  Kebersamaan  \u25CF  Tanggung Jawab  \u25CF  Inovatif  \u25CF  Komitmen",
+              9.5, SOFT_, spc=100, align=PP_ALIGN.CENTER)
+        try:
+            cs.shapes.add_picture(_io_c.BytesIO(_b64.b64decode(_COVER_ICON_B64)), _I(8.85), _I(0.32), _I(0.68), _I(0.68))
+        except Exception:
+            pass  # ikon hanya hiasan; jangan sampai menggagalkan pembuatan PPT
+
+    add_cover_slide()
 
     _slide_counter = [1]  # dibungkus list spy bisa di-mutate dari dalam helper closure
 
