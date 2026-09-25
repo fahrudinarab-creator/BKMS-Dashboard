@@ -4233,7 +4233,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_dt5.has_data_labels = True
             dls_dt5 = plot_dt5.data_labels
             dls_dt5.number_format = '0"%"'; dls_dt5.number_format_is_linked = False
-            label_font_dt5 = 9 if n_dt5 <= 12 else (7 if n_dt5 <= 25 else 5.5)
+            label_font_dt5 = 12 if n_dt5 <= 10 else (11 if n_dt5 <= 14 else (9.5 if n_dt5 <= 20 else (8 if n_dt5 <= 25 else 6)))  # diperbesar utk presentasi
             dls_dt5.font.size = Pt(label_font_dt5); dls_dt5.font.bold = True; dls_dt5.font.color.rgb = TEXT_DARK; dls_dt5.font.name = "Calibri"
             dls_dt5.position = XL_LABEL_POSITION.OUTSIDE_END
             style_chart_light(chart_dt5, legend=False)
