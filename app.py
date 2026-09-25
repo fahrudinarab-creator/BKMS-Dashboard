@@ -2491,12 +2491,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         icr.font.size = Pt(19 if narrow_pre else 24); icr.font.bold = True; icr.font.color.rgb = WHITE; icr.font.name = EMOJI_FONT
         # Skala ukuran font & posisi menyesuaikan lebar kartu (supaya tetap muat kalau kartu dibuat sempit, mis. 5 kartu sejajar)
         narrow = narrow_pre
-        label_size = 9.5 if narrow else 11.5
+        label_size = 11 if narrow else 11.5  # kartu sempit (slide KPI) diperbesar dari 9.5 pt spy jelas saat presentasi
         has_sub = bool(sub_text)
         # Kalau tidak ada sub-teks, angka utama dibuat lebih besar & diposisikan di tengah ruang kosong yg tersisa
-        value_size = (19 if narrow else 23) if has_sub else (24 if narrow else 30)
-        sub_size = 8.5 if narrow else 10
-        pill_size = 9 if narrow else 10.5
+        value_size = (25 if narrow else 23) if has_sub else (28 if narrow else 30)
+        sub_size = 10.5 if narrow else 10
+        pill_size = 10.5 if narrow else 10.5
         label_h = 0.55 if narrow else 0.4
         # label
         # Kartu sempit: kotak label digeser sedikit ke kiri (masih di kanan ikon) & diperlebar, supaya label
@@ -2504,13 +2504,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         # Prestasi") tetap boleh 2 baris spt sebelumnya.
         label_x_off = 0.88 if narrow else 1.0
         label_w_cut = 0.95 if narrow else 1.15
-        add_textbox(slide, left + label_x_off, top + 0.24, width - label_w_cut, label_h, label, size=label_size, bold=True, color=TEXT_MUTED)
+        _lbl_tb = add_textbox(slide, left + label_x_off, top + 0.24, width - label_w_cut, label_h, label, size=label_size, bold=True, color=TEXT_MUTED)
+        if narrow:
+            # tanpa margin kiri/kanan spy label 2 kata (mis. "Capaian Availability") tetap 1 baris di font lebih besar
+            _lbl_tb.text_frame.margin_left = 0; _lbl_tb.text_frame.margin_right = 0
         # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
         if has_sub:
-            value_top = top + (0.78 if narrow else 0.66)
-            add_textbox(slide, left, value_top, width, 0.5, value, size=value_size, bold=True, color=TEXT_DARK, align=PP_ALIGN.CENTER)
+            value_top = top + (0.72 if narrow else 0.66)
+            add_textbox(slide, left, value_top, width, 0.55, value, size=value_size, bold=True, color=TEXT_DARK, align=PP_ALIGN.CENTER)
             # sub text (target/budget)
-            add_textbox(slide, left, value_top + (0.38 if narrow else 0.42), width, 0.3, sub_text, size=sub_size, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+            add_textbox(slide, left, value_top + (0.47 if narrow else 0.42), width, 0.3, sub_text, size=sub_size, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
         else:
             # Tidak ada sub-teks: angka ditengahkan vertikal (MIDDLE anchor) di ruang antara label & pill,
             # supaya tidak ada celah kosong besar seperti kalau pakai box TOP-anchored biasa.
@@ -2523,14 +2526,85 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             val_r.font.size = Pt(value_size); val_r.font.bold = True; val_r.font.color.rgb = TEXT_DARK; val_r.font.name = "Calibri"
         # pill (selalu menempel ke bawah kartu)
         pbg, ptxt = pill_colors(pill_good)
-        pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + 0.25), Inches(top + height - 0.5), Inches(width - 0.5), Inches(0.35))
+        # Kartu sempit: pill dilebarkan (sisi 0.15 in) spy teks font besar spt "✓ 99.8% — Under Budget" muat 1 baris
+        _pill_pad = 0.15 if narrow else 0.25
+        pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + _pill_pad), Inches(top + height - 0.5), Inches(width - 2 * _pill_pad), Inches(0.36))
         pill.adjustments[0] = 0.5
         pill.fill.solid(); pill.fill.fore_color.rgb = pbg
         pill.line.fill.background(); pill.shadow.inherit = False
         ptf = pill.text_frame; ptf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        if narrow:
+            ptf.margin_left = Inches(0.04); ptf.margin_right = Inches(0.04)
         pp = ptf.paragraphs[0]; pp.alignment = PP_ALIGN.CENTER
         pr = pp.add_run(); pr.text = pill_text
         pr.font.size = Pt(pill_size); pr.font.bold = True; pr.font.color.rgb = ptxt
+
+    def add_kpi_card_wide(slide, left, top, width, height, icon_txt, icon_color, accent_color,
+                          label, sublabel, value, detail, pill_text, pill_good, value_color=None):
+        """Kartu KPI LEBAR (slide Analisis Downtime) dgn tata letak rapi & font besar utk presentasi:
+        [ikon] Label (besar) / sublabel (kecil)  ->  angka utama besar di tengah  ->  rincian per site  ->  pill status."""
+        strip = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(0.07))
+        strip.fill.solid(); strip.fill.fore_color.rgb = accent_color
+        strip.line.fill.background(); strip.shadow.inherit = False
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top + 0.07), Inches(width), Inches(height - 0.07))
+        card.adjustments[0] = 0.045
+        card.fill.solid(); card.fill.fore_color.rgb = WHITE
+        card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
+        card.shadow.inherit = False
+        add_soft_shadow(card)
+
+        def _t(x, y, w, h, text, size, color, bold=False, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.MIDDLE):
+            tb = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+            tf = tb.text_frame; tf.word_wrap = True; tf.vertical_anchor = anchor
+            tf.margin_left = 0; tf.margin_right = 0; tf.margin_top = 0; tf.margin_bottom = 0
+            p = tf.paragraphs[0]; p.alignment = align
+            r = p.add_run(); r.text = text
+            r.font.size = Pt(size); r.font.bold = bold; r.font.color.rgb = color; r.font.name = "Calibri"
+            return tb
+
+        # Baris 1: ikon + label + sublabel
+        ic = 0.52
+        circ = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(left + 0.22), Inches(top + 0.14), Inches(ic), Inches(ic))
+        circ.fill.solid(); circ.fill.fore_color.rgb = icon_color
+        circ.line.fill.background(); circ.shadow.inherit = False
+        ctf = circ.text_frame; ctf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        ctf.margin_left = 0; ctf.margin_right = 0; ctf.margin_top = 0; ctf.margin_bottom = 0
+        cp_ = ctf.paragraphs[0]; cp_.alignment = PP_ALIGN.CENTER
+        cr_ = cp_.add_run(); cr_.text = icon_txt
+        cr_.font.size = Pt(20); cr_.font.bold = True; cr_.font.color.rgb = WHITE; cr_.font.name = EMOJI_FONT
+        lx = left + 0.22 + ic + 0.15
+        lw = width - (lx - left) - 0.2
+        _t(lx, top + 0.11, lw, 0.3, label, 13, TEXT_DARK, bold=True, anchor=MSO_ANCHOR.BOTTOM)
+        if sublabel:
+            _t(lx, top + 0.41, lw, 0.2, sublabel, 10, TEXT_MUTED, anchor=MSO_ANCHOR.TOP)
+
+        # Baris 2: angka utama
+        # detail boleh 1 baris (str) atau 2 baris (list, mis. Rutin & Non-Rutin per site)
+        det_lines = [d for d in (detail if isinstance(detail, (list, tuple)) else [detail]) if d]
+        two_lines = len(det_lines) >= 2
+        # angka utama dinaikkan (jarak lebih lega ke baris rincian per site di bawahnya)
+        _t(left + 0.2, top + (0.58 if two_lines else 0.61), width - 0.4, 0.42, value, 26 if two_lines else 28,
+           value_color or TEXT_DARK, bold=True, align=PP_ALIGN.CENTER)
+        # Baris 3: rincian per site (font mengecil otomatis kalau teksnya panjang, mis. 4 site Mining)
+        if det_lines:
+            _longest = max(len(d) for d in det_lines)
+            _det_size = max(8.5, min(10.5 if two_lines else 11, (width - 0.4) * 72 / (_longest * 0.5)))
+            _y0 = top + (1.06 if two_lines else 1.14)
+            _lh = 0.175 if two_lines else 0.22
+            for _i, _d in enumerate(det_lines[:2]):
+                _t(left + 0.2, _y0 + _i * _lh, width - 0.4, _lh, _d, _det_size, TEXT_MUTED, align=PP_ALIGN.CENTER)
+
+        # Baris 4: pill status
+        pbg, ptxt = pill_colors(pill_good)
+        pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left + 0.35), Inches(top + height - 0.43), Inches(width - 0.7), Inches(0.33))
+        pill.adjustments[0] = 0.5
+        pill.fill.solid(); pill.fill.fore_color.rgb = pbg
+        pill.line.fill.background(); pill.shadow.inherit = False
+        ptf = pill.text_frame; ptf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        ptf.margin_top = 0; ptf.margin_bottom = 0
+        pp = ptf.paragraphs[0]; pp.alignment = PP_ALIGN.CENTER
+        pr = pp.add_run(); pr.text = pill_text
+        pr.font.size = Pt(11); pr.font.bold = True; pr.font.color.rgb = ptxt; pr.font.name = "Calibri"
 
     def add_card_panel(slide, left, top, width, height, accent_color=None):
         card = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
@@ -4060,20 +4134,23 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         card_gap5 = 0.25
         card_w5 = (12.5 - 2 * card_gap5) / 3
 
-        add_kpi_card(s, 0.4, card_top5, card_w5, card_h5, "\u23f8", RED, RED,
-                     "% Capaian Realisasi Downtime (s/d " + period_cawu_inline + ")",
-                     (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
-                     ("  \u00b7  ".join(cap_dt_per_site5) if cap_dt_per_site5 else ""),
-                     (f"\u2717 Over Target" if (cap_dt5 is not None and cap_dt5 > 100)
-                      else (f"\u2713 DALAM TARGET" if cap_dt5 is not None else "Data tidak tersedia")),
-                     good_dt5)
+        # Status downtime konsisten dgn angka yg ditampilkan: dalam target kalau Capaian <= 100%
+        # (sebelumnya warna pill pakai selisih rata2, bisa merah padahal teksnya "DALAM TARGET").
+        dt_ok5 = cap_dt5 is not None and cap_dt5 <= 100
+        add_kpi_card_wide(s, 0.4, card_top5, card_w5, card_h5, "\u23f8", GREEN if dt_ok5 else RED, GREEN if dt_ok5 else RED,
+                          "Capaian Downtime", "Realisasi s/d " + period_cawu_inline,
+                          (f"{cap_dt5:.1f}%" if cap_dt5 is not None else "-"),
+                          ("  \u00b7  ".join(cap_dt_per_site5) if cap_dt_per_site5 else ""),
+                          ("\u2717 Melebihi Target" if (cap_dt5 is not None and cap_dt5 > 100)
+                           else ("\u2713 Dalam Target" if cap_dt5 is not None else "Data tidak tersedia")),
+                          dt_ok5)
 
-        add_kpi_card(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\u26a1", TEAL, TEAL,
-                     "MTTR (Mean Time To Repair)",
-                     (f"{mttr_val5:.1f} jam" if mttr_val5 is not None else "-"),
-                     ("  \u00b7  ".join(mttr_per_site5) if mttr_per_site5 else ""),
-                     (f"Dari {mttr_n5} kejadian perbaikan" if mttr_val5 is not None else "Data Workshop belum tersedia"),
-                     True)
+        add_kpi_card_wide(s, 0.4 + card_w5 + card_gap5, card_top5, card_w5, card_h5, "\u26a1", TEAL, TEAL,
+                          "MTTR", "Mean Time To Repair (rata-rata waktu perbaikan)",
+                          (f"{mttr_val5:.1f} jam" if mttr_val5 is not None else "-"),
+                          ("  \u00b7  ".join(mttr_per_site5) if mttr_per_site5 else ""),
+                          (f"Dari {mttr_n5:,} kejadian perbaikan".replace(",", ".") if mttr_val5 is not None else "Data Workshop belum tersedia"),
+                          True)
 
         # --- Hitung % Maintenance Rutin vs Non-Rutin (dari total biaya maintenance), utk Kartu KPI 3 ---
         pct_rutin5 = None
@@ -4114,24 +4191,16 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         site_nonrutin_vals5.append(f"{site_short5kpi} {pct_nr5site:.0f}%")
 
         rutin_good5 = pct_rutin5 is not None and pct_rutin5 >= 50
-        add_kpi_card(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\U0001F527", GREEN if rutin_good5 else GOLD, GREEN if rutin_good5 else GOLD,
-                     "Maintenance Rutin vs Non-Rutin",
-                     (f"{pct_rutin5:.0f}% / {pct_nonrutin5:.0f}%" if pct_rutin5 is not None else "-"),
-                     " " if site_rutin_vals5 else "",
-                     (f"\u2713 Rutin Lebih Dominan" if (pct_rutin5 is not None and rutin_good5) else (f"\u2717 Non-Rutin Lebih Dominan" if pct_rutin5 is not None else "Data tidak tersedia")),
-                     rutin_good5)
-        # --- Timpa area sub-text bawaan dgn 2 baris kustom: "Rutin: ..." & "Non Rutin: ..." ---
-        if site_rutin_vals5:
-            card3_x5 = 0.4 + 2 * (card_w5 + card_gap5)
-            sub_top5 = card_top5 + 0.66 + 0.40  # sama dgn perhitungan value_top+offset di add_kpi_card (kartu tdk narrow)
-            sub_tb5 = s.shapes.add_textbox(Inches(card3_x5 + 0.25), Inches(sub_top5), Inches(card_w5 - 0.5), Inches(0.32))
-            sub_tf5 = sub_tb5.text_frame; sub_tf5.word_wrap = True; sub_tf5.margin_left = 0; sub_tf5.margin_top = 0; sub_tf5.margin_bottom = 0; sub_tf5.margin_right = 0
-            sp1_5b = sub_tf5.paragraphs[0]; sp1_5b.alignment = PP_ALIGN.CENTER
-            r1_5b = sp1_5b.add_run(); r1_5b.text = "Rutin: " + "  \u00b7  ".join(site_rutin_vals5)
-            r1_5b.font.size = Pt(8); r1_5b.font.color.rgb = TEXT_MUTED; r1_5b.font.name = "Calibri"
-            sp2_5b = sub_tf5.add_paragraph(); sp2_5b.space_before = Pt(0); sp2_5b.alignment = PP_ALIGN.CENTER
-            r2_5b = sp2_5b.add_run(); r2_5b.text = "Non Rutin: " + "  \u00b7  ".join(site_nonrutin_vals5)
-            r2_5b.font.size = Pt(8); r2_5b.font.color.rgb = TEXT_MUTED; r2_5b.font.name = "Calibri"
+        # Rincian per site 2 baris: "Rutin: KUMAI 91% · S.DANAU 34%" & "Non-Rutin: KUMAI 9% · S.DANAU 66%"
+        _det3 = (["Rutin: " + "  \u00b7  ".join(site_rutin_vals5),
+                  "Non-Rutin: " + "  \u00b7  ".join(site_nonrutin_vals5)] if site_rutin_vals5 else "")
+        add_kpi_card_wide(s, 0.4 + 2 * (card_w5 + card_gap5), card_top5, card_w5, card_h5, "\U0001F527",
+                          GREEN if rutin_good5 else GOLD, GREEN if rutin_good5 else GOLD,
+                          "Rutin vs Non-Rutin", "Porsi biaya maintenance (Rutin / Non-Rutin)",
+                          (f"{pct_rutin5:.0f}% / {pct_nonrutin5:.0f}%" if pct_rutin5 is not None else "-"),
+                          _det3,
+                          ("\u2713 Rutin Lebih Dominan" if (pct_rutin5 is not None and rutin_good5) else ("\u2717 Non-Rutin Lebih Dominan" if pct_rutin5 is not None else "Data tidak tersedia")),
+                          rutin_good5)
 
         # ================= BARIS BAWAH =================
         panel_top5 = card_top5 + card_h5 + 0.15
