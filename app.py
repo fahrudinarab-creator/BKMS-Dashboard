@@ -4025,7 +4025,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 return pd.Series({"dt_r": dt_r_formula, "dt_t": g["downtime_target"].mean()})
             dt_su5 = _sm_dt5b.groupby(["lokasi", "kategori", "kelompok_unit"]).apply(_dt5_grp).reset_index() if "kelompok_unit" in _sm_dt5b.columns else pd.DataFrame()
             dt_su5["site_short"] = dt_su5["lokasi"].map(SITE_ABBR).fillna(dt_su5["lokasi"])
-            dt_su5["label"] = dt_su5["site_short"] + " \u2014 " + dt_su5["kelompok_unit"]
+            # Nama kelompok DISINGKAT (sama dgn slide Analisis Biaya: DT, EXC MEDIUM, BULLDOZER M, TANGKI 300, dst)
+            dt_su5["label"] = dt_su5["site_short"] + " \u2014 " + dt_su5["kelompok_unit"].map(KELOMPOK_ABBR).fillna(dt_su5["kelompok_unit"])
             dt_su5["cap"] = dt_su5.apply(lambda r: (r["dt_r"] / r["dt_t"] * 100) if r["dt_t"] else None, axis=1)
             dt_su5 = dt_su5.dropna(subset=["cap"])
             dt_su5 = dt_su5.sort_values("cap", ascending=False)
