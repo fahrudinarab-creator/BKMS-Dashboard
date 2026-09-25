@@ -3058,6 +3058,24 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         el.set("val", "58")
                     elif tag == "firstSliceAng":
                         el.set("val", "0")
+                # Area gambar donut dibuat MENGISI PENUH kotak chart (manual layout). Tanpa ini PowerPoint/LibreOffice
+                # otomatis memberi margin kosong sktr 0.13 in di tiap sisi -> donut tampak kecil & jauh dari legenda.
+                try:
+                    from lxml import etree as _et_pop
+                    _C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+                    _pa = ch_pop._chartSpace.find(f"{{{_C}}}chart/{{{_C}}}plotArea")
+                    if _pa is not None:
+                        for _old_l in _pa.findall(f"{{{_C}}}layout"):
+                            _pa.remove(_old_l)
+                        _lay = _et_pop.SubElement(_pa, f"{{{_C}}}layout")
+                        _pa.remove(_lay); _pa.insert(0, _lay)
+                        _ml = _et_pop.SubElement(_lay, f"{{{_C}}}manualLayout")
+                        for _tag, _val in (("layoutTarget", "inner"), ("xMode", "edge"), ("yMode", "edge"),
+                                           ("x", "0.01"), ("y", "0.01"), ("w", "0.98"), ("h", "0.98")):
+                            _et_pop.SubElement(_ml, f"{{{_C}}}{_tag}").set("val", _val)
+                except Exception:
+                    pass  # kalau gagal, donut tetap tampil dgn margin bawaan
+
                 # Angka total di tengah lubang donut
                 _c_w = donut_d * 0.6
                 _tb_c = slide.shapes.add_textbox(Inches(donut_x + (donut_d - _c_w) / 2), Inches(donut_y + donut_d / 2 - 0.3),
