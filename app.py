@@ -3009,7 +3009,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # (bukan lagi ikon/judul rata-kiri terpisah dari badge angka di kanan yg bikin jaraknya
             # timpang/tdk simetris spt sebelumnya).
             _total_pop_header = sum(n for _, n in pop_rows) if pop_rows else 0
-            _header_bar_pop = add_panel_header(slide, pie_panel_x, top, pie_panel_w, f"\U0001F4CA Populasi Unit \u00b7 {_total_pop_header}", height=0.34)
+            _header_bar_pop = add_panel_header(slide, pie_panel_x, top, pie_panel_w, "\U0001F4CA Populasi Unit", height=0.34)  # total unit cukup ditampilkan di tengah donut
             _header_bar_pop.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
             if pop_rows:
                 # === DONUT CHART (variasi visual; sebelumnya bullet/bar horizontal spt chart lain di slide ini) ===
@@ -3030,10 +3030,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
                 area_top_pop = chart_top_x
                 area_h_pop = pie_panel_h - (chart_top_x - top) - 0.1
-                # Kelompok banyak (>9) -> donut dikecilkan spy legenda di bawahnya tetap terbaca (font tdk terlalu kecil)
-                donut_d = min(pie_w_x - 0.3, max(1.35, area_h_pop * 0.46)) if n_pop <= 9 else max(1.15, area_h_pop * 0.31)
+                # Donut dibuat SEBESAR MUNGKIN: sisa tinggi panel setelah dikurangi ruang legenda (tinggi baris legenda
+                # ideal 0.22 in utk <=9 kelompok, 0.17 in kalau lebih banyak), dibatasi lebar panel.
+                _leg_row_ideal = 0.185 if n_pop <= 9 else 0.148
+                donut_d = max(1.3, min(pie_w_x + 0.05, area_h_pop - n_pop * _leg_row_ideal - 0.08))
                 donut_x = pie_panel_x + (pie_panel_w - donut_d) / 2
-                donut_y = area_top_pop + 0.02
+                donut_y = area_top_pop - 0.04
 
                 cd_pop = CategoryChartData()
                 cd_pop.categories = [lbl for lbl, _ in pop_rows_final]
@@ -3053,7 +3055,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 for el in ch_pop._chartSpace.iter():
                     tag = el.tag.split("}")[-1]
                     if tag == "holeSize":
-                        el.set("val", "62")
+                        el.set("val", "58")
                     elif tag == "firstSliceAng":
                         el.set("val", "0")
                 # Angka total di tengah lubang donut
@@ -3071,10 +3073,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 _r_c2.font.size = Pt(8.5 if donut_d >= 1.6 else 7); _r_c2.font.color.rgb = TEXT_MUTED; _r_c2.font.name = "Calibri"
 
                 # Legenda di bawah donut
-                leg_top_pop = donut_y + donut_d + 0.1
+                leg_top_pop = donut_y + donut_d + 0.06
                 leg_h_pop = (top + pie_panel_h - 0.1) - leg_top_pop
                 leg_row_h = min(0.26, leg_h_pop / max(n_pop, 1))
-                leg_font = 7.5 if leg_row_h >= 0.22 else (7 if leg_row_h >= 0.18 else (6.5 if leg_row_h >= 0.16 else 5.5))
+                leg_font = 7.5 if leg_row_h >= 0.2 else (7 if leg_row_h >= 0.175 else (6.5 if leg_row_h >= 0.145 else 5.5))
                 dot_d = min(0.11, leg_row_h * 0.6)
                 pct_w_pop = 0.38; cnt_w_pop = 0.28
                 lbl_x_pop = pie_x_left + dot_d + 0.07
