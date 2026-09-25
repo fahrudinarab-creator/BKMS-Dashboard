@@ -4196,7 +4196,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         if not kat_agg5.empty:
             n_kat5 = len(kat_agg5)
-            kat_name_w5 = 1.7  # lebar tetap utk nama kategori
+            kat_name_w5 = 1.55  # lebar tetap utk nama kategori (sedikit dipersempit spy kolom angka lebih lega)
             n_val_cols5 = len(site_order5) + 1  # kolom per site + 1 kolom Total
             val_area_x5 = right_x5 + 0.55 + kat_name_w5
             val_area_w5 = right_x5 + right_w5 - 0.15 - val_area_x5
@@ -4205,7 +4205,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # --- Header kolom (nama site & "Total"), ditulis SEKALI di atas, bukan diulang tiap baris ---
             # word_wrap DIMATIKAN & font mengecil otomatis kalau kolom site byk (mis. Mining ada 4 site) --
             # supaya nama site panjang (mis. "TANJUNG") tetap 1 baris, tdk wrap yg bikin baris jadi tdk rapi.
-            header_font5 = 7 if n_val_cols5 <= 3 else (6.2 if n_val_cols5 <= 5 else 5.5)
+            header_font5 = 9 if n_val_cols5 <= 3 else (7.5 if n_val_cols5 <= 5 else 6.5)
+
+            def _fit_font5(text, width_in, target):
+                """Ukuran font TERBESAR (maks = target) yg masih muat 1 baris di kolom selebar width_in -- perkiraan
+                lebar karakter Calibri (angka ~0.51 em). Angka dibuat sebesar mungkin spy jelas saat presentasi."""
+                em = 0.0
+                for ch in str(text):
+                    em += 0.51 if ch.isdigit() else (0.23 if ch == " " else (0.25 if ch in ".,-" else (0.86 if ch in "MW" else 0.52)))
+                if em <= 0:
+                    return target
+                return max(6.5, min(target, (width_in - 0.08) * 72 / em))
             header_h5 = 0.22 if len(site_order5) > 1 else 0
             def _add_nowrap_text(target_s, x, y, w, h, text, size, bold=False, color=TEXT_DARK, align=PP_ALIGN.CENTER):
                 tb_nw = target_s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
@@ -4242,10 +4252,13 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 rtf5.margin_left = 0; rtf5.margin_right = 0
                 rp5 = rtf5.paragraphs[0]; rp5.alignment = PP_ALIGN.CENTER
                 rr5 = rp5.add_run(); rr5.text = str(i5 + 1)
-                rr5.font.size = Pt(min(9.5, circ_size5 * 22)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
-                font_row5 = 9.5 if n_kat5 <= 6 else (8.5 if n_kat5 <= 10 else 7.5)
+                rtf5.margin_top = 0; rtf5.margin_bottom = 0
+                rr5.font.size = Pt(min(10, circ_size5 * 30)); rr5.font.bold = True; rr5.font.color.rgb = rank_txt5
+                font_row5 = 10 if n_kat5 <= 6 else (9 if n_kat5 <= 10 else 8)
                 text_h5 = row_h5b
-                add_textbox(s, right_x5 + 0.55, ry5c, kat_name_w5, text_h5, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
+                _nm5 = add_textbox(s, right_x5 + 0.55, ry5c, kat_name_w5, text_h5, str(r5["kategori_sparepart"]), size=font_row5, bold=True, color=TEXT_DARK)
+                _nm5.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE  # sejajar tengah dgn angka di kolom kanan
+                _nm5.text_frame.margin_top = 0; _nm5.text_frame.margin_bottom = 0
                 # --- Nilai per site & Total, ditaruh di kolom masing2 (tanpa label nama site diulang) ---
                 kat_rows5 = kat_site_agg5[kat_site_agg5["kategori_sparepart"] == r5["kategori_sparepart"]]
                 site_val_lookup5 = {row5b["lokasi"]: row5b["biaya"] for _, row5b in kat_rows5.iterrows()}
@@ -4255,11 +4268,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         vx5 = val_area_x5 + ci5 * col_w5
                         v5 = site_val_lookup5.get(site5v)
                         v_txt5 = fmt_rp(v5) if v5 else "-"
-                        _add_nowrap_text(s, vx5, ry5c, col_w5, text_h5, v_txt5, size=val_font5, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+                        _add_nowrap_text(s, vx5, ry5c, col_w5, text_h5, v_txt5, size=_fit_font5(v_txt5, col_w5, 10.5), color=TEXT_DARK, align=PP_ALIGN.CENTER)
                     total_x5 = val_area_x5 + len(site_order5) * col_w5
-                    _add_nowrap_text(s, total_x5, ry5c, col_w5, text_h5, fmt_rp(r5["biaya"]), size=max(val_font5, font_row5 - 1), bold=True, color=GOLD, align=PP_ALIGN.CENTER)
+                    _tot_txt5 = fmt_rp(r5["biaya"])
+                    _add_nowrap_text(s, total_x5, ry5c, col_w5, text_h5, _tot_txt5, size=_fit_font5(_tot_txt5, col_w5, 11.5) * 0.97, bold=True, color=GOLD, align=PP_ALIGN.CENTER)
                 else:
-                    add_textbox(s, val_area_x5, ry5c, val_area_w5, text_h5, fmt_rp(r5["biaya"]), size=font_row5, bold=True, color=GOLD, align=PP_ALIGN.RIGHT)
+                    add_textbox(s, val_area_x5, ry5c, val_area_w5, text_h5, fmt_rp(r5["biaya"]), size=12, bold=True, color=GOLD, align=PP_ALIGN.RIGHT)
         else:
             add_textbox(s, right_x5 + 0.15, list_top5, right_w5 - 0.3, 0.5, "Data Maintenance belum tersedia.", size=9, italic=True, color=TEXT_MUTED)
 
