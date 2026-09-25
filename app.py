@@ -2449,7 +2449,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         pill_size = 9 if narrow else 10.5
         label_h = 0.55 if narrow else 0.4
         # label
-        add_textbox(slide, left + 1.0, top + 0.24, width - 1.15, label_h, label, size=label_size, bold=True, color=TEXT_MUTED)
+        # Kartu sempit: kotak label digeser sedikit ke kiri (masih di kanan ikon) & diperlebar, supaya label
+        # 2 kata spt "Capaian Availability" muat 1 baris (tidak ter-wrap). Label panjang (mis. "Biaya Langsung /
+        # Prestasi") tetap boleh 2 baris spt sebelumnya.
+        label_x_off = 0.88 if narrow else 1.0
+        label_w_cut = 0.95 if narrow else 1.15
+        add_textbox(slide, left + label_x_off, top + 0.24, width - label_w_cut, label_h, label, size=label_size, bold=True, color=TEXT_MUTED)
         # value (posisi proporsional thd tinggi kartu, agar tidak tumpang tindih di kartu pendek)
         if has_sub:
             value_top = top + (0.78 if narrow else 0.66)
@@ -2687,8 +2692,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         _cawu_no = _idx_p // 4
         period_cawu = (f"Cawu {_CAWU_ROMAWI[_cawu_no]}" if _idx_p % 4 == 3
                        else f"{period} (Cawu {_CAWU_ROMAWI[_cawu_no]})")
+        # Versi tanpa kurung, utk teks yg SUDAH di dalam kurung (mis. "Ringkasan Biaya ... (s/d Jun, Cawu II)")
+        period_cawu_inline = (f"Cawu {_CAWU_ROMAWI[_cawu_no]}" if _idx_p % 4 == 3
+                              else f"{period}, Cawu {_CAWU_ROMAWI[_cawu_no]}")
     else:
         period_cawu = period
+        period_cawu_inline = period
     site_txt = ", ".join(site_list) if len(site_list) <= 6 else f"{len(site_list)} site"
     kat_txt = ", ".join([KATEGORI_LABEL.get(k, k) for k in kat_list])
     _bulan_id = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
@@ -2817,12 +2826,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                      (f"✓ {ach_prestasi_kpi:.1f}% — Tercapai" if ach_prestasi_kpi is not None and ach_prestasi_kpi >= 100 else (f"✗ {ach_prestasi_kpi:.1f}% — Belum Tercapai" if ach_prestasi_kpi is not None else "Data tidak tersedia")),
                      ach_prestasi_kpi is not None and ach_prestasi_kpi >= 100)
         add_kpi_card(s, 0.4 + (mini_w + mini_gap), mini_y, mini_w, mini_h, "🎯", GOLD, GOLD if (ach_util is not None and ach_util < 100) else GREEN,
-                     "Avg Utilisasi", (f"{avg_util_r:.1f}%" if avg_util_r is not None else "-"),
+                     "Capaian Utilisasi", (f"{avg_util_r:.1f}%" if avg_util_r is not None else "-"),
                      f"Target: {avg_util_t:.1f}%" if avg_util_t is not None else "Target: -",
                      (f"✓ {ach_util:.1f}% dari Target" if ach_util is not None and ach_util >= 100 else (f"✗ {ach_util:.1f}% dari Target" if ach_util is not None else "Data tidak tersedia")),
                      ach_util is not None and ach_util >= 100)
         add_kpi_card(s, 0.4 + 2 * (mini_w + mini_gap), mini_y, mini_w, mini_h, "⚙", TEAL, TEAL if (ach_avail is not None and ach_avail < 100) else GREEN,
-                     "Avg Availability", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
+                     "Capaian Availability", (f"{avg_avail_r:.1f}%" if avg_avail_r is not None else "-"),
                      f"Target: {avg_avail_t:.1f}%" if avg_avail_t is not None else "Target: -",
                      (f"✓ {ach_avail:.1f}% dari Target" if ach_avail is not None and ach_avail >= 100 else (f"✗ {ach_avail:.1f}% dari Target" if ach_avail is not None else "Data tidak tersedia")),
                      ach_avail is not None and ach_avail >= 100)
@@ -3157,7 +3166,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         other_rows3_sorted = sorted(other_rows3, key=lambda x: (x[0] is None, -(x[0] if x[0] is not None else 0)))
         ringkasan3_rows = [total_row3] + [r[1] for r in other_rows3_sorted]
 
-        add_textbox(s, 0.4, 0.98, 5.9, 0.3, f"Ringkasan Biaya PT. BKMS (s/d {period})", size=14, bold=True, color=TEXT_DARK)
+        add_textbox(s, 0.4, 0.98, 5.9, 0.3, f"Ringkasan Biaya PT. BKMS (s/d {period_cawu_inline})", size=14, bold=True, color=TEXT_DARK)
 
         tbl3_top = 1.28
         tbl3_h = 2.15
