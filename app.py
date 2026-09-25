@@ -3547,7 +3547,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             plot_m3b.has_data_labels = True
             dls_m3b = plot_m3b.data_labels
             dls_m3b.number_format = '0"%"'; dls_m3b.number_format_is_linked = False
-            dls_m3b.font.size = Pt(7.5); dls_m3b.font.bold = True; dls_m3b.font.color.rgb = TEXT_DARK; dls_m3b.font.name = "Calibri"
+            # Angka capaian diperbesar utk presentasi (sebelumnya 7.5 pt), menyesuaikan jumlah kelompok (3 batang/kelompok)
+            _n_cat3_lbl = len(chart_src3)
+            _lbl_font3b = 11 if _n_cat3_lbl <= 6 else (10 if _n_cat3_lbl <= 9 else 9)
+            dls_m3b.font.size = Pt(_lbl_font3b); dls_m3b.font.bold = True; dls_m3b.font.color.rgb = TEXT_DARK; dls_m3b.font.name = "Calibri"
             dls_m3b.position = XL_LABEL_POSITION.OUTSIDE_END
             style_chart_light(chart_m3b, legend=True, legend_pos=XL_LEGEND_POSITION.TOP)
             n_cat3b = len(chart_src3)
