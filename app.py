@@ -2740,7 +2740,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         ach_prestasi_kpi = ach_txt_pct(prestasi_r_kpi, prestasi_b_kpi) if (prestasi_r_kpi is not None and prestasi_b_kpi) else None
 
         # ================= SLIDE 1: KPI DASHBOARD — PERFORMANCE KESELURUHAN =================
-        s = add_content_slide(f"KPI DASHBOARD — Informasi Kinerja s/d {period_cawu}", f"Ringkasan Kinerja · {snum1}{divisi_label}{kat_suffix}")
+        s = add_content_slide(f"KPI DASHBOARD — Informasi Kinerja s/d {period_cawu}", f"Informasi Kinerja · {snum1}{divisi_label}{kat_suffix}")
 
         # --- Siapkan data chart: % Capaian Utilisasi & % Capaian Prestasi per Site & KELOMPOK UNIT ---
         # (bukan lagi per Jenis Unit -- supaya unit sejenis dari BEBERAPA SITE bisa dibandingkan berdampingan,
