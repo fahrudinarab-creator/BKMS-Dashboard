@@ -4252,6 +4252,17 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             max_row_cap5 = 0.42 if n_kat5 >= 5 else 0.75  # kalau kategori sedikit, baris melebar mengisi ruang (tidak kosong)
             row_h5b = min(max_row_cap5, (list_avail5b - (n_kat5 - 1) * row_gap5) / n_kat5)
             max_biaya5 = kat_agg5["biaya"].max()
+            # Ukuran font SERAGAM utk seluruh tabel: dihitung dari teks TERPANJANG (bukan per sel) -- kalau per sel,
+            # angka pendek spt "Rp 900" jadi tampil lebih besar dari angka lain & terlihat janggal.
+            _site_txts5 = []
+            for _kat5 in kat_agg5["kategori_sparepart"]:
+                _kr5 = kat_site_agg5[kat_site_agg5["kategori_sparepart"] == _kat5]
+                _lk5 = {rr["lokasi"]: rr["biaya"] for _, rr in _kr5.iterrows()}
+                for _st5 in site_order5:
+                    _v5 = _lk5.get(_st5)
+                    _site_txts5.append(fmt_rp(_v5) if _v5 else "-")
+            site_font5 = min([_fit_font5(t, col_w5, 10.5) for t in _site_txts5] or [10.5])
+            total_font5 = min([_fit_font5(fmt_rp(v), col_w5, 11.5) for v in kat_agg5["biaya"]] or [11.5]) * 0.97
             for i5, (_, r5) in enumerate(kat_agg5.iterrows()):
                 ry5c = list_top5b + i5 * (row_h5b + row_gap5)
                 rank_bg5 = GOLD
@@ -4280,10 +4291,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         vx5 = val_area_x5 + ci5 * col_w5
                         v5 = site_val_lookup5.get(site5v)
                         v_txt5 = fmt_rp(v5) if v5 else "-"
-                        _add_nowrap_text(s, vx5, ry5c, col_w5, text_h5, v_txt5, size=_fit_font5(v_txt5, col_w5, 10.5), color=TEXT_DARK, align=PP_ALIGN.CENTER)
+                        _add_nowrap_text(s, vx5, ry5c, col_w5, text_h5, v_txt5, size=site_font5, color=TEXT_DARK, align=PP_ALIGN.CENTER)
                     total_x5 = val_area_x5 + len(site_order5) * col_w5
                     _tot_txt5 = fmt_rp(r5["biaya"])
-                    _add_nowrap_text(s, total_x5, ry5c, col_w5, text_h5, _tot_txt5, size=_fit_font5(_tot_txt5, col_w5, 11.5) * 0.97, bold=True, color=GOLD, align=PP_ALIGN.CENTER)
+                    _add_nowrap_text(s, total_x5, ry5c, col_w5, text_h5, _tot_txt5, size=total_font5, bold=True, color=GOLD, align=PP_ALIGN.CENTER)
                 else:
                     add_textbox(s, val_area_x5, ry5c, val_area_w5, text_h5, fmt_rp(r5["biaya"]), size=12, bold=True, color=GOLD, align=PP_ALIGN.RIGHT)
         else:
