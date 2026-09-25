@@ -3603,7 +3603,8 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         total_gap4 = 0.08  # jarak ekstra sebelum baris TOTAL
         _slots4 = n_rows4 + 1  # +1 utk baris TOTAL di bawah
         row_h4 = max(0.13, min(0.42, (rows_h4 - total_gap4 - max(_slots4 - 1, 0) * row_gap4) / max(_slots4, 1)))
-        lbl_font4 = 9 if n_rows4 <= 8 else (8 if n_rows4 <= 12 else (7 if n_rows4 <= 16 else (6 if n_rows4 <= 22 else 5)))
+        # Font DIPERBESAR spy jelas saat presentasi (sebelumnya 7-8 pt utk 13-18 baris)
+        lbl_font4 = 10.5 if n_rows4 <= 8 else (10 if n_rows4 <= 12 else (9.5 if n_rows4 <= 16 else (8.5 if n_rows4 <= 20 else (7.5 if n_rows4 <= 24 else 6.5))))
         val_font4 = lbl_font4
 
         def _row_y4(i):
@@ -3668,7 +3669,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         if n_rows4 and rows4["gap_rp"].notna().any():
             # Tata letak TABEL + BAR: Label | Budget | Realisasi | Capaian | Gap (bar divergen).
             # Kolom angka mengisi ruang kosong di kiri sumbu & memberi konteks nilai absolut di balik tiap gap.
-            lbl_x4, lbl_w4 = 0.5, 1.35
+            lbl_x4, lbl_w4 = 0.5, 1.55
             # Kolom Budget & Realisasi TIDAK ditampilkan (permintaan user) -> Label | Capaian | Gap (bar lebih lebar)
             cap_x4, cap_w4 = lbl_x4 + lbl_w4 + 0.15, 0.62
             plot_l4 = cap_x4 + cap_w4 + 0.15
@@ -3678,7 +3679,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             gaps4 = rows4["gap_rp"].fillna(0)
             pos_max4 = max(gaps4.max(), 0)
             neg_max4 = max(-gaps4.min(), 0)
-            room_txt4 = 0.85 if val_font4 >= 8 else 0.75  # label gap kini cukup nilai Rp (Capaian sdh punya kolom sendiri)
+            room_txt4 = 1.0 if val_font4 >= 9.5 else (0.88 if val_font4 >= 8 else 0.75)  # ruang label nilai gap di ujung bar
             room_pos4 = room_txt4 if pos_max4 > 0 else 0.05
             room_neg4 = room_txt4 if neg_max4 > 0 else 0.05
             span4 = (pos_max4 + neg_max4) or 1
@@ -3687,7 +3688,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             # Header kolom (sejajar legend panel kanan)
             leg_y4 = chart_top_r4
-            hdr_font4 = 8
+            hdr_font4 = 9
             _txt4(cap_x4, leg_y4, cap_w4, legend_h4, "Capaian", hdr_font4, TEXT_MUTED, align=PP_ALIGN.CENTER)
             _rect4(plot_l4 + 0.05, leg_y4 + 0.09, 0.12, 0.12, RED)
             _txt4(plot_l4 + 0.22, leg_y4, 0.9, legend_h4, "Over Budget", hdr_font4, TEXT_MUTED)
@@ -3698,15 +3699,15 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             # Garis nol (hanya sepanjang baris unit, tdk menembus baris TOTAL)
             _rect4(zero_x4 - 0.006, rows_top4 - 0.03, 0.012, _row_y4(n_rows4 - 1) + row_h4 - rows_top4 + 0.06, RGBColor(0xB8, 0xBE, 0xC8))
 
-            badge_h4 = min(0.22, row_h4 * 0.8)
+            badge_h4 = min(0.26, row_h4 * 0.82)
 
             def _cap_badge4(y, cap_v):
                 if cap_v is None or pd.isna(cap_v):
-                    _badge4(cap_x4, y + row_h4 / 2 - badge_h4 / 2, cap_w4, badge_h4, "N/A", GREY_SOFT4, TEXT_MUTED, min(8, val_font4))
+                    _badge4(cap_x4, y + row_h4 / 2 - badge_h4 / 2, cap_w4, badge_h4, "N/A", GREY_SOFT4, TEXT_MUTED, min(9.5, val_font4))
                 else:
                     over = cap_v > 100
                     _badge4(cap_x4, y + row_h4 / 2 - badge_h4 / 2, cap_w4, badge_h4, f"{cap_v:.0f}%",
-                            RED_SOFT4 if over else GREEN_SOFT4, RED if over else GREEN, min(8.5, val_font4))
+                            RED_SOFT4 if over else GREEN_SOFT4, RED if over else GREEN, min(10, val_font4))
 
             for i, r in rows4.iterrows():
                 y = _row_y4(i)
@@ -3735,7 +3736,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             tot_r4 = rows4["maint_r"].fillna(0).sum()
             tot_cap4 = (tot_r4 / tot_b4 * 100) if tot_b4 else None
             tot_gap4 = tot_r4 - tot_b4
-            tot_font4 = min(val_font4 + 0.5, 9)
+            tot_font4 = min(val_font4 + 0.5, 11)
             _txt4(lbl_x4, yt, lbl_w4, row_h4, "TOTAL", tot_font4, NAVY, align=PP_ALIGN.RIGHT)
             _cap_badge4(yt, tot_cap4)
             _tot_over4 = tot_gap4 > 0
@@ -3750,7 +3751,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
         add_panel_header(s, 8.3, panel_top4, 4.6, "\U0001F527 Rutin vs Non-Rutin \u2014 per Site & Kelompok Unit", height=0.4)
         if n_rows4 and not rutin_pivot4.empty:
             label_x4 = 8.3 + 0.12
-            label_w4 = 1.3
+            label_w4 = 1.5
             bar_x4 = label_x4 + label_w4 + 0.08
             bar_max_w4 = 1.75
             dt_x4 = bar_x4 + bar_max_w4 + 0.12
@@ -3758,10 +3759,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
             leg_y4 = chart_top_m4
             _rect4(bar_x4, leg_y4 + 0.08, 0.14, 0.14, TEAL)
-            _txt4(bar_x4 + 0.2, leg_y4, 0.6, legend_h4, "Rutin", 8.5, TEXT_MUTED)
+            _txt4(bar_x4 + 0.2, leg_y4, 0.6, legend_h4, "Rutin", 9, TEXT_MUTED)
             _rect4(bar_x4 + 0.8, leg_y4 + 0.08, 0.14, 0.14, GOLD)
-            _txt4(bar_x4 + 1.0, leg_y4, 0.8, legend_h4, "Non Rutin", 8.5, TEXT_MUTED)
-            _txt4(dt_x4, leg_y4, dt_w4, legend_h4, "Cap. Downtime", 7.5, TEXT_MUTED, align=PP_ALIGN.CENTER)
+            _txt4(bar_x4 + 1.0, leg_y4, 0.8, legend_h4, "Non Rutin", 9, TEXT_MUTED)
+            _txt4(dt_x4, leg_y4, dt_w4, legend_h4, "Cap. Downtime", 8.5, TEXT_MUTED, align=PP_ALIGN.CENTER)
             _rect4(label_x4, leg_y4 + legend_h4 + 0.02, (8.3 + 4.6 - 0.12) - label_x4, 0.012, SEP_TOTAL4)
             _separators4(label_x4, (8.3 + 4.6 - 0.12) - label_x4)
 
@@ -3785,7 +3786,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                         _txt4(bar_x4 + w_r, by, w_n, bh, f"{r['pct_nonrutin']:.0f}%", val_font4, WHITE, align=PP_ALIGN.CENTER)
                 cap_dt_val = r["cap_downtime"]
                 has_dt4 = cap_dt_val is not None and not pd.isna(cap_dt_val)
-                badge_h4 = min(0.24, row_h4 * 0.8)
+                badge_h4 = min(0.26, row_h4 * 0.82)
                 badge4 = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(dt_x4 + 0.05), Inches(y + row_h4 / 2 - badge_h4 / 2), Inches(dt_w4 - 0.1), Inches(badge_h4))
                 badge4.adjustments[0] = 0.5
                 badge4.fill.solid()
@@ -3795,7 +3796,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                 btf4.margin_left = 0; btf4.margin_right = 0; btf4.margin_top = 0; btf4.margin_bottom = 0
                 bp4 = btf4.paragraphs[0]; bp4.alignment = PP_ALIGN.CENTER
                 br4 = bp4.add_run(); br4.text = f"{cap_dt_val:.0f}%" if has_dt4 else "\u2014"
-                br4.font.size = Pt(min(8.5, val_font4)); br4.font.bold = True; br4.font.name = "Calibri"
+                br4.font.size = Pt(min(10, val_font4)); br4.font.bold = True; br4.font.name = "Calibri"
                 br4.font.color.rgb = ((RED if cap_dt_val > 100 else GREEN) if has_dt4 else TEXT_MUTED)
 
             # --- Baris TOTAL: porsi Rutin/Non-Rutin keseluruhan (dari total Rupiah, bukan rata-rata %) ---
@@ -3803,7 +3804,7 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             _tot_r = rutin_pivot4["RUTIN"].sum()
             _tot_n = rutin_pivot4["NON RUTIN"].sum()
             _tot_all = _tot_r + _tot_n
-            tot_font4 = min(val_font4 + 0.5, 9)
+            tot_font4 = min(val_font4 + 0.5, 11)
             _txt4(label_x4, yt, label_w4, row_h4, "TOTAL", tot_font4, NAVY, align=PP_ALIGN.RIGHT)
             if _tot_all:
                 _pr, _pn = _tot_r / _tot_all * 100, _tot_n / _tot_all * 100
