@@ -621,6 +621,8 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     data_all.loc[(data_all["lokasi"].isin(PLANTATION_SITES)) & (data_all["kategori"] == "AB"), "_blok"] = BLOK_AB
 
     if not sasaran_all.empty:
+        # Kriteria unit (Floating Tarif / Tarif Tetap) dari data BKMS -- sama dgn slide KPI PPT
+        sasaran_all = tandai_kriteria_sasaran_mutu(sasaran_all, df_raw)
         sasaran_all["_blok"] = None
         sasaran_all.loc[sasaran_all["lokasi"].isin(MINING_SITES), "_blok"] = BLOK_MINING
         sasaran_all.loc[(sasaran_all["lokasi"].isin(PLANTATION_SITES)) & (sasaran_all["kategori"] == "TR"), "_blok"] = BLOK_TR
@@ -699,7 +701,8 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
     cols_sm = ["Blok", "Lokasi", "Jenis Unit", "Bulan", "Utilisasi Realisasi", "Utilisasi Target",
                "Availability Realisasi", "Availability Target", "Downtime Realisasi", "Downtime Target",
                "ID Unit", "Kode Unit", "Nama Unit", "Kelompok Unit", "Unit Sewa",
-               "Efektif (HM/KM)", "Standby (HM/KM)", "Breakdown (HM/KM)", "Tersedia (HM/KM)", "Ideal (HM/KM)"]
+               "Efektif (HM/KM)", "Standby (HM/KM)", "Breakdown (HM/KM)", "Tersedia (HM/KM)", "Ideal (HM/KM)",
+               "Kriteria Unit"]
     for c, h in enumerate(cols_sm, start=1):
         cell = ws_sm.cell(row=1, column=c, value=h)
         cell.fill = HEADER_FILL; cell.font = HEADER_FONT; cell.border = BORDER
@@ -708,14 +711,14 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
         sm_src["downtime_pct"] = sm_src["downtime_pct"].fillna(0)
         for col in ["id_unit", "kode_unit", "nama_unit", "kelompok_unit", "unit_sewa",
                     "efektif_hm_km_realisasi", "standby_hm_km_realisasi", "breakdown_hm_km_realisasi",
-                    "tersedia_hm_km_realisasi", "hm_km_ideal_target"]:
+                    "tersedia_hm_km_realisasi", "hm_km_ideal_target", "kriteria_unit"]:
             if col not in sm_src.columns:
                 sm_src[col] = None
         sm_src = sm_src[["_blok", "lokasi", "jenis_unit", "bulan", "utilisasi_pct", "utilisasi_target",
                           "availability_pct", "availability_target", "downtime_pct", "downtime_target",
                           "id_unit", "kode_unit", "nama_unit", "kelompok_unit", "unit_sewa",
                           "efektif_hm_km_realisasi", "standby_hm_km_realisasi", "breakdown_hm_km_realisasi",
-                          "tersedia_hm_km_realisasi", "hm_km_ideal_target"]]
+                          "tersedia_hm_km_realisasi", "hm_km_ideal_target", "kriteria_unit"]]
         for ri, row in enumerate(sm_src.itertuples(index=False), start=2):
             for ci, val in enumerate(row, start=1):
                 cell = ws_sm.cell(row=ri, column=ci, value=(None if pd.isna(val) else val))
@@ -939,7 +942,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             for c in range(1, 5):
                 ws.cell(row=main_row, column=c).border = BORDER
 
-        def write_grouped_kelompok_metric(nama_metrik, efektif_col, ideal_col, target_col, site_kelompok_list, fmt_real="0.00"):
+        def write_grouped_kelompok_metric(nama_metrik, efektif_col, ideal_col, target_col, site_kelompok_list, fmt_real="0.00", floating_only=False):
             """Metodologi Capaian Utilisasi/Availability/Downtime yg BARU & KONSISTEN dgn PPT (capaian_per_kelompok_unit):
             kelompokkan per KOMBINASI SITE + KELOMPOK UNIT (mis. 'KUMAI-Dump Truck' & 'S.DANAU-Dump Truck' dihitung
             TERPISAH, tdk digabung lintas site), Realisasi dihitung dari FORMULA data mentah (Sum Efektif/Tersedia/
@@ -950,6 +953,10 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             r[0] += 1  # baris utama ditulis di akhir, reserve dulu nomor barisnya
             group_rows = []
             EXCL = f'{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"'
+            if floating_only:
+                # Utilisasi/Availability: KHUSUS Floating Tarif (kolom U = Kriteria Unit dari data BKMS), sama dgn
+                # kartu & chart slide KPI PPT. Downtime TIDAK pakai ini (floating_only=False).
+                EXCL += f',{SHEET_SM}!U:U,"Floating Tarif"'
             for lok, kel in site_kelompok_list:
                 lok_e = lok.replace('"', '""'); kel_e = str(kel).replace('"', '""')
                 row = r[0]
@@ -984,9 +991,16 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
                 ws.cell(row=main_row, column=c).border = BORDER
 
         _sm_blok = sasaran_all[sasaran_all["_blok"] == blok_name] if not sasaran_all.empty else pd.DataFrame()
-        _kelompok_list_blok = sorted(uniq_lokasi_kelompok(_sm_blok.assign(_blok=blok_name) if not _sm_blok.empty else _sm_blok, blok_name)) if not _sm_blok.empty else []
-        write_grouped_kelompok_metric("Avg Utilisasi", "P", "T", "F", _kelompok_list_blok)
-        write_grouped_kelompok_metric("Avg Availability", "S", "T", "H", _kelompok_list_blok)
+        # Daftar utk DOWNTIME: penyaringan lama (jenis_unit & unit_sewa) -- kolom kriteria_unit sengaja dibuang dulu
+        # spy daftar ini TIDAK berubah (Utilisasi/Availability pakai daftar khusus Floating Tarif di bawah).
+        _sm_blok_dt = _sm_blok.drop(columns=["kriteria_unit"], errors="ignore") if not _sm_blok.empty else _sm_blok
+        _kelompok_list_blok = sorted(uniq_lokasi_kelompok(_sm_blok_dt.assign(_blok=blok_name) if not _sm_blok_dt.empty else _sm_blok_dt, blok_name)) if not _sm_blok_dt.empty else []
+        _sm_blok_floating = (_sm_blok[_sm_blok["kriteria_unit"] == "Floating Tarif"]
+                             if (not _sm_blok.empty and "kriteria_unit" in _sm_blok.columns) else _sm_blok)
+        _kelompok_list_floating = (sorted(uniq_lokasi_kelompok(_sm_blok_floating.assign(_blok=blok_name), blok_name))
+                                   if not _sm_blok_floating.empty else [])
+        write_grouped_kelompok_metric("Capaian Utilisasi", "P", "T", "F", _kelompok_list_floating, floating_only=True)
+        write_grouped_kelompok_metric("Capaian Availability", "S", "T", "H", _kelompok_list_floating, floating_only=True)
         row_bl = r[0]
         metric_row("Biaya Langsung / Prestasi",
             f'=IFERROR(SUMIFS({SHEET_BIAYA}!O:O,{SHEET_BIAYA}!A:A,"{B}")/SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!F:F,"Floating Tarif"),"-")',
@@ -1014,7 +1028,7 @@ def build_perhitungan_detail_excel(df_raw, sasaran_mutu_raw, mttr_raw, maint_dat
             f_prest = (f'=IFERROR(SUMIFS({SHEET_PRESTASI}!H:H,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!J:J,"{kel_e}",{SHEET_PRESTASI}!F:F,"<>Tarif Tetap")'
                        f'/SUMIFS({SHEET_PRESTASI}!I:I,{SHEET_PRESTASI}!A:A,"{B}",{SHEET_PRESTASI}!B:B,"{lok_e}",{SHEET_PRESTASI}!J:J,"{kel_e}",{SHEET_PRESTASI}!F:F,"<>Tarif Tetap")*100,"-")')
             sm_crit = (f'{SHEET_SM}!A:A,"{B}",{SHEET_SM}!B:B,"{lok_e}",{SHEET_SM}!N:N,"{kel_e}",'
-                       f'{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE"')
+                       f'{SHEET_SM}!C:C,"<>Tarif Tetap",{SHEET_SM}!O:O,"<>TRUE",{SHEET_SM}!U:U,"Floating Tarif"')
             f_util = f'=IFERROR(SUMIFS({SHEET_SM}!P:P,{sm_crit})/SUMIFS({SHEET_SM}!T:T,{sm_crit})*100,"-")'
             f_avail = f'=IFERROR(SUMIFS({SHEET_SM}!S:S,{sm_crit})/SUMIFS({SHEET_SM}!T:T,{sm_crit})*100,"-")'
             for ci, f in enumerate([f_prest, f_util, f_avail], start=2):
@@ -2102,6 +2116,24 @@ def capaian_per_target_group(df, realisasi_col, target_col):
     avg_capaian = capaian_per_grup.mean()        # rata2 dari Capaian tiap kelompok (bukan realisasi/target akhir)
     return avg_realisasi_display, avg_target_display, avg_capaian
 
+def tandai_kriteria_sasaran_mutu(sm, data):
+    """Tambahkan kolom kriteria_unit (Floating Tarif / Tarif Tetap) ke data Sasaran Mutu, diambil dari data BKMS
+    per (lokasi, id_unit). Data Sasaran Mutu sendiri TIDAK punya kolom kriteria; sebelumnya penyaringan Tarif Tetap
+    cuma lewat jenis_unit=='Tarif Tetap' yg hanya menangkap sebagian kecil unit (mis. bus S.Danau jenis_unit-nya
+    'Rental Bus' padahal kriterianya Tarif Tetap -> ikut terhitung)."""
+    if sm is None or sm.empty or data is None or data.empty or not {"lokasi", "id_unit", "kriteria_unit"}.issubset(data.columns):
+        return sm
+    if "id_unit" not in sm.columns:
+        return sm
+    _k = (data.dropna(subset=["kriteria_unit"])
+          .assign(_id=lambda d: d["id_unit"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip())
+          .drop_duplicates(["lokasi", "_id"]).set_index(["lokasi", "_id"])["kriteria_unit"].to_dict())
+    out = sm.copy()
+    _ids = out["id_unit"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
+    out["kriteria_unit"] = [_k.get((l, i)) for l, i in zip(out["lokasi"], _ids)]
+    return out
+
+
 def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelompok_col="kelompok_unit", jenis_unit_col="jenis_unit", unit_sewa_col="unit_sewa", lokasi_col="lokasi"):
     """Metodologi Capaian Utilisasi/Availability BERBASIS SITE + KELOMPOK UNIT & FORMULA MENTAH (bukan target-value
     spt capaian_per_target_group, dan bukan pakai kolom persentase yg sudah jadi). Langkah:
@@ -2121,6 +2153,9 @@ def capaian_per_kelompok_unit(df, efektif_col, ideal_col, target_pct_col, kelomp
     if df is None or df.empty or any(c not in df.columns for c in required):
         return None, None, None
     valid = df.copy()
+    if "kriteria_unit" in valid.columns:
+        # Kriteria unit dari data BKMS (lihat tandai_kriteria_sasaran_mutu) -> HANYA Floating Tarif.
+        valid = valid[valid["kriteria_unit"] == "Floating Tarif"]
     if jenis_unit_col in valid.columns:
         valid = valid[valid[jenis_unit_col] != "Tarif Tetap"]
     if unit_sewa_col in valid.columns:
@@ -2742,8 +2777,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         data["satuan_lokal"] = data.apply(klasifikasi_satuan_lokal, axis=1)
 
-        avg_avail_r, avg_avail_t, ach_avail = capaian_per_kelompok_unit(sasaran_mutu_data, "tersedia_hm_km_realisasi", "hm_km_ideal_target", "availability_target")
-        avg_util_r, avg_util_t, ach_util = capaian_per_kelompok_unit(sasaran_mutu_data, "efektif_hm_km_realisasi", "hm_km_ideal_target", "utilisasi_target")
+        # Slide KPI (kartu Utilisasi/Availability + chart per Site & Kelompok) KHUSUS unit FLOATING TARIF.
+        # Kriteria diambil dari data BKMS (Sasaran Mutu tdk punya kolom kriteria). Slide Downtime TIDAK memakai ini
+        # (Downtime tetap semua unit, sesuai metodologi).
+        sm_floating_kpi = tandai_kriteria_sasaran_mutu(sasaran_mutu_data, data)
+        avg_avail_r, avg_avail_t, ach_avail = capaian_per_kelompok_unit(sm_floating_kpi, "tersedia_hm_km_realisasi", "hm_km_ideal_target", "availability_target")
+        avg_util_r, avg_util_t, ach_util = capaian_per_kelompok_unit(sm_floating_kpi, "efektif_hm_km_realisasi", "hm_km_ideal_target", "utilisasi_target")
         prestasi_r_kpi = data_floating["prestasi_realisasi"].sum() if "prestasi_realisasi" in data_floating.columns else None
         prestasi_b_kpi = data_floating["prestasi_budget"].sum() if "prestasi_budget" in data_floating.columns else None
         ach_prestasi_kpi = ach_txt_pct(prestasi_r_kpi, prestasi_b_kpi) if (prestasi_r_kpi is not None and prestasi_b_kpi) else None
@@ -2760,8 +2799,10 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
 
         data_k = data.copy()
 
-        if not sasaran_mutu_data.empty and "kelompok_unit" in sasaran_mutu_data.columns:
-            sm_kpi = sasaran_mutu_data.copy()
+        if sm_floating_kpi is not None and not sm_floating_kpi.empty and "kelompok_unit" in sm_floating_kpi.columns:
+            sm_kpi = sm_floating_kpi.copy()
+            if "kriteria_unit" in sm_kpi.columns:
+                sm_kpi = sm_kpi[sm_kpi["kriteria_unit"] == "Floating Tarif"]
             sm_kpi = sm_kpi[(sm_kpi["jenis_unit"] != "Tarif Tetap")]
             if "unit_sewa" in sm_kpi.columns:
                 sm_kpi = sm_kpi[sm_kpi["unit_sewa"] != True]
@@ -2799,18 +2840,12 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
             else:
                 prestasi_lookup_unit = {}
 
-            # Fallback ke level site+kategori kalau kombinasi kelompok_unit spesifik tidak ada datanya
-            prestasi_sk1 = data.groupby(["lokasi", "kategori"], as_index=False).agg(
-                prestasi_r=("prestasi_realisasi", "sum"), prestasi_b=("prestasi_budget", "sum"))
-            prestasi_sk1["cap"] = prestasi_sk1.apply(_safe_cap, axis=1)
-            prestasi_lookup = {(r["lokasi"], r["kategori"]): r["cap"] for _, r in prestasi_sk1.iterrows()}
-
             for _, r in au_tbl.iterrows():
                 util_cap = _safe_cap(r, "util_r", "util_t")
                 avail_cap = _safe_cap(r, "avail_r", "avail_t")
+                # TANPA fallback ke angka level site: dulu kalau kelompok ini tdk punya angka prestasi sendiri,
+                # yg dipakai adalah capaian SELURUH unit site tsb (termasuk Tarif Tetap) -> menyesatkan.
                 prestasi_cap = prestasi_lookup_unit.get((r["lokasi"], r["kategori"], r["kelompok_unit"]))
-                if prestasi_cap is None:
-                    prestasi_cap = prestasi_lookup.get((r["lokasi"], r["kategori"]))
                 au_rows.append({"label": f"{r['site_short']} — {r['kelompok_unit']}", "util_cap": util_cap, "avail_cap": avail_cap,
                                  "prestasi_cap": prestasi_cap, "kriteria_unit": "Floating Tarif", "kelompok_unit": r["kelompok_unit"]})
 
@@ -2899,13 +2934,14 @@ def build_pptx(data, maint_data, sparepart_data, site_list, month_list, kat_list
                     prestasi_val_x = rows[i_pt_x]["prestasi_cap"]
                     dl_x = pt_x.data_label
                     dl_x.has_text_frame = True
-                    if prestasi_val_x is not None:
+                    if prestasi_val_x is not None and not pd.isna(prestasi_val_x):
                         dl_x.text_frame.text = f"{prestasi_val_x:.0f}%"
                         r0_x = dl_x.text_frame.paragraphs[0].runs[0]
                         r0_x.font.size = Pt(label_font_x); r0_x.font.bold = True; r0_x.font.name = "Calibri"
                         r0_x.font.color.rgb = RED if prestasi_val_x < 100 else TEXT_DARK
                     else:
-                        dl_x.text_frame.text = "-"
+                        # Tidak ada angka prestasi sendiri (mis. budget prestasi = 0) -> "N/A", bukan "nan%"/"0%"
+                        dl_x.text_frame.text = "N/A"
                         r0_x = dl_x.text_frame.paragraphs[0].runs[0]
                         r0_x.font.size = Pt(label_font_x); r0_x.font.bold = True; r0_x.font.name = "Calibri"; r0_x.font.color.rgb = TEXT_MUTED
                 style_chart_light(chart_x, legend=True, legend_pos=XL_LEGEND_POSITION.BOTTOM)
@@ -5187,4 +5223,4 @@ else:
     st.markdown(f'<div class="insight-box"><b>3 unit paling bermasalah:</b><ul>{bullets_tp_html}</ul></div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("Dashboard Operational Review • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat oleh ALIP BA TA")
+st.caption("Dashboard Operational Review • PT Buana Karya Mandiri Sejahtera (BKMS) • Dibuat oleh Budget Control")
