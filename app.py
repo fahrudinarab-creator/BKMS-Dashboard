@@ -3290,7 +3290,10 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             ws3[f"B{nb}"] = "💡"; ws3[f"B{nb}"].font = _f(20, False, _GOLD); ws3[f"B{nb}"].alignment = _CENTER
 
             def _cell(rng, val, size, color, bold=False, align=_LEFT, italic=False):
-                ws3.merge_cells(rng) if ":" in rng and rng.split(":")[0] != rng.split(":")[1] else None
+                # PENTING: pakai if-statement biasa, BUKAN "x if c else None" -- ekspresi tunggal spt itu ikut
+                # ditampilkan oleh fitur 'magic' Streamlit (muncul tulisan "None" berderet di dashboard).
+                if ":" in rng and rng.split(":")[0] != rng.split(":")[1]:
+                    ws3.merge_cells(rng)
                 c = ws3[rng.split(":")[0]]
                 c.value = val; c.font = _f(size, bold, color, italic); c.alignment = align
                 return c
