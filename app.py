@@ -2362,7 +2362,8 @@ class _Sheet:
             ws[ref].font = _f(9.5, True, _MUTED); ws[ref].alignment = _Al(horizontal="right", vertical="center")
         for ref, v in (("C3", blok), ("G3", last_month), ("K3", period_txt)):
             ws[ref] = v
-            ws[ref].font = _f(9.5, True, _NAVY); ws[ref].alignment = _Al(horizontal="left", vertical="center", indent=1)
+            ws[ref].font = _f(9.5, True, _NAVY)
+            ws[ref].alignment = _Al(horizontal="left", vertical="center", indent=0, shrink_to_fit=(ref == "C3"))
         ws.merge_cells("N3:T3")
         ws["N3"] = note
         ws["N3"].font = _f(8, False, _MUTED, True)
@@ -2425,7 +2426,9 @@ class _Sheet:
             self.ws.column_dimensions[k].width = v
 
 
-def _bar_chart(kind="col", grouping="clustered", overlap=None, gap=60, height=9, width=30, legend="b"):
+def _bar_chart(kind="col", grouping="clustered", overlap=None, gap=60, height=9, width=30, legend="t"):
+    # Legenda default di ATAS chart: kalau di bawah, di Excel legenda bisa menumpuk dgn nama kelompok di sumbu
+    # bawah yg turun jadi 2 baris (mis. "S.DANAU — TANGKI SERIES 300").
     ch = _Bar(); ch.type = kind; ch.grouping = grouping; ch.gapWidth = gap
     if overlap is not None:
         ch.overlap = overlap
@@ -2433,6 +2436,7 @@ def _bar_chart(kind="col", grouping="clustered", overlap=None, gap=60, height=9,
     ch.y_axis.delete = False; ch.x_axis.delete = False
     if legend:
         ch.legend.position = legend
+        ch.legend.overlay = False  # legenda punya ruang sendiri, tdk menumpuk di atas area gambar
     else:
         ch.legend = None
     return ch
@@ -2483,6 +2487,8 @@ def _color_series(ch, colors):
     for s_, c in zip(ch.series, colors):
         s_.graphicalProperties.solidFill = c
         s_.graphicalProperties.line.solidFill = c
+        # Excel default: batang bernilai NEGATIF warnanya dibalik (jadi putih/kosong) -> matikan
+        s_.invertIfNegative = False
 
 
 def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, kats, lookup_fn, lookup_base=None):
@@ -3208,6 +3214,7 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             _labels(ch, '"+Rp "#,##0.0,," Jt";"−Rp "#,##0.0,," Jt";;', size=(8.5 if len(rows3) <= 14 else 7.5))
             ch.x_axis.scaling.orientation = "maxMin"; ch.y_axis.numFmt = '#,##0,," Jt"'
             ch.x_axis.tickLblPos = "low"  # nama kelompok di tepi kiri (tdk menabrak batang negatif)
+            ch.y_axis.crosses = "max"  # urutan kategori dibalik -> sumbu nilai pindah ke BAWAH (tdk menabrak legenda di atas)
             # Batas sumbu diberi ruang kiri-kanan (dari data saat file dibuat) spy label "+Rp .. Jt"/"−Rp .. Jt" di
             # ujung batang tdk menabrak nama kelompok atau terpotong di tepi chart.
             try:
@@ -3237,6 +3244,7 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             ch2.set_categories(_Ref(c3.ws, min_col=2, min_row=a3f, max_row=a3l))
             _color_series(ch2, (_TEAL, _GOLD)); _labels(ch2, "0%;;;", pos=None, size=8.5)
             ch2.x_axis.scaling.orientation = "maxMin"; ch2.y_axis.numFmt = "0%"
+            ch2.y_axis.crosses = "max"
             _place(v3.ws, ch2, f"L6:T{ch_bottom}")
             # tabel ringkas di bawah chart (angka yg sama dgn PPT) -- selebar halaman (B..T)
             t0 = ch_bottom + 2
