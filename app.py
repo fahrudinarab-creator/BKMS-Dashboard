@@ -2221,7 +2221,7 @@ _thin = _Sd(style="thin", color="D1D5DB")
 _BORDER = _Bd(left=_thin, right=_thin, top=_thin, bottom=_thin)
 _CENTER = _Al(horizontal="center", vertical="center", wrap_text=True)
 _LEFT = _Al(horizontal="left", vertical="center", wrap_text=True)
-_RIGHT = _Al(horizontal="right", vertical="center")
+_RIGHT = _Al(horizontal="right", vertical="center", indent=1)  # indent spy angka tdk menempel garis sel
 _PALETTE = ["0D9488", "1E5AA8", "D98E1F", "17A2B8", "7B5EA7", "E06C4F", "5BA84C", "2C3E7A", "C94F8A", "8C9A2B",
             "467A9E", "B56A2E", "3FB49C", "9E9E3A", "6D4C9F", "A04545"]
 
@@ -2354,13 +2354,20 @@ class _Sheet:
         ws["B2"] = sub
         ws["B2"].font = _f(10, False, "FFFFFF"); ws["B2"].fill = _fill(_NAVY)
         ws["B2"].alignment = _Al(horizontal="right", vertical="center", indent=1)
-        for ref, v, b in (("B3", "Blok:", True), ("C3", blok, True), ("F3", "Bulan terakhir:", True), ("G3", last_month, True),
-                          ("J3", "Periode data:", True), ("K3", period_txt, True)):
+        # Baris info: label rata kanan (boleh meluber ke sel kosong di kirinya), nilai digabung 2 sel.
+        # C3 (Blok) & G3 (Bulan terakhir) TETAP di posisinya -- dipakai sbg parameter oleh semua rumus.
+        ws.merge_cells("C3:E3"); ws.merge_cells("G3:H3"); ws.merge_cells("K3:L3")
+        for ref, v in (("B3", "Blok:"), ("F3", "s/d Bulan:"), ("J3", "Periode:")):
             ws[ref] = v
-            ws[ref].font = _f(9, True, _MUTED if ref in ("B3", "F3", "J3") else _DARK)
+            ws[ref].font = _f(9.5, True, _MUTED); ws[ref].alignment = _Al(horizontal="right", vertical="center")
+        for ref, v in (("C3", blok), ("G3", last_month), ("K3", period_txt)):
+            ws[ref] = v
+            ws[ref].font = _f(9.5, True, _NAVY); ws[ref].alignment = _Al(horizontal="left", vertical="center", indent=1)
         ws.merge_cells("N3:T3")
         ws["N3"] = note
-        ws["N3"].font = _f(8, False, _MUTED, True); ws["N3"].alignment = _LEFT
+        ws["N3"].font = _f(8, False, _MUTED, True)
+        ws["N3"].alignment = _Al(horizontal="right", vertical="center", shrink_to_fit=True)
+        ws.row_dimensions[3].height = 20
         ws.freeze_panes = "A4"
 
     def card(self, col, top, label, val_f, val_fmt, sub_f, pill_f, good_cond, accent, width_cols=3, sub2_f=None):
@@ -2431,12 +2438,45 @@ def _bar_chart(kind="col", grouping="clustered", overlap=None, gap=60, height=9,
     return ch
 
 
-def _labels(ch, fmt, pos="outEnd"):
+def _labels(ch, fmt, pos="outEnd", size=9):
     ch.dataLabels = _DLL(); ch.dataLabels.showVal = True; ch.dataLabels.numFmt = fmt
     ch.dataLabels.showSerName = False; ch.dataLabels.showCatName = False
     ch.dataLabels.showLegendKey = False; ch.dataLabels.showPercent = False
     if pos:
         ch.dataLabels.position = pos
+    try:  # ukuran huruf label (dikecilkan kalau batangnya banyak spy tdk bertumpuk)
+        from openpyxl.chart.text import RichText as _RT
+        from openpyxl.drawing.text import Paragraph as _Pg, ParagraphProperties as _PP, CharacterProperties as _CP
+        ch.dataLabels.txPr = _RT(p=[_Pg(pPr=_PP(defRPr=_CP(sz=int(size * 100), b=True)), endParaRPr=_CP())])
+    except Exception:
+        pass
+
+
+def _fix_label_numfmt(xlsx_bytes):
+    """openpyxl menulis <c:numFmt formatCode=".."/> di label chart TANPA sourceLinked="0", shg Excel/LibreOffice tetap
+    memakai format sel sumber (mis. 1 desimal). Tambahkan sourceLinked="0" spy format label ("0%", "Rp .. Jt") dipakai."""
+    import zipfile as _zf, re as _re
+    src = _zf.ZipFile(_io_dx.BytesIO(xlsx_bytes))
+    out = _io_dx.BytesIO()
+    with _zf.ZipFile(out, "w", _zf.ZIP_DEFLATED) as dst:
+        for it in src.infolist():
+            data = src.read(it.filename)
+            if it.filename.startswith("xl/charts/chart") and it.filename.endswith(".xml"):
+                t = data.decode("utf-8")
+                t = _re.sub(r'<((?:c:)?)numFmt formatCode="([^"]*)"\s*/>', r'<\1numFmt formatCode="\2" sourceLinked="0"/>', t)
+                data = t.encode("utf-8")
+            dst.writestr(it, data)
+    return out.getvalue()
+
+
+def _place(ws, chart, rng):
+    """Tempatkan chart PAS mengisi rentang sel (mis. "B13:P33") -- lebar/tinggi chart ikut kolom & baris, jadi
+    selalu sejajar dgn judul panel & tabel di sheet (tidak melenceng/menutupi judul)."""
+    from openpyxl.drawing.spreadsheet_drawing import TwoCellAnchor, AnchorMarker
+    from openpyxl.utils.cell import range_boundaries
+    c1, r1, c2, r2 = range_boundaries(rng)
+    chart.anchor = TwoCellAnchor(_from=AnchorMarker(col=c1 - 1, row=r1 - 1), to=AnchorMarker(col=c2, row=r2))
+    ws.add_chart(chart)
 
 
 def _color_series(ch, colors):
@@ -2598,7 +2638,7 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             cd_ = f'{DB.R("Blok")},{BL},{DB.R("lokasi")},$C{rr},{DB.R("kelompok_unit")},$D{rr},{DB.R("kriteria_unit")},"<>Tarif Tetap"'
             c1.put(f"E{rr}", f"=SUMIFS({DB.R('prestasi_realisasi')},{cd_})", "#,##0")
             c1.put(f"F{rr}", f"=SUMIFS({DB.R('prestasi_budget')},{cd_})", "#,##0")
-            c1.put(f"G{rr}", f'=IF(F{rr}=0,"",E{rr}/F{rr})', "0.0%", bold=True)
+            c1.put(f"G{rr}", f'=IF(F{rr}=0,"",E{rr}/F{rr})', "0%", bold=True)  # 0 desimal: sama dgn label chart PPT
             cs = (f'{SM.R("Blok")},{BL},{SM.R("lokasi")},$C{rr},{SM.R("kelompok_unit")},$D{rr},'
                   f'{SM.R("Kriteria Unit")},"Floating Tarif",{SM.R("jenis_unit")},"<>Tarif Tetap",{SM.R("unit_sewa")},"<>TRUE"')
             c1.put(f"H{rr}", f"=SUMIFS({SM.R('efektif_hm_km_realisasi')},{cs})", "#,##0")
@@ -2606,10 +2646,10 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             c1.put(f"J{rr}", f"=SUMIFS({SM.R('hm_km_ideal_target')},{cs})", "#,##0")
             c1.put(f"K{rr}", f'=IF(J{rr}=0,"",H{rr}/J{rr})', "0.0%")
             c1.put(f"L{rr}", f'=IF(K{rr}="","",IFERROR(AVERAGEIFS({SM.R("utilisasi_target")},{cs})/100,""))', "0.0%")
-            c1.put(f"M{rr}", f'=IF(OR(K{rr}="",L{rr}="",L{rr}=0),"",K{rr}/L{rr})', "0.0%", bold=True)
+            c1.put(f"M{rr}", f'=IF(OR(K{rr}="",L{rr}="",L{rr}=0),"",K{rr}/L{rr})', "0%", bold=True)
             c1.put(f"N{rr}", f'=IF(J{rr}=0,"",I{rr}/J{rr})', "0.0%")
             c1.put(f"O{rr}", f'=IF(N{rr}="","",IFERROR(AVERAGEIFS({SM.R("availability_target")},{cs})/100,""))', "0.0%")
-            c1.put(f"P{rr}", f'=IF(OR(N{rr}="",O{rr}="",O{rr}=0),"",N{rr}/O{rr})', "0.0%", bold=True)
+            c1.put(f"P{rr}", f'=IF(OR(N{rr}="",O{rr}="",O{rr}=0),"",N{rr}/O{rr})', "0%", bold=True)
         bl_ = bf + max(len(au_keys), 1) - 1
         ravg = bl_ + 1
         c1.put(f"B{ravg}", "RATA-RATA (= kartu KPI)", bold=True, align=_LEFT, fillc="EEF2FF")
@@ -2677,8 +2717,8 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             for col_idx in (7, 13, 16):
                 ch.add_data(_Ref(c1.ws, min_col=col_idx, min_row=rB + 1, max_row=bl_), titles_from_data=True)
             ch.set_categories(_Ref(c1.ws, min_col=2, min_row=bf, max_row=bl_))
-            _color_series(ch, (_BLUE, _GOLD, _TEAL)); _labels(ch, "0%"); ch.y_axis.numFmt = "0%"
-            v1.ws.add_chart(ch, "B13")
+            _color_series(ch, (_BLUE, _GOLD, _TEAL)); _labels(ch, "0%", size=(9 if len(au_keys) <= 9 else 7)); ch.y_axis.numFmt = "0%"
+            _place(v1.ws, ch, "B13:P33")
         if pop_keys:
             dn = _Dn(); dn.holeSize = 58; dn.firstSliceAng = 0
             dn.add_data(_Ref(c1.ws, min_col=5, min_row=cf - 1, max_row=cl_), titles_from_data=True)
@@ -2687,8 +2727,8 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
                 pt = _DP(idx=i); pt.graphicalProperties.solidFill = _PALETTE[i % len(_PALETTE)]
                 pt.graphicalProperties.line.solidFill = "FFFFFF"
                 dn.series[0].dPt.append(pt)
-            dn.legend = None; dn.height = 6.3; dn.width = 7.9
-            v1.ws.add_chart(dn, "R13")
+            dn.legend = None
+            _place(v1.ws, dn, "R13:T24")
             v1.ws.merge_cells("R25:T25")
             v1.put("R25", f"={P1}E{rpt}", '0" unit"', bold=True, size=16, border=False, align=_CENTER)
             for i in range(len(pop_keys)):
@@ -2885,9 +2925,9 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
         v4.ws["C3"] = f"='{v1.name}'!C3"
         v4.ws["G3"] = f"='{v1.name}'!G3"
         v4.card("B", 5, "Capaian Downtime (Realisasi s/d " + cawu_inline + ")", f"={CAPDT}", "0.0%", dt_site_txt,
-                f'=IF({CAPDT}="","Data tidak tersedia",IF({CAPDT}>1,"✗ Melebihi Target","✓ Dalam Target"))', f"{CAPDT}<=1", _RED, width_cols=6)
+                f'=IF({CAPDT}="","Data tidak tersedia",IF({CAPDT}>1,"✗ Melebihi Target","✓ Dalam Target"))', f"{CAPDT}<=1", _RED, width_cols=6, sub2_f="")
         v4.card("H", 5, "MTTR (Mean Time To Repair)", f"={MTTR_T}", '0.0" jam"', mttr_site_txt,
-                f'=IF({MTTR_T}="","Data Workshop belum tersedia","Dari "&SUBSTITUTE(FIXED({MTTR_N},0),",",".")&" kejadian perbaikan")', "TRUE", _TEAL, width_cols=6)
+                f'=IF({MTTR_T}="","Data Workshop belum tersedia","Dari "&SUBSTITUTE(FIXED({MTTR_N},0),",",".")&" kejadian perbaikan")', "TRUE", _TEAL, width_cols=6, sub2_f="")
         v4.card("N", 5, "Rutin vs Non-Rutin (porsi biaya maintenance)",
                 f'=IF({RUT}="","-",FIXED({RUT}*100,0,TRUE)&"% / "&FIXED({NRUT}*100,0,TRUE)&"%")', "@", rut_txt,
                 f'=IF({RUT}="","Data tidak tersedia",IF({RUT}>=0.5,"✓ Rutin Lebih Dominan","✗ Non-Rutin Lebih Dominan"))', f"N({RUT})>=0.5", _GREEN,
@@ -2895,27 +2935,35 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
         v4.section(14, "% Downtime — per Site & Kelompok Unit", "B", "L")
         v4.section(14, "Kategori Sparepart — Nilai Tertinggi per Site", "N", "T", color=_NAVY)
         if dtc:
-            ch = _bar_chart(grouping="stacked", overlap=100, height=9.5, width=24)
+            # 2 seri (merah = melebihi target, hijau = dalam target) ditumpuk di posisi sama (overlap 100) -> label
+            # angka bisa ditaruh di ATAS batang (outEnd); nilai 0 dari seri lawannya disembunyikan ("0%;;;").
+            ch = _bar_chart(grouping="clustered", overlap=100, gap=50)
             for col_idx in (10, 11):
                 ch.add_data(_Ref(c4.ws, min_col=col_idx, min_row=rC4 + 1, max_row=c4l), titles_from_data=True)
             ch.set_categories(_Ref(c4.ws, min_col=2, min_row=c4f, max_row=c4l))
-            _color_series(ch, (_RED, _GREEN)); _labels(ch, "0%;;;", pos=None); ch.y_axis.numFmt = "0%"
-            v4.ws.add_chart(ch, "B15")
+            _color_series(ch, (_RED, _GREEN)); _labels(ch, "0%;;;", size=(9.5 if len(dtc) <= 12 else 8)); ch.y_axis.numFmt = "0%"
+            _place(v4.ws, ch, "B15:L33")
         # tabel sparepart di tampilan
         hdr = ["No", "Kategori"] + [_site(l) for l in kat_sites] + ["Total"]
         cols_sp = ["N", "O"] + [_CL(16 + j) for j in range(len(kat_sites))] + [_CL(16 + len(kat_sites))]
+        # Lebar kolom: tabel mengisi PENUH panel N..T (kolom nilai dibagi rata, sisa kolom kosong dipersempit)
+        n_val_sp = len(kat_sites) + 1
+        v4.ws.column_dimensions["N"].width = 5
+        v4.ws.column_dimensions["O"].width = 27
+        for j in range(5):
+            v4.ws.column_dimensions[_CL(16 + j)].width = (60 / n_val_sp) if j < n_val_sp else 1
         for j, (col, h) in enumerate(zip(cols_sp, hdr)):
-            v4.put(f"{col}15", h, bold=True, color="FFFFFF", fillc="4B5563", align=_CENTER)
+            v4.put(f"{col}15", h, bold=True, color="FFFFFF", fillc="4B5563", align=_CENTER, size=10)
         for i, kat in enumerate(kat_top):
             rr = 16 + i
-            v4.put(f"N{rr}", i + 1, "0", bold=True, color="FFFFFF", fillc=_GOLD, align=_CENTER)
-            v4.put(f"O{rr}", f"={P4}C{f4f+i}", bold=True, align=_LEFT)
+            v4.ws.row_dimensions[rr].height = 22
+            v4.put(f"N{rr}", i + 1, "0", bold=True, color="FFFFFF", fillc=_GOLD, align=_CENTER, size=10)
+            v4.put(f"O{rr}", f"={P4}C{f4f+i}", bold=True, align=_LEFT, size=10)
             for j in range(len(kat_sites)):
                 src = f"{P4}{_CL(4+j)}{f4f+i}"
-                v4.put(f"{cols_sp[2+j]}{rr}", f'=IF({src}=0,"-",{_rp(src)})', align=_CENTER)
+                v4.put(f"{cols_sp[2+j]}{rr}", f'=IF({src}=0,"-",{_rp(src)})', align=_RIGHT, size=10)
             srcT = f"{P4}{_CL(4+len(kat_sites))}{f4f+i}"
-            v4.put(f"{cols_sp[-1]}{rr}", f"={_rp(srcT)}", bold=True, color=_GOLD, align=_CENTER)
-        v4.ws.column_dimensions["O"].width = 26
+            v4.put(f"{cols_sp[-1]}{rr}", f"={_rp(srcT)}", bold=True, color=_GOLD, align=_RIGHT, size=10.5)
         if dtc:
             npos = f"{P4}$E${rs4}"
             v4.note_box("B35:L37", (
@@ -3032,16 +3080,18 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
         v2.ws.merge_cells("B5:J5")
         v2.put("B5", f"Ringkasan Biaya PT. BKMS (s/d {cawu_inline})", bold=True, size=13, border=False, align=_LEFT)
         for j, (rng, h) in enumerate((("B6:C6", "Metrik"), ("D6:E6", "Budget"), ("F6:G6", "Aktual"), ("H6:H6", "Capaian"), ("I6:J6", "Cap. Fisik"))):
-            v2.merge_put(rng, h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER)
+            v2.merge_put(rng, h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER, size=10)
+        v2.ws.row_dimensions[6].height = 22
         capd = lambda x: f'IF({x}="","-",IF({x}>9.99,">999%",{_pct(x)}))'
         for i in range(5):
             rr = 7 + i; src = a2f + i
-            v2.merge_put(f"B{rr}:C{rr}", f"={P2}B{src}", align=_LEFT)
-            v2.merge_put(f"D{rr}:E{rr}", f"={_rp(f'{P2}C{src}')}", align=_LEFT)
-            v2.merge_put(f"F{rr}:G{rr}", f"={_rp(f'{P2}D{src}')}", align=_LEFT)
-            v2.put(f"H{rr}", f"={capd(f'{P2}E{src}')}", bold=True, align=_LEFT)
+            v2.ws.row_dimensions[rr].height = 22
+            v2.merge_put(f"B{rr}:C{rr}", f"={P2}B{src}", align=_LEFT, size=10, bold=True)
+            v2.merge_put(f"D{rr}:E{rr}", f"={_rp(f'{P2}C{src}')}", align=_RIGHT, size=10)
+            v2.merge_put(f"F{rr}:G{rr}", f"={_rp(f'{P2}D{src}')}", align=_RIGHT, size=10)
+            v2.put(f"H{rr}", f"={capd(f'{P2}E{src}')}", bold=True, align=_CENTER, size=10)
             fx = f"{P2}F{src}"; hi = f"{P2}G{src}"
-            v2.merge_put(f"I{rr}:J{rr}", (f'=IF({fx}="","-",IF({fx}>9.99,">999%",{_pct(fx)}))'), bold=True, align=_LEFT)
+            v2.merge_put(f"I{rr}:J{rr}", (f'=IF({fx}="","-",IF({fx}>9.99,">999%",{_pct(fx)}))'), bold=True, align=_CENTER, size=10)
             ex = f"{P2}$E${src}"; fxa = f"{P2}$F${src}"; hia = f"{P2}$G${src}"
             v2.ws.conditional_formatting.add(f"H{rr}", _FRule(formula=[f'AND({ex}<>"",N({ex})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
             v2.ws.conditional_formatting.add(f"H{rr}", _FRule(formula=[f'AND({ex}<>"",N({ex})>1)'], fill=_fill(_RED), font=_Font(name=_FONT, bold=True, color="FFFFFF")))
@@ -3055,27 +3105,27 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
         v2.ws.conditional_formatting.add("L5:T5", _FRule(formula=[f'LEFT($L$5,1)="✅"'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
         v2.ws.conditional_formatting.add("L5:T5", _FRule(formula=[f'LEFT($L$5,1)<>"✅"'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
         for rng, h in (("L6:N6", "Site (Kategori)"), ("O6:P6", "Budget"), ("Q6:R6", "Aktual"), ("S6:S6", "% Target"), ("T6:T6", "% BTL")):
-            v2.merge_put(rng, h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER)
+            v2.merge_put(rng, h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER, size=10)
         for i in range(len(btl_keys)):
             rr = 7 + i; src = b2f + i
-            v2.merge_put(f"L{rr}:N{rr}", f"={P2}B{src}", align=_LEFT)
-            v2.merge_put(f"O{rr}:P{rr}", f"={_rp(f'{P2}E{src}')}", align=_LEFT)
-            v2.merge_put(f"Q{rr}:R{rr}", f"={_rp(f'{P2}F{src}')}", align=_LEFT)
+            v2.merge_put(f"L{rr}:N{rr}", f"={P2}B{src}", align=_LEFT, size=10, bold=True)
+            v2.merge_put(f"O{rr}:P{rr}", f"={_rp(f'{P2}E{src}')}", align=_RIGHT, size=10)
+            v2.merge_put(f"Q{rr}:R{rr}", f"={_rp(f'{P2}F{src}')}", align=_RIGHT, size=10)
             g_ = f"{P2}G{src}"
-            v2.put(f"S{rr}", f'=IF({g_}="","-",FIXED({g_}*100,0,TRUE)&"%")', bold=True, align=_LEFT)
-            v2.put(f"T{rr}", f"=FIXED({P2}H{src}*100,1)&\"%\"", align=_LEFT)
+            v2.put(f"S{rr}", f'=IF({g_}="","-",FIXED({g_}*100,0,TRUE)&"%")', bold=True, align=_CENTER, size=10)
+            v2.put(f"T{rr}", f"=FIXED({P2}H{src}*100,1)&\"%\"", align=_CENTER, size=10)
             ga = f"{P2}$G${src}"
             v2.ws.conditional_formatting.add(f"S{rr}", _FRule(formula=[f'AND({ga}<>"",N({ga})<=1)'], font=_Font(name=_FONT, bold=True, color=_GREEN)))
             v2.ws.conditional_formatting.add(f"S{rr}", _FRule(formula=[f'AND({ga}<>"",N({ga})>1)'], font=_Font(name=_FONT, bold=True, color=_RED)))
         top_c = max(13, 8 + len(btl_keys))
         v2.section(top_c, "Analisa Penyebab Kenaikan Biaya BBM — per Site & Kelompok Unit")
         if bbm_keys:
-            ch = _bar_chart(overlap=-8, height=9, width=39, legend="t")
+            ch = _bar_chart(overlap=-8, legend="t")
             for col_idx in (10, 11, 14):
                 ch.add_data(_Ref(c2.ws, min_col=col_idx, min_row=rC2 + 1, max_row=c2l), titles_from_data=True)
             ch.set_categories(_Ref(c2.ws, min_col=2, min_row=c2f, max_row=c2l))
-            _color_series(ch, ("7B5CC9", "D98A2E", "3FA86B")); _labels(ch, "0%"); ch.y_axis.numFmt = "0%"
-            v2.ws.add_chart(ch, f"B{top_c+1}")
+            _color_series(ch, ("7B5CC9", "D98A2E", "3FA86B")); _labels(ch, "0%", size=(9 if len(bbm_keys) <= 9 else 7.5)); ch.y_axis.numFmt = "0%"
+            _place(v2.ws, ch, f"B{top_c+1}:T{top_c+18}")
             pk = lambda col: f"INDEX({P2}${col}${c2f}:${col}${c2l},{P2}$P${rmx})"
             nb = top_c + 20
             v2.note_box(f"B{nb}:T{nb+2}", (
@@ -3149,46 +3199,72 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
         v3.section(5, "Rutin vs Non-Rutin — per Site & Kelompok Unit", "L", "T")
         if rows3:
             hh = max(8, 0.55 * len(rows3) + 2)
-            ch = _bar_chart(kind="bar", grouping="stacked", overlap=100, height=hh, width=17.5, legend="t")
+            # clustered + overlap 100 (bukan stacked) spy label nilai bisa di UJUNG batang (outEnd)
+            ch = _bar_chart(kind="bar", grouping="clustered", overlap=100, gap=40, legend="t")
             for col_idx in (9, 10):
                 ch.add_data(_Ref(c3.ws, min_col=col_idx, min_row=5, max_row=a3l), titles_from_data=True)
             ch.set_categories(_Ref(c3.ws, min_col=2, min_row=a3f, max_row=a3l))
             _color_series(ch, (_RED, _TEAL))
-            _labels(ch, '"+Rp "#,##0.0,," Jt";"−Rp "#,##0.0,," Jt";;', pos=None)
+            _labels(ch, '"+Rp "#,##0.0,," Jt";"−Rp "#,##0.0,," Jt";;', size=(8.5 if len(rows3) <= 14 else 7.5))
             ch.x_axis.scaling.orientation = "maxMin"; ch.y_axis.numFmt = '#,##0,," Jt"'
             ch.x_axis.tickLblPos = "low"  # nama kelompok di tepi kiri (tdk menabrak batang negatif)
-            v3.ws.add_chart(ch, "B6")
-            ch2 = _bar_chart(kind="bar", grouping="percentStacked", overlap=100, height=hh, width=17.5, legend="t")
+            # Batas sumbu diberi ruang kiri-kanan (dari data saat file dibuat) spy label "+Rp .. Jt"/"−Rp .. Jt" di
+            # ujung batang tdk menabrak nama kelompok atau terpotong di tepi chart.
+            try:
+                import math as _m
+                _gv = [float(ms.loc[k, "maintenance_realisasi"] - ms.loc[k, "maintenance_budget"]) for k in rows3 if k in ms.index]
+                if _gv:
+                    _hi, _lo = max(max(_gv), 0.0), min(min(_gv), 0.0)
+                    _span = (_hi - _lo) or 1.0
+                    _top = _hi + 0.30 * _span
+                    _bot = _lo - (0.30 * _span if _lo < 0 else 0.02 * _span)
+                    # kelipatan "enak dibaca" (1/2/5 x 10^n) dgn target sktr 6 garis sumbu
+                    _raw = (_top - _bot) / 6
+                    _p = 10 ** _m.floor(_m.log10(_raw))
+                    _step = next(m_ * _p for m_ in (1, 2, 5, 10) if m_ * _p >= _raw)
+                    ch.y_axis.scaling.max = _m.ceil(_top / _step) * _step
+                    ch.y_axis.scaling.min = _m.floor(_bot / _step) * _step
+                    ch.y_axis.majorUnit = _step
+            except Exception:
+                pass
+            ch_bottom = 6 + len(rows3) + 3
+            for rr_ in range(6, ch_bottom + 1):
+                v3.ws.row_dimensions[rr_].height = 21
+            _place(v3.ws, ch, f"B6:J{ch_bottom}")
+            ch2 = _bar_chart(kind="bar", grouping="percentStacked", overlap=100, gap=40, legend="t")
             for col_idx in (18, 19):
                 ch2.add_data(_Ref(c3.ws, min_col=col_idx, min_row=5, max_row=a3l), titles_from_data=True)
             ch2.set_categories(_Ref(c3.ws, min_col=2, min_row=a3f, max_row=a3l))
-            _color_series(ch2, (_TEAL, _GOLD)); _labels(ch2, "0%;;;", pos=None)
+            _color_series(ch2, (_TEAL, _GOLD)); _labels(ch2, "0%;;;", pos=None, size=8.5)
             ch2.x_axis.scaling.orientation = "maxMin"; ch2.y_axis.numFmt = "0%"
-            v3.ws.add_chart(ch2, "L6")
-            # tabel ringkas di bawah chart (angka yg sama dgn PPT)
-            t0 = 6 + int(hh * 2) + 2
-            for rng, h in (("B{0}:D{0}", "Site — Kelompok"), ("E{0}:E{0}", "Capaian"), ("F{0}:G{0}", "Gap"), ("H{0}:H{0}", "% Rutin"),
-                           ("I{0}:I{0}", "% Non-Rutin"), ("J{0}:J{0}", "Cap. Downtime")):
-                v3.merge_put(rng.format(t0), h, bold=True, color="FFFFFF", fillc=_NAVY, align=_CENTER)
+            _place(v3.ws, ch2, f"L6:T{ch_bottom}")
+            # tabel ringkas di bawah chart (angka yg sama dgn PPT) -- selebar halaman (B..T)
+            t0 = ch_bottom + 2
+            v3.section(t0 - 1, "Rincian per Site & Kelompok Unit", "B", "T")
+            for rng, h in (("B{0}:E{0}", "Site — Kelompok"), ("F{0}:H{0}", "Capaian Biaya"), ("I{0}:L{0}", "Gap (Realisasi − Budget)"),
+                           ("M{0}:N{0}", "% Rutin"), ("O{0}:P{0}", "% Non-Rutin"), ("Q{0}:T{0}", "Cap. Downtime")):
+                v3.merge_put(rng.format(t0), h, bold=True, color="FFFFFF", fillc="4B5563", align=_CENTER, size=10)
+            v3.ws.row_dimensions[t0].height = 22
             for i in range(len(rows3) + 1):
                 rr = t0 + 1 + i; src = a3f + i if i < len(rows3) else rt3
-                v3.merge_put(f"B{rr}:D{rr}", f"={P3}B{src}", bold=True, align=_LEFT)
+                v3.ws.row_dimensions[rr].height = 20
+                v3.merge_put(f"B{rr}:E{rr}", f"={P3}B{src}", bold=True, align=_LEFT, size=10)
                 g_ = f"{P3}G{src}"; h_ = f"{P3}H{src}"
-                v3.put(f"E{rr}", f'=IF({g_}="","N/A",FIXED({g_}*100,0,TRUE)&"%")', bold=True, align=_CENTER)
-                v3.ws.conditional_formatting.add(f"E{rr}", _FRule(formula=[f'AND({g_}<>"",N({g_})>1)'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
-                v3.ws.conditional_formatting.add(f"E{rr}", _FRule(formula=[f'AND({g_}<>"",N({g_})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+                v3.merge_put(f"F{rr}:H{rr}", f'=IF({g_}="","N/A",FIXED({g_}*100,0,TRUE)&"%")', bold=True, align=_CENTER, size=10)
+                v3.ws.conditional_formatting.add(f"F{rr}:H{rr}", _FRule(formula=[f'AND({g_}<>"",N({g_})>1)'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
+                v3.ws.conditional_formatting.add(f"F{rr}:H{rr}", _FRule(formula=[f'AND({g_}<>"",N({g_})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
                 if i < len(rows3):
-                    v3.merge_put(f"F{rr}:G{rr}", f'=IF({h_}="","tidak ada data",IF({h_}>0,"+","−")&{_rp("ABS(" + h_ + ")")})', align=_CENTER)
+                    v3.merge_put(f"I{rr}:L{rr}", f'=IF({h_}="","tidak ada data",IF({h_}>0,"+","−")&{_rp("ABS(" + h_ + ")")})', align=_RIGHT, size=10)
                 else:
-                    v3.merge_put(f"F{rr}:G{rr}", f'="Gap total: "&IF({h_}>0,"+","−")&{_rp("ABS(" + h_ + ")")}&IF({h_}>0," (over budget)"," (di bawah budget)")', bold=True, align=_CENTER)
+                    v3.merge_put(f"I{rr}:L{rr}", f'="Gap total: "&IF({h_}>0,"+","−")&{_rp("ABS(" + h_ + ")")}&IF({h_}>0," (over budget)"," (di bawah budget)")', bold=True, align=_RIGHT, size=10)
                 m_ = f"{P3}M{src}"; n_ = f"{P3}N{src}"
-                v3.put(f"H{rr}", f'=IF({m_}="","—",FIXED({m_}*100,0,TRUE)&"%")', align=_CENTER)
-                v3.put(f"I{rr}", f'=IF({n_}="","—",FIXED({n_}*100,0,TRUE)&"%")', align=_CENTER)
+                v3.merge_put(f"M{rr}:N{rr}", f'=IF({m_}="","—",FIXED({m_}*100,0,TRUE)&"%")', align=_CENTER, size=10, color=_TEAL, bold=True)
+                v3.merge_put(f"O{rr}:P{rr}", f'=IF({n_}="","—",FIXED({n_}*100,0,TRUE)&"%")', align=_CENTER, size=10, color=_GOLD, bold=True)
                 if i < len(rows3):
                     q_ = f"{P3}Q{src}"
-                    v3.put(f"J{rr}", f'=IF({q_}="","—",FIXED({q_}*100,0,TRUE)&"%")', bold=True, align=_CENTER)
-                    v3.ws.conditional_formatting.add(f"J{rr}", _FRule(formula=[f'AND({q_}<>"",N({q_})>1)'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
-                    v3.ws.conditional_formatting.add(f"J{rr}", _FRule(formula=[f'AND({q_}<>"",N({q_})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+                    v3.merge_put(f"Q{rr}:T{rr}", f'=IF({q_}="","—",FIXED({q_}*100,0,TRUE)&"%")', bold=True, align=_CENTER, size=10)
+                    v3.ws.conditional_formatting.add(f"Q{rr}:T{rr}", _FRule(formula=[f'AND({q_}<>"",N({q_})>1)'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
+                    v3.ws.conditional_formatting.add(f"Q{rr}:T{rr}", _FRule(formula=[f'AND({q_}<>"",N({q_})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
             nb = t0 + len(rows3) + 3
             pos = f"{P3}$E${rs}"
             pk = lambda col: f"INDEX({P3}${col}${a3f}:${col}${a3l},{pos})"
@@ -3218,7 +3294,10 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
     wb.calculation = _CalcP(fullCalcOnLoad=True)
     buf = _io_dx.BytesIO()
     wb.save(buf)
-    return buf.getvalue()
+    try:
+        return _fix_label_numfmt(buf.getvalue())
+    except Exception:
+        return buf.getvalue()
 
 
 # ---------------------------------------------------------------
