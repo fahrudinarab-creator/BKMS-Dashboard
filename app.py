@@ -2948,23 +2948,30 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
                 ch.add_data(_Ref(c4.ws, min_col=col_idx, min_row=rC4 + 1, max_row=c4l), titles_from_data=True)
             ch.set_categories(_Ref(c4.ws, min_col=2, min_row=c4f, max_row=c4l))
             _color_series(ch, (_RED, _GREEN)); _labels(ch, "0%;;;", size=(9.5 if len(dtc) <= 12 else 8)); ch.y_axis.numFmt = "0%"
-            _place(v4.ws, ch, "B15:L33")
+            _place(v4.ws, ch, "B15:L25")  # tinggi chart = tinggi tabel Sparepart di sebelahnya (baris 15-25)
+            for rr_ in range(16, 26):
+                v4.ws.row_dimensions[rr_].height = 28
         # tabel sparepart di tampilan
         hdr = ["No", "Kategori"] + [_site(l) for l in kat_sites] + ["Total"]
         cols_sp = ["N", "O"] + [_CL(16 + j) for j in range(len(kat_sites))] + [_CL(16 + len(kat_sites))]
         # Lebar kolom: tabel mengisi PENUH panel N..T (kolom nilai dibagi rata, sisa kolom kosong dipersempit)
         n_val_sp = len(kat_sites) + 1
         v4.ws.column_dimensions["N"].width = 5
-        v4.ws.column_dimensions["O"].width = 27
+        # Total lebar panel N..T dijaga tetap; kolom Kategori dibuat lebar spy nama terpanjang
+        # ("DIFFENTTIAL & REAR AXLE SYSTEM") muat 1 baris, sisa lebar dibagi rata utk kolom nilai.
+        _kat_w = 38
+        v4.ws.column_dimensions["O"].width = _kat_w
+        _val_w = (33 + 54 - _kat_w) / n_val_sp
         for j in range(5):
-            v4.ws.column_dimensions[_CL(16 + j)].width = (60 / n_val_sp) if j < n_val_sp else 1
+            v4.ws.column_dimensions[_CL(16 + j)].width = _val_w if j < n_val_sp else 1
         for j, (col, h) in enumerate(zip(cols_sp, hdr)):
             v4.put(f"{col}15", h, bold=True, color="FFFFFF", fillc="4B5563", align=_CENTER, size=10)
         for i, kat in enumerate(kat_top):
             rr = 16 + i
-            v4.ws.row_dimensions[rr].height = 22
+            v4.ws.row_dimensions[rr].height = 26  # tetap cukup utk 2 baris kalau ada nama yg sangat panjang
             v4.put(f"N{rr}", i + 1, "0", bold=True, color="FFFFFF", fillc=_GOLD, align=_CENTER, size=10)
-            v4.put(f"O{rr}", f"={P4}C{f4f+i}", bold=True, align=_LEFT, size=10)
+            v4.put(f"O{rr}", f"={P4}C{f4f+i}", bold=True, size=9.5,
+                   align=_Al(horizontal="left", vertical="center", wrap_text=True, indent=1))
             for j in range(len(kat_sites)):
                 src = f"{P4}{_CL(4+j)}{f4f+i}"
                 v4.put(f"{cols_sp[2+j]}{rr}", f'=IF({src}=0,"-",{_rp(src)})', align=_RIGHT, size=10)
@@ -2972,7 +2979,7 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             v4.put(f"{cols_sp[-1]}{rr}", f"={_rp(srcT)}", bold=True, color=_GOLD, align=_RIGHT, size=10.5)
         if dtc:
             npos = f"{P4}$E${rs4}"
-            v4.note_box("B35:L37", (
+            v4.note_box("B27:L29", (
                 f'=IF({P4}$D${rs4}>0,{P4}$D${rs4}&" dari "&{P4}$C${rs4}&" unit ("&FIXED({P4}$D${rs4}/{P4}$C${rs4}*100,0,TRUE)&"%) melebihi target downtime. Unit paling kritis: "'
                 f'&INDEX({P4}$B${c4f}:$B${c4l},{npos})&" dengan Capaian Downtime "&FIXED(INDEX({P4}$I${c4f}:$I${c4l},{npos})*100,0,TRUE)&"% (downtime realisasinya "'
                 f'&FIXED(INDEX({P4}$I${c4f}:$I${c4l},{npos})*100-100,0,TRUE)&"% di atas batas yang diizinkan) — prioritaskan preventive maintenance pada unit-unit ini.",'
