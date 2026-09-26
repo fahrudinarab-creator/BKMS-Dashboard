@@ -2724,7 +2724,7 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
                 ch.add_data(_Ref(c1.ws, min_col=col_idx, min_row=rB + 1, max_row=bl_), titles_from_data=True)
             ch.set_categories(_Ref(c1.ws, min_col=2, min_row=bf, max_row=bl_))
             _color_series(ch, (_BLUE, _GOLD, _TEAL)); _labels(ch, "0%", size=(9 if len(au_keys) <= 9 else 7)); ch.y_axis.numFmt = "0%"
-            _place(v1.ws, ch, "B13:P33")
+            _place(v1.ws, ch, f"B13:P{max(33, 26 + len(pop_keys) - 1)}")  # tinggi chart ikut turun sampai tepat di atas kotak analisa (tdk ada ruang kosong)
         if pop_keys:
             dn = _Dn(); dn.holeSize = 58; dn.firstSliceAng = 0
             dn.add_data(_Ref(c1.ws, min_col=5, min_row=cf - 1, max_row=cl_), titles_from_data=True)
@@ -3276,14 +3276,57 @@ def build_detail_ppt_excel(df_raw, sm_raw, maint_raw, mttr_raw, sites, months, k
             nb = t0 + len(rows3) + 3
             pos = f"{P3}$E${rs}"
             pk = lambda col: f"INDEX({P3}${col}${a3f}:${col}${a3l},{pos})"
-            v3.note_box(f"B{nb}:T{nb+2}", (
-                f'=IF({P3}$C${rs}=0,"Dari "&{P3}$B${rs}&" kelompok unit per site, tidak ada yang over budget pada biaya maintenance — seluruhnya berada dalam/di bawah budget.",'
-                f'"Dari "&{P3}$B${rs}&" kelompok unit per site, terdapat "&{P3}$C${rs}&" kelompok yang OVER BUDGET biaya maintenance"'
-                f'&IF({P3}$D${rs}>0," (termasuk "&{P3}$D${rs}&" kelompok tanpa budget)","")&". Over budget terbesar pada "&{pk("B")}'
-                f'&" (+"&{_rp(pk("H"))}&", "&IF({pk("G")}="","tanpa budget","Capaian "&FIXED({pk("G")}*100,0,TRUE)&"%")&") dengan "'
-                f'&IF({pk("N")}="","tanpa transaksi pemeliharaan tercatat","porsi pemeliharaan Non-Rutin "&FIXED({pk("N")}*100,0,TRUE)&"%")'
-                f'&" dan "&IF({pk("Q")}="","Capaian Downtime belum tersedia","Capaian Downtime "&FIXED({pk("Q")}*100,0,TRUE)&"%")&".")'),
-                color="7A5C0D", bg=_GOLD_BG)
+            # ---- STRIP SOROTAN (sama dgn PPT): 4 kolom -> jumlah over budget | over terbesar | porsi Non-Rutin | Cap. Downtime
+            ws3 = v3.ws
+            nO, nK, nTB = f"{P3}$C${rs}", f"{P3}$B${rs}", f"{P3}$D${rs}"
+            ada = f"{nO}>0"  # ada kelompok over budget?
+            sk = lambda col: f'IFERROR({pk(col)},"")'
+            BROWN = "7A5C0D"
+            for rr_ in range(nb, nb + 3):
+                for cc in range(2, 21):
+                    ws3.cell(rr_, cc).fill = _fill(_GOLD_BG)
+            ws3.row_dimensions[nb].height = 18; ws3.row_dimensions[nb + 1].height = 32; ws3.row_dimensions[nb + 2].height = 18
+            ws3.merge_cells(f"B{nb}:B{nb+2}")
+            ws3[f"B{nb}"] = "💡"; ws3[f"B{nb}"].font = _f(20, False, _GOLD); ws3[f"B{nb}"].alignment = _CENTER
+
+            def _cell(rng, val, size, color, bold=False, align=_LEFT, italic=False):
+                ws3.merge_cells(rng) if ":" in rng and rng.split(":")[0] != rng.split(":")[1] else None
+                c = ws3[rng.split(":")[0]]
+                c.value = val; c.font = _f(size, bold, color, italic); c.alignment = align
+                return c
+            L = _Al(horizontal="left", vertical="center", indent=1)
+            # 1) Kelompok unit over budget
+            _cell(f"C{nb}:E{nb}", "Kelompok unit over budget", 9, BROWN, align=L)
+            _cell(f"C{nb+1}:E{nb+1}", f'={nO}&" dari "&{nK}&" kelompok"', 16, _RED, True, L)
+            _cell(f"C{nb+2}:E{nb+2}", f'=IF({nTB}>0,"termasuk "&{nTB}&" kelompok tanpa budget","per site & kelompok unit")', 8.5, _MUTED, False, L, True)
+            # 2) Over budget terbesar
+            _cell(f"F{nb}:J{nb}", "Over budget terbesar", 9, BROWN, align=L)
+            _cell(f"F{nb+1}:J{nb+1}", f'=IF({ada},{sk("B")},"— (tidak ada)")', 16, _NAVY, True, L)
+            _cell(f"F{nb+2}:J{nb+2}", (f'=IF({ada},"+"&{_rp(sk("H"))}&"  ·  "&IF({sk("G")}="","tanpa budget","Capaian "&FIXED({sk("G")}*100,0,TRUE)&"%"),'
+                                        f'"seluruh kelompok dalam/di bawah budget")'), 9.5, _RED, True, L)
+            # 3) Porsi Non-Rutin (+ bar mini: biru = Rutin, emas = Non-Rutin)
+            _cell(f"K{nb}:O{nb}", "Porsi pemeliharaan Non-Rutin", 9, BROWN, align=L)
+            nr_, r_ = sk("N"), sk("M")
+            _cell(f"K{nb+1}", f'=IF(OR(NOT({ada}),{nr_}=""),"—",FIXED({nr_}*100,0,TRUE)&"%")', 18, _GOLD, True, L)
+            _cell(f"L{nb+1}:M{nb+1}", f'=IF(OR(NOT({ada}),{r_}=""),"",REPT("█",ROUND({r_}*12,0)))', 12, _TEAL, False, _Al(horizontal="right", vertical="center"))
+            _cell(f"N{nb+1}:O{nb+1}", f'=IF(OR(NOT({ada}),{nr_}=""),"",REPT("█",12-ROUND({r_}*12,0)))', 12, _GOLD, False, _Al(horizontal="left", vertical="center"))
+            _cell(f"K{nb+2}:O{nb+2}", f'=IF(OR(NOT({ada}),{r_}=""),"tanpa transaksi pemeliharaan","Rutin "&FIXED({r_}*100,0,TRUE)&"%  ·  Non-Rutin "&FIXED({nr_}*100,0,TRUE)&"%")', 8.5, _MUTED, False, L)
+            # 4) Capaian Downtime (+ status)
+            dq = sk("Q")
+            _cell(f"P{nb}:T{nb}", "Capaian Downtime", 9, BROWN, align=L)
+            cdt = _cell(f"P{nb+1}:Q{nb+1}", f'=IF(OR(NOT({ada}),{dq}=""),"—",FIXED({dq}*100,0,TRUE)&"%")', 18, _GREEN, True, L)
+            ws3.conditional_formatting.add(f"P{nb+1}:Q{nb+1}", _FRule(formula=[f'AND({ada},{dq}<>"",N({dq})>1)'], font=_Font(name=_FONT, size=18, bold=True, color=_RED)))
+            _cell(f"R{nb+1}:S{nb+1}", f'=IF(OR(NOT({ada}),{dq}=""),"",IF({dq}>1,"Melebihi target","Dalam target"))', 9, _GREEN, True, _CENTER)
+            ws3.conditional_formatting.add(f"R{nb+1}:S{nb+1}", _FRule(formula=[f'AND({ada},{dq}<>"",N({dq})<=1)'], fill=_fill(_GREEN_BG), font=_Font(name=_FONT, bold=True, color=_GREEN)))
+            ws3.conditional_formatting.add(f"R{nb+1}:S{nb+1}", _FRule(formula=[f'AND({ada},{dq}<>"",N({dq})>1)'], fill=_fill(_RED_BG), font=_Font(name=_FONT, bold=True, color=_RED)))
+            _cell(f"P{nb+2}:T{nb+2}", "≤ 100% = sesuai target downtime", 8.5, _MUTED, False, L)
+            # bingkai emas + garis pemisah antar kolom sorotan
+            med = _Sd(style="medium", color=_GOLD); sep = _Sd(style="thin", color="E3C98F")
+            for rr_ in range(nb, nb + 3):
+                for cc in range(2, 21):
+                    ws3.cell(rr_, cc).border = _Bd(top=med if rr_ == nb else None, bottom=med if rr_ == nb + 2 else None,
+                                                   left=med if cc == 2 else (sep if cc in (6, 11, 16) else None),
+                                                   right=med if cc == 20 else None)
 
     # urutan sheet: per blok (01..04 tampilan+perhitungan), data di belakang
     order = []
